@@ -16,6 +16,9 @@ display:
     - namespace
   visible_annotations:
     - summary
+  subtitle_annotations:
+    - description
+    - summary
   group_by:
     - cluster
   sort_by: severity

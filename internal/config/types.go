@@ -27,10 +27,11 @@ type AuthConfig struct {
 }
 
 type DisplayConfig struct {
-	VisibleLabels      []string `yaml:"visible_labels" json:"visible_labels"`
-	VisibleAnnotations []string `yaml:"visible_annotations" json:"visible_annotations"`
-	GroupBy            []string `yaml:"group_by" json:"group_by"`
-	SortBy             string   `yaml:"sort_by" json:"sort_by"`
+	VisibleLabels       []string `yaml:"visible_labels" json:"visible_labels"`
+	VisibleAnnotations  []string `yaml:"visible_annotations" json:"visible_annotations"`
+	SubtitleAnnotations []string `yaml:"subtitle_annotations" json:"subtitle_annotations"`
+	GroupBy             []string `yaml:"group_by" json:"group_by"`
+	SortBy              string   `yaml:"sort_by" json:"sort_by"`
 }
 
 type SoundsConfig struct {

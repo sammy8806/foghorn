@@ -29,6 +29,7 @@ export interface SeverityCounts {
 export interface DisplayConfig {
   visible_labels: string[];
   visible_annotations: string[];
+  subtitle_annotations: string[];
   group_by: string[];
   sort_by: string;
 }
@@ -38,6 +39,7 @@ export const severityCounts = writable<SeverityCounts>({ critical: 0, warning: 0
 export const displayConfig = writable<DisplayConfig>({
   visible_labels: ['alertname', 'severity', 'cluster', 'namespace'],
   visible_annotations: ['summary'],
+  subtitle_annotations: ['summary', 'description'],
   group_by: ['cluster'],
   sort_by: 'severity',
 });

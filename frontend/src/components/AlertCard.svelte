@@ -14,6 +14,22 @@
     ? Object.keys(alert.annotations || {})
     : (config.visible_annotations || []);
 
+  // Auto-pick a subtitle from configured annotations, falling back to distinguishing labels
+  const skipLabels = new Set(['alertname', 'severity', 'cluster', 'namespace', 'prometheus', 'prometheus_replica']);
+  $: subtitle = (() => {
+    const ann = alert.annotations || {};
+    const sources = config.subtitle_annotations || ['summary', 'description'];
+    for (const key of sources) {
+      if (ann[key]) return ann[key];
+    }
+    // Fall back to distinguishing labels
+    const parts: string[] = [];
+    for (const [k, v] of Object.entries(alert.labels || {})) {
+      if (!skipLabels.has(k) && v) parts.push(`${k}=${v}`);
+    }
+    return parts.join(', ');
+  })();
+
   let expanded = false;
   let silenceOpen = false;
 </script>
@@ -22,6 +38,9 @@
   <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => e.key === 'Enter' && (expanded = !expanded)}>
     <span class="severity-dot" style="background: {severityColor(alert.severity)}" />
     <span class="alert-name">{alert.name}</span>
+    {#if subtitle}
+      <span class="alert-subtitle" title={subtitle}>{subtitle}</span>
+    {/if}
     <span class="alert-source">{alert.source}</span>
     <span class="alert-duration">{formatDuration(alert.startsAt)}</span>
     {#if alert.silencedBy?.length > 0}
@@ -93,8 +112,8 @@
   .alert-card {
     border-left: 3px solid #6b7280;
     background: var(--card-bg, #1e293b);
-    border-radius: 4px;
-    margin-bottom: 4px;
+    border-radius: 3px;
+    margin-bottom: 2px;
     overflow: hidden;
     transition: border-color 0.15s;
   }
@@ -106,27 +125,40 @@
   .alert-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: 6px;
+    padding: 4px 10px;
     cursor: pointer;
     user-select: none;
+    min-height: 0;
   }
   .alert-header:hover { background: rgba(255,255,255,0.05); }
 
   .severity-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
   .alert-name {
     font-weight: 600;
-    font-size: 13px;
-    flex: 1;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .alert-subtitle {
+    font-size: 11px;
+    color: #64748b;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+  .alert-subtitle::before {
+    content: '— ';
+    color: #475569;
   }
 
   .alert-source {
@@ -154,21 +186,21 @@
   .chevron { font-size: 10px; color: #64748b; }
 
   .alert-body {
-    padding: 8px 12px 12px 28px;
+    padding: 6px 10px 8px 22px;
     border-top: 1px solid rgba(255,255,255,0.05);
   }
 
   .annotation {
-    font-size: 12px;
+    font-size: 11px;
     color: #cbd5e1;
-    margin: 4px 0;
+    margin: 2px 0;
   }
 
   .label-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 8px;
+    gap: 3px;
+    margin-top: 6px;
   }
 
   .chip {
@@ -184,9 +216,9 @@
   .metadata {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 12px;
-    margin-top: 8px;
-    padding: 6px 8px;
+    gap: 3px 10px;
+    margin-top: 6px;
+    padding: 4px 6px;
     background: rgba(0,0,0,0.2);
     border-radius: 3px;
     font-size: 11px;
@@ -198,8 +230,8 @@
   .alert-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 8px;
+    gap: 10px;
+    margin-top: 6px;
   }
 
   .annotation-link, .generator-link {

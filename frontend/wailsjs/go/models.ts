@@ -200,6 +200,7 @@ export namespace config {
 	export class DisplayConfig {
 	    visible_labels: string[];
 	    visible_annotations: string[];
+	    subtitle_annotations: string[];
 	    group_by: string[];
 	    sort_by: string;
 	
@@ -211,6 +212,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.visible_labels = source["visible_labels"];
 	        this.visible_annotations = source["visible_annotations"];
+	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
 	        this.sort_by = source["sort_by"];
 	    }
