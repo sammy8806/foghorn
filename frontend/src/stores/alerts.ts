@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { GetAlerts, GetSeverityCounts, GetDisplayConfig, GetSourcesHealth } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { severityOrder } from '../utils/severity';
@@ -56,6 +56,9 @@ export const verbose = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
 export const sourcesHealth = writable<SourceHealth[]>([]);
+// Set of "source:id" keys for alerts that appeared in the latest refresh
+export const newAlertKeys = writable<Set<string>>(new Set());
+let hasLoadedOnce = false;
 
 export async function refreshAlerts(): Promise<void> {
   try {
@@ -71,7 +74,22 @@ export async function refreshAlerts(): Promise<void> {
       GetSeverityCounts(),
       GetSourcesHealth(),
     ]);
-    alerts.set(alertList || []);
+    const incoming = alertList || [];
+
+    // Detect newly appeared alerts (skip first load so initial alerts aren't all highlighted)
+    const prev = get(alerts);
+    if (prev.length > 0 || hasLoadedOnce) {
+      const prevKeys = new Set(prev.map(a => a.source + ':' + a.id));
+      const freshKeys = new Set<string>();
+      for (const a of incoming) {
+        const key = a.source + ':' + a.id;
+        if (!prevKeys.has(key)) freshKeys.add(key);
+      }
+      newAlertKeys.set(freshKeys);
+    }
+    hasLoadedOnce = true;
+
+    alerts.set(incoming);
     severityCounts.set(counts || { critical: 0, warning: 0, info: 0 });
     sourcesHealth.set(health || []);
     error.set(null);

@@ -6,6 +6,7 @@
   export let groupName: string;
   export let alerts: Alert[];
   export let config: DisplayConfig;
+  export let newKeys: Set<string> = new Set();
 
   $: maxSeverity = alerts.reduce((worst, a) => {
     const order = { critical: 0, warning: 1, info: 2 };
@@ -26,7 +27,7 @@
   {#if !collapsed}
     <div class="group-alerts">
       {#each alerts as alert (alert.source + ':' + alert.id)}
-        <AlertCard {alert} {config} />
+        <AlertCard {alert} {config} isNew={newKeys.has(alert.source + ':' + alert.id)} />
       {/each}
     </div>
   {/if}

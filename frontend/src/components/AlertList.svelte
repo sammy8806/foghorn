@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { groupedAlerts, loading, error, displayConfig, verbose, sourcesHealth, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
+  import { groupedAlerts, loading, error, displayConfig, verbose, sourcesHealth, newAlertKeys, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
@@ -22,11 +22,14 @@
     refreshing = false;
   }
 
+  $: noHealthYet = $sourcesHealth.length === 0;
   $: allSourcesOK = $sourcesHealth.length > 0 && $sourcesHealth.every(h => h.ok);
-  $: anySourceFailing = $sourcesHealth.some(h => !h.ok);
-  $: healthTitle = $sourcesHealth.map(h =>
-    `${h.source}: ${h.ok ? 'OK' : h.lastError || 'failing'}${h.consecFails > 0 ? ` (${h.consecFails} consecutive failures)` : ''}`
-  ).join('\n');
+  $: anySourceFailing = $sourcesHealth.length > 0 && $sourcesHealth.some(h => !h.ok);
+  $: healthTitle = noHealthYet
+    ? 'Waiting for first poll…'
+    : $sourcesHealth.map(h =>
+        `${h.source}: ${h.ok ? 'OK' : h.lastError || 'failing'}${h.consecFails > 0 ? ` (${h.consecFails} consecutive failures)` : ''}`
+      ).join('\n');
   $: latestPoll = $sourcesHealth.reduce((latest, h) => {
     const t = new Date(h.lastPoll);
     return t > latest ? t : latest;
@@ -80,9 +83,12 @@
       {/if}
     </div>
     <div class="status-right">
-      {#if $sourcesHealth.length > 0}
-        <span class="refresh-status" class:refresh-ok={allSourcesOK} class:refresh-fail={anySourceFailing}
-          title={healthTitle}>●</span>
+      <span class="refresh-status"
+        class:refresh-ok={allSourcesOK && !refreshing}
+        class:refresh-fail={anySourceFailing && !refreshing}
+        class:refresh-pending={noHealthYet || refreshing}
+        title={refreshing ? 'Refreshing…' : healthTitle}>●</span>
+      {#if !noHealthYet}
         <span class="refresh-time">{formatTime(latestPoll)}</span>
       {/if}
       <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title="Refresh alerts">
@@ -103,12 +109,12 @@
       {#each Object.entries($groupedAlerts) as [groupName, groupAlerts]}
         {@const visibleInGroup = groupAlerts.filter(a => $filteredAlerts.find(f => f.source === a.source && f.id === a.id))}
         {#if visibleInGroup.length > 0}
-          <AlertGroup {groupName} alerts={visibleInGroup} config={$displayConfig} />
+          <AlertGroup {groupName} alerts={visibleInGroup} config={$displayConfig} newKeys={$newAlertKeys} />
         {/if}
       {/each}
     {:else}
       {#each $filteredAlerts as alert (alert.source + ':' + alert.id)}
-        <AlertCard {alert} config={$displayConfig} />
+        <AlertCard {alert} config={$displayConfig} isNew={$newAlertKeys.has(alert.source + ':' + alert.id)} />
       {/each}
     {/if}
   </div>
@@ -193,6 +199,7 @@
   .refresh-status { font-size: 9px; }
   .refresh-ok { color: #22c55e; }
   .refresh-fail { color: #ef4444; }
+  .refresh-pending { color: #f59e0b; }
   .refresh-time { color: #475569; font-size: 10px; }
 
   .refresh-btn {

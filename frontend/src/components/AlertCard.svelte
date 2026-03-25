@@ -6,6 +6,7 @@
 
   export let alert: Alert;
   export let config: DisplayConfig;
+  export let isNew: boolean = false;
 
   $: visibleLabels = $verbose
     ? Object.keys(alert.labels || {})
@@ -34,7 +35,7 @@
   let silenceOpen = false;
 </script>
 
-<div class="alert-card {severityClass(alert.severity)}" class:silenced={alert.silencedBy?.length > 0}>
+<div class="alert-card {severityClass(alert.severity)}" class:silenced={alert.silencedBy?.length > 0} class:alert-new={isNew}>
   <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => e.key === 'Enter' && (expanded = !expanded)}>
     <span class="severity-dot" style="background: {severityColor(alert.severity)}" />
     <span class="alert-name">{alert.name}</span>
@@ -121,6 +122,11 @@
   .severity-warning { border-left-color: #f59e0b; }
   .severity-info { border-left-color: #3b82f6; }
   .silenced { opacity: 0.6; }
+  .alert-new { animation: highlight-fade 3s ease-out; }
+  @keyframes highlight-fade {
+    0% { background: rgba(59, 130, 246, 0.25); }
+    100% { background: var(--card-bg, #1e293b); }
+  }
 
   .alert-header {
     display: flex;
