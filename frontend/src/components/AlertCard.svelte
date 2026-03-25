@@ -76,14 +76,14 @@
     {#if subtitle}
       <span class="alert-subtitle" title={subtitle}>{subtitle}</span>
     {/if}
-    <span class="alert-source">{alert.source}</span>
-    <span class="alert-duration">{formatDuration(alert.startsAt)}</span>
     {#if alert.silencedBy?.length > 0}
       <span class="badge badge-silenced">silenced</span>
     {/if}
     {#if alert.inhibitedBy?.length > 0}
       <span class="badge badge-inhibited">inhibited</span>
     {/if}
+    <span class="alert-source">{alert.source}</span>
+    <span class="alert-duration">{formatDuration(alert.startsAt)}</span>
     <span class="chevron" class:expanded>{expanded ? '▲' : '▼'}</span>
   </div>
 
