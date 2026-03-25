@@ -58,6 +58,7 @@ func main() {
 				wailsruntime.WindowShow(app.ctx)
 				wailsruntime.WindowSetAlwaysOnTop(app.ctx, true)
 				windowVisible.Store(true)
+				wailsruntime.EventsEmit(app.ctx, "popup:opening")
 			}
 		},
 		func() {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import {
     groupedAlerts,
     loading,
@@ -21,16 +21,42 @@
     sortByCriteria,
     criteriaEqual,
     stringArrayEqual,
+    isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
+  import { GetUIConfig } from '../../wailsjs/go/main/App';
+  import { EventsOn, ScreenGetAll, WindowSetPosition, WindowSetSize } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
 
-  onMount(async () => {
-    await waitForBridge();
-    initEventListeners();
-    await loadDisplayConfig();
-    await refreshAlerts();
+  const popupMargin = 16;
+  const minPopupHeight = 220;
+  const popupHeightBuffer = 25;
+
+  onMount(() => {
+    let disposePopupOpening = () => {};
+    let disposed = false;
+
+    const init = async () => {
+      await waitForBridge();
+      if (disposed) return;
+
+      initEventListeners();
+      await loadDisplayConfig();
+      await refreshAlerts();
+
+      if (!isWails()) return;
+      disposePopupOpening = EventsOn('popup:opening', async () => {
+        await layoutPopup();
+      });
+    };
+
+    void init();
+
+    return () => {
+      disposed = true;
+      disposePopupOpening();
+    };
   });
 
   $: hasGroups = $activeGroupBy.length > 0;
@@ -94,6 +120,48 @@
     );
     if (matchingPreset) return matchingPreset.label;
     return $activeGroupMode === 'default' ? 'Default' : 'Custom';
+  }
+
+  async function layoutPopup(): Promise<void> {
+    await tick();
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+
+    const [uiConfig, screens] = await Promise.all([
+      GetUIConfig(),
+      ScreenGetAll(),
+    ]);
+
+    const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
+    if (!screen) return;
+
+    const width = clamp(uiConfig.popup_width || 800, 360, Math.max(360, screen.width - (popupMargin * 2)));
+    const maxHeight = Math.max(minPopupHeight, screen.height - (popupMargin * 2));
+    const desiredHeight = measureDesiredPopupHeight();
+    const height = clamp(desiredHeight, minPopupHeight, maxHeight);
+
+    WindowSetSize(width, height);
+    WindowSetPosition(Math.max(popupMargin, screen.width - width - popupMargin), popupMargin);
+  }
+
+  function measureDesiredPopupHeight(): number {
+    const container = document.querySelector('.alert-list-container') as HTMLElement | null;
+    const filterBar = document.querySelector('.filter-bar') as HTMLElement | null;
+    const statusBar = document.querySelector('.status-bar') as HTMLElement | null;
+    const alertsScroll = document.querySelector('.alerts-scroll') as HTMLElement | null;
+
+    if (!container || !alertsScroll) {
+      return window.innerHeight;
+    }
+
+    const chromeHeight = (filterBar?.offsetHeight ?? 0) + (statusBar?.offsetHeight ?? 0);
+    const contentHeight = alertsScroll.scrollHeight;
+    const borders = 8;
+
+    return chromeHeight + contentHeight + borders + popupHeightBuffer;
+  }
+
+  function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
   }
 </script>
 
