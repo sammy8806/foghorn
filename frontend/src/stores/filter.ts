@@ -1,0 +1,44 @@
+import { writable, derived } from 'svelte/store';
+import { alerts } from './alerts';
+import type { Alert } from './alerts';
+
+export interface FilterState {
+  text: string;
+  severity: string; // 'all' | 'critical' | 'warning' | 'info'
+  source: string;   // 'all' | source name
+  showSilenced: boolean;
+}
+
+export const filter = writable<FilterState>({
+  text: '',
+  severity: 'all',
+  source: 'all',
+  showSilenced: true,
+});
+
+export const filteredAlerts = derived([alerts, filter], ([$alerts, $filter]) => {
+  return $alerts.filter(alert => matchesFilter(alert, $filter));
+});
+
+function matchesFilter(alert: Alert, f: FilterState): boolean {
+  if (f.severity !== 'all' && alert.severity !== f.severity) return false;
+  if (f.source !== 'all' && alert.source !== f.source) return false;
+  if (!f.showSilenced && alert.silencedBy?.length > 0) return false;
+
+  if (f.text) {
+    const q = f.text.toLowerCase();
+    const haystack = [
+      alert.name,
+      alert.source,
+      ...Object.values(alert.labels || {}),
+      ...Object.values(alert.annotations || {}),
+    ].join(' ').toLowerCase();
+    if (!haystack.includes(q)) return false;
+  }
+
+  return true;
+}
+
+export const availableSources = derived(alerts, ($alerts) => {
+  return [...new Set($alerts.map(a => a.source))].sort();
+});
