@@ -4,7 +4,11 @@ import {config} from '../models';
 import {model} from '../models';
 import {provider} from '../models';
 
+export function ExecuteAction(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function GetActions():Promise<Array<config.ActionConfig>>;
+
+export function GetActionsForAlert(arg1:string,arg2:string):Promise<Array<config.ActionConfig>>;
 
 export function GetAlerts():Promise<Array<model.Alert>>;
 
@@ -19,3 +23,5 @@ export function SetProviders(arg1:Record<string, provider.Provider>):Promise<voi
 export function SilenceAlert(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function Unsilence(arg1:string,arg2:string):Promise<void>;
+
+export function UpdateConfig(arg1:config.Config):Promise<void>;

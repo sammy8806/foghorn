@@ -41,6 +41,12 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(_ context.Context) {}
 
+// UpdateConfig replaces the active config (called on hot-reload).
+func (a *App) UpdateConfig(cfg *config.Config) {
+	a.cfg = cfg
+	a.actionEng = action.New(cfg.Actions)
+}
+
 // --- Wails-bound methods (called from Svelte frontend) ---
 
 // GetAlerts returns all current alerts.

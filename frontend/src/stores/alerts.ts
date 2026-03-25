@@ -75,6 +75,10 @@ export function initEventListeners(): void {
   EventsOn('alerts:updated', () => {
     refreshAlerts();
   });
+  EventsOn('config:reloaded', () => {
+    loadDisplayConfig();
+    refreshAlerts();
+  });
 }
 
 // Derived: alerts grouped by the display config's group_by labels

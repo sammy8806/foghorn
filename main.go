@@ -40,9 +40,6 @@ func main() {
 
 	windowVisible := false
 
-	// trayMgr is created here but Run() is called from a goroutine in OnStartup.
-	// On macOS, systray needs the main thread — a proper solution requires CGO
-	// dispatch_async. For initial builds, this goroutine approach is used.
 	trayMgr := tray.NewManager(
 		func() {
 			if app.ctx == nil {
@@ -79,12 +76,12 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 
-			// Start background services
 			bgCtx, cancel := context.WithCancel(context.Background())
 			app.cancel = cancel
 
 			notifier := notify.New(cfg.Notifications)
-			diffCh := poll.New(store, cfg.Sources, nil).Start(bgCtx)
+			pollEng := poll.New(store, cfg.Sources, nil)
+			diffCh := pollEng.Start(bgCtx)
 
 			go func() {
 				for {
@@ -100,9 +97,16 @@ func main() {
 				}
 			}()
 
-			// Launch systray in a goroutine. Note: on macOS a proper
-			// implementation requires calling this on the main thread via
-			// CGO dispatch_async. This is a known limitation to address.
+			// Config hot-reload: watch for changes and notify frontend
+			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config) {
+				app.UpdateConfig(newCfg)
+				wailsruntime.EventsEmit(ctx, "config:reloaded")
+			}); err != nil {
+				log.Printf("config: watcher not started: %v", err)
+			} else {
+				_ = stopWatch // cleaned up when process exits
+			}
+
 			go trayMgr.Run(nil)
 		},
 		OnShutdown: app.shutdown,
