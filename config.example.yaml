@@ -19,11 +19,30 @@ display:
   subtitle_annotations:
     - description
     - summary
+  # group_by and sort_by field reference syntax:
+  #   field:<name>       built-in alert field
+  #   label:<name>       alert label value
+  #   annotation:<name>  alert annotation value
+  #
+  # Supported built-in field:* values:
+  #   field:severity   critical < warning < info < unknown
+  #   field:startsAt   alert start time
+  #   field:updatedAt  last update time
+  #   field:source     source name
+  #   field:name       alert name
+  #   field:state      firing < silenced < inhibited < resolved
+  #
+  # Bare strings still work for labels in group_by, for example:
+  #   - cluster
+  # is equivalent to:
+  #   - label:cluster
   group_by:
     - field:source
     - label:cluster
   sort_by:
     - field: field:severity
+      order: asc
+    - field: annotation:description
       order: asc
     - field: field:startsAt
       order: desc
