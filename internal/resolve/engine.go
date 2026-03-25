@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"sync"
@@ -16,18 +17,26 @@ import (
 
 const defaultTimeout = 2 * time.Second
 
+var timeNow = time.Now
+
 type Engine struct {
 	resolvers []resolver
 	cache     sync.Map
 }
 
 type resolver struct {
-	name    string
-	field   string
-	command string
-	args    []string
-	env     map[string]string
-	timeout time.Duration
+	name     string
+	field    string
+	command  string
+	args     []string
+	env      map[string]string
+	timeout  time.Duration
+	cacheTTL time.Duration
+}
+
+type cacheEntry struct {
+	value     string
+	expiresAt time.Time
 }
 
 type templateData struct {
@@ -62,12 +71,13 @@ func New(cfgs []config.ResolverConfig) *Engine {
 		}
 
 		engine.resolvers = append(engine.resolvers, resolver{
-			name:    name,
-			field:   field,
-			command: command,
-			args:    append([]string(nil), cfg.Args...),
-			env:     cloneStringMap(cfg.Env),
-			timeout: timeout,
+			name:     name,
+			field:    field,
+			command:  command,
+			args:     append([]string(nil), cfg.Args...),
+			env:      cloneStringMap(cfg.Env),
+			timeout:  timeout,
+			cacheTTL: cfg.CacheTTL,
 		})
 	}
 	return engine
@@ -161,7 +171,11 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 
 	cacheKey := item.name + "\x00" + command + "\x00" + strings.Join(args, "\x00") + "\x00" + strings.Join(env, "\x00")
 	if cached, ok := e.cache.Load(cacheKey); ok {
-		return cached.(string), nil
+		entry := cached.(cacheEntry)
+		if entry.expiresAt.IsZero() || timeNow().Before(entry.expiresAt) {
+			return entry.value, nil
+		}
+		e.cache.Delete(cacheKey)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), item.timeout)
@@ -171,9 +185,11 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 	if len(env) > 0 {
 		cmd.Env = append(cmd.Environ(), env...)
 	}
+	log.Printf("resolver: executing name=%q field=%q value=%q command=%q args=%q", item.name, item.field, raw, command, args)
 
 	output, err := cmd.Output()
 	if err != nil {
+		log.Printf("resolver: execution failed name=%q field=%q value=%q err=%v", item.name, item.field, raw, err)
 		return "", err
 	}
 
@@ -181,7 +197,12 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 	if idx := strings.IndexByte(value, '\n'); idx >= 0 {
 		value = strings.TrimSpace(value[:idx])
 	}
-	e.cache.Store(cacheKey, value)
+	log.Printf("resolver: execution succeeded name=%q field=%q value=%q resolved=%q", item.name, item.field, raw, value)
+	entry := cacheEntry{value: value}
+	if item.cacheTTL > 0 {
+		entry.expiresAt = timeNow().Add(item.cacheTTL)
+	}
+	e.cache.Store(cacheKey, entry)
 	return value, nil
 }
 

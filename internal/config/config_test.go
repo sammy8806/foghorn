@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -41,6 +42,7 @@ resolvers:
     command: ./resolve-cluster
     args: ["{{.Value}}"]
     timeout: 500ms
+    cache_ttl: 24h
 
 ui:
   theme: system
@@ -77,6 +79,9 @@ ui:
 	}
 	if cfg.Resolvers[0].Field != "label:cluster" {
 		t.Fatalf("expected resolver field label:cluster, got %q", cfg.Resolvers[0].Field)
+	}
+	if cfg.Resolvers[0].CacheTTL != 24*time.Hour {
+		t.Fatalf("expected resolver cache_ttl 24h, got %v", cfg.Resolvers[0].CacheTTL)
 	}
 }
 

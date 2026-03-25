@@ -98,6 +98,7 @@ export namespace config {
 	    Args: string[];
 	    Env: Record<string, string>;
 	    Timeout: number;
+	    CacheTTL: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ResolverConfig(source);
@@ -111,6 +112,7 @@ export namespace config {
 	        this.Args = source["Args"];
 	        this.Env = source["Env"];
 	        this.Timeout = source["Timeout"];
+	        this.CacheTTL = source["CacheTTL"];
 	    }
 	}
 	export class NotificationsConfig {

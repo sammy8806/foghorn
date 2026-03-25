@@ -82,6 +82,7 @@ resolvers:
   #   args:
   #     - "{{.Value}}"
   #   timeout: 500ms
+  #   cache_ttl: 24h
 
 ui:
   theme: system

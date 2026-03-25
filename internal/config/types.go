@@ -208,12 +208,13 @@ type ActionDef struct {
 }
 
 type ResolverConfig struct {
-	Name    string            `yaml:"name"`
-	Field   string            `yaml:"field"`
-	Command string            `yaml:"command"`
-	Args    []string          `yaml:"args"`
-	Env     map[string]string `yaml:"env"`
-	Timeout time.Duration     `yaml:"timeout"`
+	Name     string            `yaml:"name"`
+	Field    string            `yaml:"field"`
+	Command  string            `yaml:"command"`
+	Args     []string          `yaml:"args"`
+	Env      map[string]string `yaml:"env"`
+	Timeout  time.Duration     `yaml:"timeout"`
+	CacheTTL time.Duration     `yaml:"cache_ttl"`
 }
 
 type UIConfig struct {
