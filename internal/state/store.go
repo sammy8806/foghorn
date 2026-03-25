@@ -1,6 +1,7 @@
 package state
 
 import (
+	"sort"
 	"sync"
 
 	"foghorn/internal/model"
@@ -67,6 +68,13 @@ func (s *Store) All() []model.Alert {
 			all = append(all, a)
 		}
 	}
+	// Sort for deterministic order: by source, then by alert key.
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].Source != all[j].Source {
+			return all[i].Source < all[j].Source
+		}
+		return all[i].Key() < all[j].Key()
+	})
 	return all
 }
 

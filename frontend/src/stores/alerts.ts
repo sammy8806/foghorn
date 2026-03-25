@@ -138,7 +138,12 @@ export const groupedAlerts = derived(
       groups[key].sort(sortByConfig($cfg));
     }
 
-    return groups;
+    // Return groups in sorted key order for stable rendering
+    const sorted: Record<string, Alert[]> = {};
+    for (const key of Object.keys(groups).sort()) {
+      sorted[key] = groups[key];
+    }
+    return sorted;
   }
 );
 
