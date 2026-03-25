@@ -7,10 +7,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"foghorn/internal/config"
 	"foghorn/internal/notify"
 	"foghorn/internal/poll"
+	"foghorn/internal/provider"
 	"foghorn/internal/state"
 	"foghorn/internal/tray"
 
@@ -39,6 +41,8 @@ func main() {
 	app := NewApp(cfg, store)
 
 	windowVisible := false
+	var runtimeMu sync.Mutex
+	var stopRuntime context.CancelFunc
 
 	trayMgr := tray.NewManager(
 		func() {
@@ -76,30 +80,46 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 
-			bgCtx, cancel := context.WithCancel(context.Background())
-			app.cancel = cancel
+			restartRuntime := func(nextCfg *config.Config) {
+				runtimeMu.Lock()
+				defer runtimeMu.Unlock()
 
-			notifier := notify.New(cfg.Notifications)
-			pollEng := poll.New(store, cfg.Sources, nil)
-			diffCh := pollEng.Start(bgCtx)
-
-			go func() {
-				for {
-					select {
-					case <-bgCtx.Done():
-						return
-					case event := <-diffCh:
-						counts := store.SeverityCounts()
-						trayMgr.UpdateState(counts)
-						notifier.OnDiff(event.Diff)
-						wailsruntime.EventsEmit(ctx, "alerts:updated")
-					}
+				if stopRuntime != nil {
+					stopRuntime()
 				}
-			}()
+
+				app.UpdateConfig(nextCfg)
+				app.SetProviders(buildProviders(nextCfg.Sources))
+				store.SyncSources(sourceNames(nextCfg.Sources))
+
+				bgCtx, cancel := context.WithCancel(context.Background())
+				stopRuntime = cancel
+				app.cancel = cancel
+
+				notifier := notify.New(nextCfg.Notifications)
+				pollEng := poll.New(store, nextCfg.Sources, nil)
+				diffCh := pollEng.Start(bgCtx)
+
+				go func(localCtx context.Context, localDiffCh <-chan poll.DiffEvent, localNotifier *notify.Engine) {
+					for {
+						select {
+						case <-localCtx.Done():
+							return
+						case event := <-localDiffCh:
+							counts := store.SeverityCounts()
+							trayMgr.UpdateState(counts)
+							localNotifier.OnDiff(event.Diff)
+							wailsruntime.EventsEmit(ctx, "alerts:updated")
+						}
+					}
+				}(bgCtx, diffCh, notifier)
+			}
+
+			restartRuntime(cfg)
 
 			// Config hot-reload: watch for changes and notify frontend
 			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config) {
-				app.UpdateConfig(newCfg)
+				restartRuntime(newCfg)
 				wailsruntime.EventsEmit(ctx, "config:reloaded")
 			}); err != nil {
 				log.Printf("config: watcher not started: %v", err)
@@ -109,7 +129,14 @@ func main() {
 
 			go trayMgr.Run(nil)
 		},
-		OnShutdown: app.shutdown,
+		OnShutdown: func(ctx context.Context) {
+			runtimeMu.Lock()
+			if stopRuntime != nil {
+				stopRuntime()
+			}
+			runtimeMu.Unlock()
+			app.shutdown(ctx)
+		},
 		Bind: []interface{}{
 			app,
 		},
@@ -124,4 +151,27 @@ func main() {
 func configPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "foghorn", "config.yaml")
+}
+
+func buildProviders(sources []config.SourceConfig) map[string]provider.Provider {
+	providers := make(map[string]provider.Provider, len(sources))
+	for _, src := range sources {
+		switch src.Type {
+		case "alertmanager":
+			providers[src.Name] = provider.NewAlertmanager(src)
+		case "prometheus":
+			providers[src.Name] = provider.NewPrometheus(src)
+		default:
+			log.Printf("unknown provider type %q for source %s", src.Type, src.Name)
+		}
+	}
+	return providers
+}
+
+func sourceNames(sources []config.SourceConfig) []string {
+	names := make([]string, 0, len(sources))
+	for _, src := range sources {
+		names = append(names, src.Name)
+	}
+	return names
 }

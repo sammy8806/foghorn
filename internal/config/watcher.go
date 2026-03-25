@@ -2,6 +2,8 @@ package config
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -18,7 +20,13 @@ func Watch(path string, onChange OnChangeFunc) (stop func(), err error) {
 		return nil, err
 	}
 
-	if err := watcher.Add(path); err != nil {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		watcher.Close()
+		return nil, err
+	}
+	if err := watcher.Add(dir); err != nil {
 		watcher.Close()
 		return nil, err
 	}
@@ -36,7 +44,10 @@ func Watch(path string, onChange OnChangeFunc) (stop func(), err error) {
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+				if filepath.Base(event.Name) != base {
+					continue
+				}
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
 					debounce = time.After(300 * time.Millisecond)
 				}
 			case <-debounce:

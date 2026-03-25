@@ -139,3 +139,26 @@ func (s *Store) SourcesHealth() []model.SourceHealth {
 	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
 	return out
 }
+
+// SyncSources removes state for sources that are no longer configured.
+func (s *Store) SyncSources(sources []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	keep := make(map[string]struct{}, len(sources))
+	for _, source := range sources {
+		keep[source] = struct{}{}
+	}
+
+	for source := range s.bySource {
+		if _, ok := keep[source]; !ok {
+			delete(s.bySource, source)
+		}
+	}
+
+	for source := range s.health {
+		if _, ok := keep[source]; !ok {
+			delete(s.health, source)
+		}
+	}
+}
