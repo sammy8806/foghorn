@@ -35,6 +35,7 @@
 
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
+  $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
 
   let refreshing = false;
@@ -136,6 +137,11 @@
         <span class="status-error">Error: {$error}</span>
       {:else}
         <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+        {#if newVisibleCount > 0}
+          <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
+            {newVisibleCount} new
+          </span>
+        {/if}
         <div class="sort-toggle-wrap">
           <button
             class="sort-toggle"
@@ -308,6 +314,17 @@
     font-weight: 600;
     color: #f59e0b;
     text-transform: uppercase;
+  }
+  .status-new {
+    font-size: 10px;
+    font-weight: 700;
+    color: #111827;
+    background: #facc15;
+    border-radius: 999px;
+    padding: 2px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
   }
 
   .sort-toggle-wrap {

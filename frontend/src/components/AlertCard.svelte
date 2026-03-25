@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
-  import { verbose } from '../stores/alerts';
+  import { acknowledgeAlert, verbose } from '../stores/alerts';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
@@ -33,11 +33,37 @@
 
   let expanded = false;
   let silenceOpen = false;
+  let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $: alertKey = alert.source + ':' + alert.id;
+
+  function scheduleAcknowledge() {
+    if (!isNew || acknowledgeTimer) return;
+    acknowledgeTimer = setTimeout(() => {
+      acknowledgeAlert(alertKey);
+      acknowledgeTimer = null;
+    }, 600);
+  }
+
+  function cancelAcknowledge() {
+    if (!acknowledgeTimer) return;
+    clearTimeout(acknowledgeTimer);
+    acknowledgeTimer = null;
+  }
 </script>
 
-<div class="alert-card {severityClass(alert.severity)}" class:silenced={alert.silencedBy?.length > 0} class:alert-new={isNew}>
+<div
+  class="alert-card {severityClass(alert.severity)}"
+  class:silenced={alert.silencedBy?.length > 0}
+  class:alert-new={isNew}
+  on:pointerenter={scheduleAcknowledge}
+  on:pointerleave={cancelAcknowledge}
+>
   <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => e.key === 'Enter' && (expanded = !expanded)}>
     <span class="severity-dot" style="background: {severityColor(alert.severity)}" />
+    {#if isNew}
+      <span class="badge badge-new" title="New alert. Hover for a moment to mark as seen.">NEW</span>
+    {/if}
     <span class="alert-name">{alert.name}</span>
     {#if subtitle}
       <span class="alert-subtitle" title={subtitle}>{subtitle}</span>
@@ -111,21 +137,33 @@
 
 <style>
   .alert-card {
+    position: relative;
     border-left: 3px solid #6b7280;
     background: var(--card-bg, #1e293b);
     border-radius: 3px;
     margin-bottom: 2px;
     overflow: hidden;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   }
   .severity-critical { border-left-color: #ef4444; }
   .severity-warning { border-left-color: #f59e0b; }
   .severity-info { border-left-color: #3b82f6; }
   .silenced { opacity: 0.6; }
-  .alert-new { animation: highlight-fade 3s ease-out; }
-  @keyframes highlight-fade {
-    0% { background: rgba(59, 130, 246, 0.25); }
-    100% { background: var(--card-bg, #1e293b); }
+  .alert-new {
+    border-left-width: 8px;
+    box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.35), 0 0 0 1px rgba(250, 204, 21, 0.2);
+    background:
+      linear-gradient(90deg, rgba(250, 204, 21, 0.18), rgba(250, 204, 21, 0.05) 28%, rgba(15, 23, 42, 0) 60%),
+      var(--card-bg, #1e293b);
+    animation: alert-new-pulse 1.4s ease-in-out infinite;
+  }
+  .alert-new:hover {
+    transform: translateX(1px);
+    box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.55), 0 0 0 1px rgba(250, 204, 21, 0.4), 0 0 18px rgba(250, 204, 21, 0.18);
+  }
+  @keyframes alert-new-pulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.35), 0 0 0 1px rgba(250, 204, 21, 0.2); }
+    50% { box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.65), 0 0 0 1px rgba(250, 204, 21, 0.45), 0 0 20px rgba(250, 204, 21, 0.2); }
   }
 
   .alert-header {
@@ -185,6 +223,12 @@
     border-radius: 10px;
     font-weight: 600;
     text-transform: uppercase;
+  }
+  .badge-new {
+    background: #facc15;
+    color: #1f2937;
+    letter-spacing: 0.08em;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.28);
   }
   .badge-silenced { background: #334155; color: #94a3b8; }
   .badge-inhibited { background: #292524; color: #a8a29e; }

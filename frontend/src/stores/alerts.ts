@@ -150,7 +150,7 @@ export const verbose = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
 export const sourcesHealth = writable<SourceHealth[]>([]);
-// Set of "source:id" keys for alerts that appeared in the latest refresh
+// Set of "source:id" keys that have appeared since the user last acknowledged them.
 export const newAlertKeys = writable<Set<string>>(new Set());
 let hasLoadedOnce = false;
 
@@ -170,17 +170,23 @@ export async function refreshAlerts(): Promise<void> {
     ]);
     const incoming = alertList || [];
 
-    // Detect newly appeared alerts (skip first load so initial alerts aren't all highlighted)
+    // Track newly appeared alerts until the user acknowledges them.
     const prev = get(alerts);
-    if (prev.length > 0 || hasLoadedOnce) {
-      const prevKeys = new Set(prev.map(a => a.source + ':' + a.id));
-      const freshKeys = new Set<string>();
-      for (const a of incoming) {
-        const key = a.source + ':' + a.id;
-        if (!prevKeys.has(key)) freshKeys.add(key);
-      }
-      newAlertKeys.set(freshKeys);
+    const incomingKeys = new Set(incoming.map(a => a.source + ':' + a.id));
+    const prevKeys = new Set(prev.map(a => a.source + ':' + a.id));
+    const unseenKeys = new Set<string>();
+
+    for (const key of get(newAlertKeys)) {
+      if (incomingKeys.has(key)) unseenKeys.add(key);
     }
+
+    if (prev.length > 0 || hasLoadedOnce) {
+      for (const key of incomingKeys) {
+        if (!prevKeys.has(key)) unseenKeys.add(key);
+      }
+    }
+
+    newAlertKeys.set(unseenKeys);
     hasLoadedOnce = true;
 
     alerts.set(incoming);
@@ -213,6 +219,15 @@ export async function loadDisplayConfig(): Promise<void> {
   } catch (_) {
     // use defaults
   }
+}
+
+export function acknowledgeAlert(alertKey: string): void {
+  newAlertKeys.update(keys => {
+    if (!keys.has(alertKey)) return keys;
+    const next = new Set(keys);
+    next.delete(alertKey);
+    return next;
+  });
 }
 
 // Detect whether we're running inside the Wails webview or a plain browser.
