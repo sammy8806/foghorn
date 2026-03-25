@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
-  import { acknowledgeAlert, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, resolveAlertAnnotation, resolveAlertLabel, verbose } from '../stores/alerts';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
@@ -18,14 +18,15 @@
   // Auto-pick a subtitle from configured annotations, falling back to distinguishing labels
   const skipLabels = new Set(['alertname', 'severity', 'cluster', 'namespace', 'prometheus', 'prometheus_replica']);
   $: subtitle = (() => {
-    const ann = alert.annotations || {};
     const sources = config.subtitle_annotations || ['summary', 'description'];
     for (const key of sources) {
-      if (ann[key]) return ann[key];
+      const value = resolveAlertAnnotation(alert, key);
+      if (value) return value;
     }
     // Fall back to distinguishing labels
     const parts: string[] = [];
-    for (const [k, v] of Object.entries(alert.labels || {})) {
+    for (const [k] of Object.entries(alert.labels || {})) {
+      const v = resolveAlertLabel(alert, k);
       if (!skipLabels.has(k) && v) parts.push(`${k}=${v}`);
     }
     return parts.join(', ');
@@ -82,12 +83,13 @@
   {#if expanded}
     <div class="alert-body">
       {#each visibleAnnotations as key}
-        {#if alert.annotations?.[key]}
+        {@const annotationValue = resolveAlertAnnotation(alert, key)}
+        {#if annotationValue}
           <p class="annotation"><strong>{key}:</strong>
-            {#if alert.annotations[key].match(/^https?:\/\//)}
-              <a href={alert.annotations[key]} target="_blank" class="annotation-link">{alert.annotations[key]}</a>
+            {#if annotationValue.match(/^https?:\/\//)}
+              <a href={annotationValue} target="_blank" class="annotation-link">{annotationValue}</a>
             {:else}
-              {alert.annotations[key]}
+              {annotationValue}
             {/if}
           </p>
         {/if}
@@ -95,8 +97,9 @@
 
       <div class="label-chips">
         {#each visibleLabels as label}
-          {#if alert.labels?.[label]}
-            <span class="chip">{label}={alert.labels[label]}</span>
+          {@const labelValue = resolveAlertLabel(alert, label)}
+          {#if labelValue}
+            <span class="chip">{label}={labelValue}</span>
           {/if}
         {/each}
       </div>

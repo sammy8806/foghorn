@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { alerts } from './alerts';
+import { alerts, resolveAlertField } from './alerts';
 import type { Alert } from './alerts';
 
 export interface FilterState {
@@ -30,8 +30,8 @@ function matchesFilter(alert: Alert, f: FilterState): boolean {
     const haystack = [
       alert.name,
       alert.source,
-      ...Object.values(alert.labels || {}),
-      ...Object.values(alert.annotations || {}),
+      ...Object.keys(alert.labels || {}).map(key => resolveAlertField(alert, `label:${key}`) ?? ''),
+      ...Object.keys(alert.annotations || {}).map(key => resolveAlertField(alert, `annotation:${key}`) ?? ''),
     ].join(' ').toLowerCase();
     if (!haystack.includes(q)) return false;
   }

@@ -4,20 +4,23 @@ import "time"
 
 // Alert is the unified alert type all providers normalize to.
 type Alert struct {
-	ID           string            `json:"id"`
-	Source       string            `json:"source"`
-	SourceType   string            `json:"sourceType"`
-	Name         string            `json:"name"`
-	Severity     string            `json:"severity"`
-	State        string            `json:"state"`
-	Labels       map[string]string `json:"labels"`
-	Annotations  map[string]string `json:"annotations"`
-	StartsAt     time.Time         `json:"startsAt"`
-	UpdatedAt    time.Time         `json:"updatedAt"`
-	GeneratorURL string            `json:"generatorURL"`
-	SilencedBy   []string          `json:"silencedBy"`
-	InhibitedBy  []string          `json:"inhibitedBy"`
-	Receivers    []string          `json:"receivers"`
+	ID                  string            `json:"id"`
+	Source              string            `json:"source"`
+	SourceType          string            `json:"sourceType"`
+	Name                string            `json:"name"`
+	Severity            string            `json:"severity"`
+	State               string            `json:"state"`
+	Labels              map[string]string `json:"labels"`
+	Annotations         map[string]string `json:"annotations"`
+	ResolvedLabels      map[string]string `json:"resolvedLabels,omitempty"`
+	ResolvedAnnotations map[string]string `json:"resolvedAnnotations,omitempty"`
+	ResolvedFields      map[string]string `json:"resolvedFields,omitempty"`
+	StartsAt            time.Time         `json:"startsAt"`
+	UpdatedAt           time.Time         `json:"updatedAt"`
+	GeneratorURL        string            `json:"generatorURL"`
+	SilencedBy          []string          `json:"silencedBy"`
+	InhibitedBy         []string          `json:"inhibitedBy"`
+	Receivers           []string          `json:"receivers"`
 }
 
 // Key returns the deduplication key for this alert.

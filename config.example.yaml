@@ -58,6 +58,31 @@ notifications:
 
 actions: []
 
+resolvers:
+  # Optional local-only value resolvers. These run after alerts are fetched and
+  # only affect display/grouping/sorting/filtering in the UI. Raw labels remain
+  # untouched for silences, actions, and provider requests.
+  #
+  # Each resolver targets one field reference and executes a local command.
+  # The command should print the resolved value to stdout.
+  #
+  # Available templates in command/args/env:
+  #   {{.Value}}               raw value for the configured field
+  #   {{.Ref}}                 full field ref, e.g. label:cluster
+  #   {{.Kind}}                field | label | annotation
+  #   {{.Name}}                field/label/annotation name
+  #   {{.Alert.Source}}        alert source
+  #   {{.Labels.cluster}}      alert label access
+  #   {{.Annotations.summary}} alert annotation access
+  #
+  # Example: map internal cluster IDs to customer-facing names using a local script.
+  # - name: cluster-name
+  #   field: label:cluster
+  #   command: ./scripts/resolve-cluster
+  #   args:
+  #     - "{{.Value}}"
+  #   timeout: 500ms
+
 ui:
   theme: system
   popup_width: 800

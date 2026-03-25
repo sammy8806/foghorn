@@ -12,6 +12,9 @@ export interface Alert {
   state: string;
   labels: Record<string, string>;
   annotations: Record<string, string>;
+  resolvedLabels?: Record<string, string>;
+  resolvedAnnotations?: Record<string, string>;
+  resolvedFields?: Record<string, string>;
   startsAt: string;
   updatedAt: string;
   generatorURL: string;
@@ -307,6 +310,8 @@ const STATE_ORDER: Record<string, number> = {
 export function resolveAlertField(alert: Alert, ref: string): string | undefined {
   if (ref.startsWith('field:')) {
     const name = ref.slice(6);
+    const resolved = alert.resolvedFields?.[name];
+    if (resolved) return resolved;
     switch (name) {
       case 'severity': return alert.severity;
       case 'startsAt': return alert.startsAt;
@@ -317,10 +322,24 @@ export function resolveAlertField(alert: Alert, ref: string): string | undefined
       default: return undefined;
     }
   }
-  if (ref.startsWith('label:')) return alert.labels[ref.slice(6)];
-  if (ref.startsWith('annotation:')) return alert.annotations[ref.slice(11)];
+  if (ref.startsWith('label:')) {
+    const name = ref.slice(6);
+    return alert.resolvedLabels?.[name] ?? alert.labels[name];
+  }
+  if (ref.startsWith('annotation:')) {
+    const name = ref.slice(11);
+    return alert.resolvedAnnotations?.[name] ?? alert.annotations[name];
+  }
   // bare string → label (backwards compat)
-  return alert.labels[ref];
+  return alert.resolvedLabels?.[ref] ?? alert.labels[ref];
+}
+
+export function resolveAlertLabel(alert: Alert, name: string): string | undefined {
+  return alert.resolvedLabels?.[name] ?? alert.labels?.[name];
+}
+
+export function resolveAlertAnnotation(alert: Alert, name: string): string | undefined {
+  return alert.resolvedAnnotations?.[name] ?? alert.annotations?.[name];
 }
 
 function compareField(a: Alert, b: Alert, criterion: SortCriterion): number {

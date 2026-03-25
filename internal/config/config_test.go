@@ -35,6 +35,13 @@ notifications:
 
 actions: []
 
+resolvers:
+  - name: cluster-name
+    field: label:cluster
+    command: ./resolve-cluster
+    args: ["{{.Value}}"]
+    timeout: 500ms
+
 ui:
   theme: system
   popup_width: 800
@@ -64,6 +71,12 @@ ui:
 	}
 	if cfg.UI.PopupWidth != 800 {
 		t.Errorf("expected popup_width 800, got %d", cfg.UI.PopupWidth)
+	}
+	if len(cfg.Resolvers) != 1 {
+		t.Fatalf("expected 1 resolver, got %d", len(cfg.Resolvers))
+	}
+	if cfg.Resolvers[0].Field != "label:cluster" {
+		t.Fatalf("expected resolver field label:cluster, got %q", cfg.Resolvers[0].Field)
 	}
 }
 

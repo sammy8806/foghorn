@@ -11,6 +11,7 @@ type Config struct {
 	Sounds        SoundsConfig        `yaml:"sounds"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 	Actions       []ActionConfig      `yaml:"actions"`
+	Resolvers     []ResolverConfig    `yaml:"resolvers"`
 	UI            UIConfig            `yaml:"ui"`
 }
 
@@ -204,6 +205,15 @@ type ActionDef struct {
 	Template string `yaml:"template"`
 	Command  string `yaml:"command"`
 	Terminal bool   `yaml:"terminal"`
+}
+
+type ResolverConfig struct {
+	Name    string            `yaml:"name"`
+	Field   string            `yaml:"field"`
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args"`
+	Env     map[string]string `yaml:"env"`
+	Timeout time.Duration     `yaml:"timeout"`
 }
 
 type UIConfig struct {

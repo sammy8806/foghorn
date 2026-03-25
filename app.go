@@ -9,6 +9,7 @@ import (
 	"foghorn/internal/config"
 	"foghorn/internal/model"
 	"foghorn/internal/provider"
+	"foghorn/internal/resolve"
 	"foghorn/internal/silence"
 	"foghorn/internal/state"
 )
@@ -22,15 +23,17 @@ type App struct {
 	store      *state.Store
 	silenceMgr *silence.Manager
 	actionEng  *action.Engine
+	resolveEng *resolve.Engine
 }
 
 var currentApp *App
 
 func NewApp(cfg *config.Config, store *state.Store) *App {
 	app := &App{
-		cfg:       cfg,
-		store:     store,
-		actionEng: action.New(cfg.Actions),
+		cfg:        cfg,
+		store:      store,
+		actionEng:  action.New(cfg.Actions),
+		resolveEng: resolve.New(cfg.Resolvers),
 	}
 	currentApp = app
 	return app
@@ -61,13 +64,18 @@ func (a *App) UpdateConfig(cfg *config.Config) {
 	defer a.mu.Unlock()
 	a.cfg = cfg
 	a.actionEng = action.New(cfg.Actions)
+	a.resolveEng = resolve.New(cfg.Resolvers)
 }
 
 // --- Wails-bound methods (called from Svelte frontend) ---
 
 // GetAlerts returns all current alerts.
 func (a *App) GetAlerts() []model.Alert {
-	return a.store.All()
+	a.mu.RLock()
+	resolveEng := a.resolveEng
+	a.mu.RUnlock()
+
+	return resolveEng.ResolveAlerts(a.store.All())
 }
 
 // GetSeverityCounts returns current severity counts.

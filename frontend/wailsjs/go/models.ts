@@ -91,6 +91,28 @@ export namespace config {
 	        this.show_silenced = source["show_silenced"];
 	    }
 	}
+	export class ResolverConfig {
+	    Name: string;
+	    Field: string;
+	    Command: string;
+	    Args: string[];
+	    Env: Record<string, string>;
+	    Timeout: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResolverConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Field = source["Field"];
+	        this.Command = source["Command"];
+	        this.Args = source["Args"];
+	        this.Env = source["Env"];
+	        this.Timeout = source["Timeout"];
+	    }
+	}
 	export class NotificationsConfig {
 	    Enabled: boolean;
 	    OnNew: boolean;
@@ -261,6 +283,7 @@ export namespace config {
 	    Sounds: SoundsConfig;
 	    Notifications: NotificationsConfig;
 	    Actions: ActionConfig[];
+	    Resolvers: ResolverConfig[];
 	    UI: UIConfig;
 	
 	    static createFrom(source: any = {}) {
@@ -274,6 +297,7 @@ export namespace config {
 	        this.Sounds = this.convertValues(source["Sounds"], SoundsConfig);
 	        this.Notifications = this.convertValues(source["Notifications"], NotificationsConfig);
 	        this.Actions = this.convertValues(source["Actions"], ActionConfig);
+	        this.Resolvers = this.convertValues(source["Resolvers"], ResolverConfig);
 	        this.UI = this.convertValues(source["UI"], UIConfig);
 	    }
 	
@@ -354,6 +378,7 @@ export namespace config {
 	
 	
 	
+	
 
 }
 
@@ -368,6 +393,9 @@ export namespace model {
 	    state: string;
 	    labels: Record<string, string>;
 	    annotations: Record<string, string>;
+	    resolvedLabels?: Record<string, string>;
+	    resolvedAnnotations?: Record<string, string>;
+	    resolvedFields?: Record<string, string>;
 	    // Go type: time
 	    startsAt: any;
 	    // Go type: time
@@ -391,6 +419,9 @@ export namespace model {
 	        this.state = source["state"];
 	        this.labels = source["labels"];
 	        this.annotations = source["annotations"];
+	        this.resolvedLabels = source["resolvedLabels"];
+	        this.resolvedAnnotations = source["resolvedAnnotations"];
+	        this.resolvedFields = source["resolvedFields"];
 	        this.startsAt = this.convertValues(source["startsAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	        this.generatorURL = source["generatorURL"];
