@@ -57,9 +57,7 @@ func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, ch chan<
 	case "alertmanager":
 		p = provider.NewAlertmanager(src)
 	case "prometheus":
-		// TODO: implement in Task 11
-		log.Printf("prometheus provider not yet implemented for %s", src.Name)
-		return
+		p = provider.NewPrometheus(src)
 	default:
 		if e.factory == nil {
 			log.Printf("unknown provider type %q for source %s", src.Type, src.Name)
