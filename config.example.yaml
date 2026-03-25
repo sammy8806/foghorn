@@ -1,0 +1,39 @@
+sources:
+  - name: local-alertmanager
+    type: alertmanager
+    url: http://localhost:9093
+    auth:
+      type: basic
+      username: ${FOGHORN_AM_USER}
+      password: ${FOGHORN_AM_PASS}
+    poll_interval: 30s
+
+display:
+  visible_labels:
+    - alertname
+    - severity
+    - cluster
+    - namespace
+  visible_annotations:
+    - summary
+  group_by:
+    - cluster
+  sort_by: severity
+
+sounds:
+  enabled: false
+
+notifications:
+  enabled: true
+  on_new: true
+  on_resolved: false
+  batch_threshold: 5
+
+actions: []
+
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  show_resolved: false
+  show_silenced: true
