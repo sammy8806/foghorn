@@ -25,11 +25,13 @@
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import { GetUIConfig } from '../../wailsjs/go/main/App';
-  import { EventsOn, ScreenGetAll, WindowSetPosition, WindowSetSize } from '../../wailsjs/runtime/runtime';
+  import { EventsOn, ScreenGetAll, WindowGetSize, WindowSetPosition, WindowSetSize } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
 
-  const popupMargin = 16;
+  const popupHorizontalMargin = 28;
+  const popupTopMargin = 0;
+  const popupBottomMargin = 16;
   const minPopupHeight = 220;
   const popupHeightBuffer = 25;
 
@@ -134,13 +136,26 @@
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
     if (!screen) return;
 
-    const width = clamp(uiConfig.popup_width || 800, 360, Math.max(360, screen.width - (popupMargin * 2)));
-    const maxHeight = Math.max(minPopupHeight, screen.height - (popupMargin * 2));
+    const width = clamp(
+      uiConfig.popup_width || 800,
+      360,
+      Math.max(360, screen.width - (popupHorizontalMargin * 2)),
+    );
+    const maxHeight = Math.max(minPopupHeight, screen.height - popupTopMargin - popupBottomMargin);
     const desiredHeight = measureDesiredPopupHeight();
     const height = clamp(desiredHeight, minPopupHeight, maxHeight);
 
     WindowSetSize(width, height);
-    WindowSetPosition(Math.max(popupMargin, screen.width - width - popupMargin), popupMargin);
+
+    // On macOS the native resize can land a tick after the size request.
+    // Position using the actual post-resize width to avoid drifting off-screen.
+    await new Promise<void>(resolve => setTimeout(resolve, 16));
+    const actualSize = await WindowGetSize().catch(() => ({ w: width, h: height }));
+
+    WindowSetPosition(
+      Math.max(0, screen.width - actualSize.w - popupHorizontalMargin),
+      popupTopMargin,
+    );
   }
 
   function measureDesiredPopupHeight(): number {
