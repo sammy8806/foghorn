@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"foghorn/internal/config"
 	"foghorn/internal/notify"
@@ -40,25 +41,27 @@ func main() {
 	store := state.New()
 	app := NewApp(cfg, store)
 
-	windowVisible := false
 	var runtimeMu sync.Mutex
 	var stopRuntime context.CancelFunc
+	var windowVisible atomic.Bool
+	var quitting atomic.Bool
 
 	trayMgr := tray.NewManager(
 		func() {
 			if app.ctx == nil {
 				return
 			}
-			if windowVisible {
+			if windowVisible.Load() {
 				wailsruntime.WindowHide(app.ctx)
-				windowVisible = false
+				windowVisible.Store(false)
 			} else {
 				wailsruntime.WindowShow(app.ctx)
 				wailsruntime.WindowSetAlwaysOnTop(app.ctx, true)
-				windowVisible = true
+				windowVisible.Store(true)
 			}
 		},
 		func() {
+			quitting.Store(true)
 			if app.cancel != nil {
 				app.cancel()
 			}
@@ -72,7 +75,7 @@ func main() {
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       false, // tray is currently stubbed; show window on launch
+		StartHidden:       true,
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -129,12 +132,21 @@ func main() {
 
 			go trayMgr.Run(nil)
 		},
+		OnBeforeClose: func(ctx context.Context) bool {
+			if quitting.Load() {
+				return false
+			}
+			wailsruntime.WindowHide(ctx)
+			windowVisible.Store(false)
+			return true
+		},
 		OnShutdown: func(ctx context.Context) {
 			runtimeMu.Lock()
 			if stopRuntime != nil {
 				stopRuntime()
 			}
 			runtimeMu.Unlock()
+			trayMgr.Close()
 			app.shutdown(ctx)
 		},
 		Bind: []interface{}{
