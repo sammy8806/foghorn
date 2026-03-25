@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { GetAlerts, GetSeverityCounts, GetDisplayConfig } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetSeverityCounts, GetDisplayConfig, GetSourcesHealth } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { severityOrder } from '../utils/severity';
 
@@ -44,9 +44,18 @@ export const displayConfig = writable<DisplayConfig>({
   sort_by: 'severity',
 });
 
+export interface SourceHealth {
+  source: string;
+  ok: boolean;
+  lastPoll: string;
+  lastError?: string;
+  consecFails: number;
+}
+
 export const verbose = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
+export const sourcesHealth = writable<SourceHealth[]>([]);
 
 export async function refreshAlerts(): Promise<void> {
   try {
@@ -57,12 +66,14 @@ export async function refreshAlerts(): Promise<void> {
       error.set('Dev mode: no Wails backend connected');
       return;
     }
-    const [alertList, counts] = await Promise.all([
+    const [alertList, counts, health] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
+      GetSourcesHealth(),
     ]);
     alerts.set(alertList || []);
     severityCounts.set(counts || { critical: 0, warning: 0, info: 0 });
+    sourcesHealth.set(health || []);
     error.set(null);
   } catch (e) {
     error.set(String(e));

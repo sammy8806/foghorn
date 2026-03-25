@@ -382,6 +382,45 @@ export namespace model {
 	        this.info = source["info"];
 	    }
 	}
+	export class SourceHealth {
+	    source: string;
+	    ok: boolean;
+	    // Go type: time
+	    lastPoll: any;
+	    lastError?: string;
+	    consecFails: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SourceHealth(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.ok = source["ok"];
+	        this.lastPoll = this.convertValues(source["lastPoll"], null);
+	        this.lastError = source["lastError"];
+	        this.consecFails = source["consecFails"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

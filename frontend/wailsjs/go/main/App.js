@@ -26,6 +26,10 @@ export function GetSeverityCounts() {
   return window['go']['main']['App']['GetSeverityCounts']();
 }
 
+export function GetSourcesHealth() {
+  return window['go']['main']['App']['GetSourcesHealth']();
+}
+
 export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }

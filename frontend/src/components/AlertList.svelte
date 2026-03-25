@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { groupedAlerts, loading, error, displayConfig, verbose, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
+  import { groupedAlerts, loading, error, displayConfig, verbose, sourcesHealth, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
@@ -14,6 +14,28 @@
 
   $: hasGroups = $displayConfig.group_by?.length > 0;
   $: totalCount = $filteredAlerts.length;
+
+  let refreshing = false;
+  async function handleRefresh() {
+    refreshing = true;
+    await refreshAlerts();
+    refreshing = false;
+  }
+
+  $: allSourcesOK = $sourcesHealth.length > 0 && $sourcesHealth.every(h => h.ok);
+  $: anySourceFailing = $sourcesHealth.some(h => !h.ok);
+  $: healthTitle = $sourcesHealth.map(h =>
+    `${h.source}: ${h.ok ? 'OK' : h.lastError || 'failing'}${h.consecFails > 0 ? ` (${h.consecFails} consecutive failures)` : ''}`
+  ).join('\n');
+  $: latestPoll = $sourcesHealth.reduce((latest, h) => {
+    const t = new Date(h.lastPoll);
+    return t > latest ? t : latest;
+  }, new Date(0));
+
+  function formatTime(d: Date): string {
+    if (d.getTime() === 0) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
 </script>
 
 <div class="alert-list-container">
@@ -47,14 +69,26 @@
 
   <!-- Status bar -->
   <div class="status-bar">
-    {#if $loading}
-      <span class="status-loading">Loading…</span>
-    {:else if $error}
-      <span class="status-error">Error: {$error}</span>
-    {:else}
-      <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
-      {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
-    {/if}
+    <div class="status-left">
+      {#if $loading}
+        <span class="status-loading">Loading…</span>
+      {:else if $error}
+        <span class="status-error">Error: {$error}</span>
+      {:else}
+        <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+        {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
+      {/if}
+    </div>
+    <div class="status-right">
+      {#if $sourcesHealth.length > 0}
+        <span class="refresh-status" class:refresh-ok={allSourcesOK} class:refresh-fail={anySourceFailing}
+          title={healthTitle}>●</span>
+        <span class="refresh-time">{formatTime(latestPoll)}</span>
+      {/if}
+      <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title="Refresh alerts">
+        <span class="refresh-icon" class:spinning={refreshing}>↻</span>
+      </button>
+    </div>
   </div>
 
   <!-- Alert content -->
@@ -121,6 +155,9 @@
   }
 
   .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 4px 10px;
     font-size: 11px;
     color: #475569;
@@ -128,6 +165,8 @@
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
   }
+  .status-left { display: flex; align-items: center; }
+  .status-right { display: flex; align-items: center; gap: 6px; }
 
   .verbose-toggle {
     display: flex;
@@ -150,6 +189,28 @@
     color: #f59e0b;
     text-transform: uppercase;
   }
+
+  .refresh-status { font-size: 9px; }
+  .refresh-ok { color: #22c55e; }
+  .refresh-fail { color: #ef4444; }
+  .refresh-time { color: #475569; font-size: 10px; }
+
+  .refresh-btn {
+    background: none;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1;
+    padding: 1px 5px;
+    cursor: pointer;
+  }
+  .refresh-btn:hover { background: #1e293b; color: #e2e8f0; }
+  .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .refresh-icon { display: inline-block; }
+  .spinning { animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .alerts-scroll {
     flex: 1;

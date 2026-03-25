@@ -94,10 +94,17 @@ func (e *Engine) poll(ctx context.Context, source string, p Provider, ch chan<- 
 	alerts, err := p.Fetch(ctx)
 	if err != nil {
 		log.Printf("error polling %s: %v", source, err)
+		e.store.RecordPollError(source, err)
+		// Emit empty diff so frontend refreshes health status
+		select {
+		case ch <- DiffEvent{Source: source}:
+		default:
+		}
 		return
 	}
 
 	diff := e.store.Update(source, alerts)
+	e.store.RecordPollSuccess(source)
 
 	select {
 	case ch <- DiffEvent{Source: source, Diff: diff}:

@@ -59,6 +59,11 @@ func (a *App) GetSeverityCounts() model.SeverityCounts {
 	return a.store.SeverityCounts()
 }
 
+// GetSourcesHealth returns the poll health for all configured sources.
+func (a *App) GetSourcesHealth() []model.SourceHealth {
+	return a.store.SourcesHealth()
+}
+
 // GetDisplayConfig returns the display configuration.
 func (a *App) GetDisplayConfig() config.DisplayConfig {
 	return a.cfg.Display

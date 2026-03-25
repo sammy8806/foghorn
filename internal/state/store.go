@@ -3,6 +3,7 @@ package state
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"foghorn/internal/model"
 )
@@ -12,11 +13,14 @@ type Store struct {
 	mu sync.RWMutex
 	// alerts keyed by source, then by alert Key()
 	bySource map[string]map[string]model.Alert
+	// health tracks the last poll result per source
+	health map[string]model.SourceHealth
 }
 
 func New() *Store {
 	return &Store{
 		bySource: make(map[string]map[string]model.Alert),
+		health:   make(map[string]model.SourceHealth),
 	}
 }
 
@@ -97,4 +101,41 @@ func (s *Store) SeverityCounts() model.SeverityCounts {
 		}
 	}
 	return counts
+}
+
+// RecordPollSuccess marks a successful poll for a source.
+func (s *Store) RecordPollSuccess(source string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.health[source] = model.SourceHealth{
+		Source:   source,
+		OK:       true,
+		LastPoll: time.Now(),
+	}
+}
+
+// RecordPollError marks a failed poll for a source.
+func (s *Store) RecordPollError(source string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prev := s.health[source]
+	s.health[source] = model.SourceHealth{
+		Source:      source,
+		OK:          false,
+		LastPoll:    time.Now(),
+		LastError:   err.Error(),
+		ConsecFails: prev.ConsecFails + 1,
+	}
+}
+
+// SourcesHealth returns the poll health for all sources.
+func (s *Store) SourcesHealth() []model.SourceHealth {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]model.SourceHealth, 0, len(s.health))
+	for _, h := range s.health {
+		out = append(out, h)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
+	return out
 }

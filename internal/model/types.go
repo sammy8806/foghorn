@@ -51,6 +51,15 @@ type ProviderHealth struct {
 	AlertCount  int       `json:"alertCount"`
 }
 
+// SourceHealth tracks the poll status for a single source as seen by the frontend.
+type SourceHealth struct {
+	Source      string    `json:"source"`
+	OK          bool      `json:"ok"`
+	LastPoll    time.Time `json:"lastPoll"`
+	LastError   string    `json:"lastError,omitempty"`
+	ConsecFails int       `json:"consecFails"`
+}
+
 // Diff represents changes between two poll cycles.
 type Diff struct {
 	New      []Alert `json:"new"`

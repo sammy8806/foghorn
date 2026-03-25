@@ -16,6 +16,8 @@ export function GetDisplayConfig():Promise<config.DisplayConfig>;
 
 export function GetSeverityCounts():Promise<model.SeverityCounts>;
 
+export function GetSourcesHealth():Promise<Array<model.SourceHealth>>;
+
 export function GetUIConfig():Promise<config.UIConfig>;
 
 export function SetProviders(arg1:Record<string, provider.Provider>):Promise<void>;
