@@ -29,7 +29,7 @@
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
 
-  const popupHorizontalMargin = 28;
+  const popupHorizontalMargin = 8;
   const popupTopMargin = 0;
   const popupBottomMargin = 16;
   const minPopupHeight = 220;
