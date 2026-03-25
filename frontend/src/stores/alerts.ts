@@ -47,6 +47,13 @@ export const error = writable<string | null>(null);
 
 export async function refreshAlerts(): Promise<void> {
   try {
+    if (!isWails()) {
+      // No backend — show empty state instead of hanging/crashing.
+      alerts.set([]);
+      severityCounts.set({ critical: 0, warning: 0, info: 0 });
+      error.set('Dev mode: no Wails backend connected');
+      return;
+    }
     const [alertList, counts] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
@@ -62,6 +69,7 @@ export async function refreshAlerts(): Promise<void> {
 }
 
 export async function loadDisplayConfig(): Promise<void> {
+  if (!isWails()) return; // use defaults in dev mode
   try {
     const cfg = await GetDisplayConfig();
     if (cfg) displayConfig.set(cfg);
@@ -70,8 +78,33 @@ export async function loadDisplayConfig(): Promise<void> {
   }
 }
 
-// Subscribe to backend push events
+// Detect whether we're running inside the Wails webview or a plain browser.
+export const isWails = (): boolean => !!(window as any).runtime || !!(window as any)['go'];
+
+// Both window.runtime (events) and window['go'] (method calls) are injected by
+// the Wails webview init script. With StartHidden: true there is a race on first
+// paint where neither object exists yet. Poll until both are ready, but give up
+// after a short timeout so the app still works in a plain browser (dev mode).
+export function waitForBridge(): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + 1500;
+    const check = () => {
+      if ((window as any).runtime) {
+        resolve();
+      } else if (Date.now() > deadline) {
+        // Running outside Wails (e.g. `npm run dev` in a browser) — proceed without bridge.
+        resolve();
+      } else {
+        setTimeout(check, 20);
+      }
+    };
+    check();
+  });
+}
+
+// Subscribe to backend push events (call after waitForBridge resolves).
 export function initEventListeners(): void {
+  if (!isWails()) return; // no event bridge in plain browser
   EventsOn('alerts:updated', () => {
     refreshAlerts();
   });

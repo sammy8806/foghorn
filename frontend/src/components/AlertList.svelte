@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { groupedAlerts, loading, error, displayConfig, refreshAlerts, loadDisplayConfig, initEventListeners } from '../stores/alerts';
+  import { groupedAlerts, loading, error, displayConfig, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
 
   onMount(async () => {
+    await waitForBridge();
     initEventListeners();
     await loadDisplayConfig();
     await refreshAlerts();

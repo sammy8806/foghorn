@@ -68,8 +68,8 @@ func main() {
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       true,
-		HideWindowOnClose: true,
+		StartHidden:       false, // tray is currently stubbed; show window on launch
+		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
