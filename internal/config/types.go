@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Config struct {
 	Sources       []SourceConfig      `yaml:"sources"`
@@ -26,12 +29,140 @@ type AuthConfig struct {
 	Password string `yaml:"password"`
 }
 
+// SortCriterion is a single sort field with optional order direction.
+type SortCriterion struct {
+	Field string `yaml:"field" json:"field"`
+	Order string `yaml:"order" json:"order"` // "asc" or "desc"
+}
+
+// NormalizedDisplayConfig is what the frontend receives — sort_by is always a
+// resolved []SortCriterion regardless of how it was written in the config file.
+type NormalizedDisplayConfig struct {
+	VisibleLabels       []string        `json:"visible_labels"`
+	VisibleAnnotations  []string        `json:"visible_annotations"`
+	SubtitleAnnotations []string        `json:"subtitle_annotations"`
+	GroupBy             []string        `json:"group_by"`
+	SortBy              []SortCriterion `json:"sort_by"`
+}
+
 type DisplayConfig struct {
-	VisibleLabels       []string `yaml:"visible_labels" json:"visible_labels"`
-	VisibleAnnotations  []string `yaml:"visible_annotations" json:"visible_annotations"`
-	SubtitleAnnotations []string `yaml:"subtitle_annotations" json:"subtitle_annotations"`
-	GroupBy             []string `yaml:"group_by" json:"group_by"`
-	SortBy              string   `yaml:"sort_by" json:"sort_by"`
+	VisibleLabels       []string    `yaml:"visible_labels" json:"visible_labels"`
+	VisibleAnnotations  []string    `yaml:"visible_annotations" json:"visible_annotations"`
+	SubtitleAnnotations []string    `yaml:"subtitle_annotations" json:"subtitle_annotations"`
+	GroupBy             []string    `yaml:"group_by" json:"group_by"`
+	SortBy              interface{} `yaml:"sort_by" json:"-"`
+}
+
+// Normalize converts the raw DisplayConfig into a NormalizedDisplayConfig
+// suitable for sending to the frontend.
+func (d *DisplayConfig) Normalize() NormalizedDisplayConfig {
+	return NormalizedDisplayConfig{
+		VisibleLabels:       d.VisibleLabels,
+		VisibleAnnotations:  d.VisibleAnnotations,
+		SubtitleAnnotations: d.SubtitleAnnotations,
+		GroupBy:             d.GroupBy,
+		SortBy:              d.ParsedSortBy(),
+	}
+}
+
+// ParsedSortBy normalizes sort_by from either a bare string or a list of
+// criterion maps into a []SortCriterion.
+func (d *DisplayConfig) ParsedSortBy() []SortCriterion {
+	switch v := d.SortBy.(type) {
+	case string:
+		return sortCriteriaFromString(v)
+	case []SortCriterion:
+		return normalizeCriteria(v)
+	case []interface{}:
+		return sortCriteriaFromList(v)
+	default:
+		// nil or unknown — default to severity sort
+		return sortCriteriaFromString("severity")
+	}
+}
+
+// ResolveFieldRef parses a field reference like "field:severity", "label:cluster",
+// or "annotation:team". Bare strings without a prefix are treated as label names.
+func ResolveFieldRef(ref string) (kind, name string) {
+	if s, ok := strings.CutPrefix(ref, "field:"); ok {
+		return "field", s
+	}
+	if s, ok := strings.CutPrefix(ref, "label:"); ok {
+		return "label", s
+	}
+	if s, ok := strings.CutPrefix(ref, "annotation:"); ok {
+		return "annotation", s
+	}
+	return "label", ref
+}
+
+// defaultOrder returns the default sort direction for a field reference.
+// Time fields default to "desc" (newest first); everything else defaults to "asc".
+func defaultOrder(fieldRef string) string {
+	_, name := ResolveFieldRef(fieldRef)
+	switch name {
+	case "startsAt", "updatedAt":
+		return "desc"
+	default:
+		return "asc"
+	}
+}
+
+func sortCriteriaFromString(s string) []SortCriterion {
+	switch s {
+	case "severity":
+		return []SortCriterion{
+			{Field: "field:severity", Order: "asc"},
+			{Field: "field:startsAt", Order: "desc"},
+		}
+	default:
+		return []SortCriterion{
+			{Field: "label:" + s, Order: "asc"},
+		}
+	}
+}
+
+func normalizeCriteria(in []SortCriterion) []SortCriterion {
+	criteria := make([]SortCriterion, 0, len(in))
+	for _, item := range in {
+		field := strings.TrimSpace(item.Field)
+		if field == "" {
+			continue
+		}
+		order := strings.ToLower(strings.TrimSpace(item.Order))
+		if order != "asc" && order != "desc" {
+			order = defaultOrder(field)
+		}
+		criteria = append(criteria, SortCriterion{Field: field, Order: order})
+	}
+	if len(criteria) == 0 {
+		return sortCriteriaFromString("severity")
+	}
+	return criteria
+}
+
+func sortCriteriaFromList(list []interface{}) []SortCriterion {
+	criteria := make([]SortCriterion, 0, len(list))
+	for _, item := range list {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		field, _ := m["field"].(string)
+		if field == "" {
+			continue
+		}
+		order, _ := m["order"].(string)
+		order = strings.ToLower(strings.TrimSpace(order))
+		if order != "asc" && order != "desc" {
+			order = defaultOrder(field)
+		}
+		criteria = append(criteria, SortCriterion{Field: field, Order: order})
+	}
+	if len(criteria) == 0 {
+		return sortCriteriaFromString("severity")
+	}
+	return criteria
 }
 
 type SoundsConfig struct {

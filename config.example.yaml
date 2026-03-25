@@ -20,8 +20,13 @@ display:
     - description
     - summary
   group_by:
-    - cluster
-  sort_by: severity
+    - field:source
+    - label:cluster
+  sort_by:
+    - field: field:severity
+      order: asc
+    - field: field:startsAt
+      order: desc
 
 sounds:
   enabled: false

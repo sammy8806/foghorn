@@ -26,12 +26,29 @@ export interface SeverityCounts {
   info: number;
 }
 
+export interface SortCriterion {
+  field: string;
+  order: 'asc' | 'desc';
+}
+
+export interface SortPresetOption {
+  mode: string;
+  label: string;
+  criteria?: SortCriterion[];
+}
+
+export interface GroupPresetOption {
+  mode: string;
+  label: string;
+  fields?: string[];
+}
+
 export interface DisplayConfig {
   visible_labels: string[];
   visible_annotations: string[];
   subtitle_annotations: string[];
   group_by: string[];
-  sort_by: string;
+  sort_by: SortCriterion[];
 }
 
 export const alerts = writable<Alert[]>([]);
@@ -41,8 +58,85 @@ export const displayConfig = writable<DisplayConfig>({
   visible_annotations: ['summary'],
   subtitle_annotations: ['summary', 'description'],
   group_by: ['cluster'],
-  sort_by: 'severity',
+  sort_by: [{ field: 'field:severity', order: 'asc' }, { field: 'field:startsAt', order: 'desc' }],
 });
+
+// Sort presets for the UI toggle. Each entry resolves to a []SortCriterion.
+export const SORT_PRESETS: Record<string, SortCriterion[]> = {
+  severity: [
+    { field: 'field:severity', order: 'asc' },
+    { field: 'field:startsAt', order: 'desc' },
+  ],
+  first_seen: [{ field: 'field:startsAt', order: 'asc' }],
+  last_seen: [{ field: 'field:updatedAt', order: 'desc' }],
+  active_first: [
+    { field: 'field:state', order: 'asc' },
+    { field: 'field:severity', order: 'asc' },
+  ],
+  source: [
+    { field: 'field:source', order: 'asc' },
+    { field: 'field:severity', order: 'asc' },
+  ],
+  cluster: [
+    { field: 'label:cluster', order: 'asc' },
+    { field: 'field:severity', order: 'asc' },
+  ],
+  alert_name: [
+    { field: 'field:name', order: 'asc' },
+    { field: 'field:severity', order: 'asc' },
+  ],
+};
+
+export const SORT_PRESET_OPTIONS: SortPresetOption[] = [
+  { mode: 'default', label: 'Default' },
+  { mode: 'severity', label: 'Severity', criteria: SORT_PRESETS.severity },
+  { mode: 'first_seen', label: 'First seen', criteria: SORT_PRESETS.first_seen },
+  { mode: 'last_seen', label: 'Last seen', criteria: SORT_PRESETS.last_seen },
+  { mode: 'active_first', label: 'Active first', criteria: SORT_PRESETS.active_first },
+  { mode: 'source', label: 'Source', criteria: SORT_PRESETS.source },
+  { mode: 'cluster', label: 'Cluster', criteria: SORT_PRESETS.cluster },
+  { mode: 'alert_name', label: 'Alert name', criteria: SORT_PRESETS.alert_name },
+];
+
+export const GROUP_PRESETS: Record<string, string[]> = {
+  none: [],
+  source: ['field:source'],
+  severity: ['field:severity'],
+  state: ['field:state'],
+  namespace: ['label:namespace'],
+  cluster: ['label:cluster'],
+};
+
+export const GROUP_PRESET_OPTIONS: GroupPresetOption[] = [
+  { mode: 'default', label: 'Default' },
+  { mode: 'none', label: 'None', fields: GROUP_PRESETS.none },
+  { mode: 'source', label: 'Source', fields: GROUP_PRESETS.source },
+  { mode: 'severity', label: 'Severity', fields: GROUP_PRESETS.severity },
+  { mode: 'state', label: 'State', fields: GROUP_PRESETS.state },
+  { mode: 'namespace', label: 'Namespace', fields: GROUP_PRESETS.namespace },
+  { mode: 'cluster', label: 'Cluster', fields: GROUP_PRESETS.cluster },
+];
+
+// Ephemeral sort mode — resets to 'default' on app restart.
+export const activeSortMode = writable<string>('default');
+export const activeGroupMode = writable<string>('default');
+
+// Resolved criteria: 'default' uses the config value, named presets use SORT_PRESETS.
+export const activeSortCriteria = derived(
+  [activeSortMode, displayConfig],
+  ([$mode, $cfg]) => {
+    if ($mode === 'default') return $cfg.sort_by;
+    return SORT_PRESETS[$mode] ?? $cfg.sort_by;
+  }
+);
+
+export const activeGroupBy = derived(
+  [activeGroupMode, displayConfig],
+  ([$mode, $cfg]) => {
+    if ($mode === 'default') return $cfg.group_by;
+    return GROUP_PRESETS[$mode] ?? $cfg.group_by;
+  }
+);
 
 export interface SourceHealth {
   source: string;
@@ -104,7 +198,18 @@ export async function loadDisplayConfig(): Promise<void> {
   if (!isWails()) return; // use defaults in dev mode
   try {
     const cfg = await GetDisplayConfig();
-    if (cfg) displayConfig.set(cfg);
+    if (cfg) {
+      displayConfig.set({
+        visible_labels: cfg.visible_labels ?? [],
+        visible_annotations: cfg.visible_annotations ?? [],
+        subtitle_annotations: cfg.subtitle_annotations ?? [],
+        group_by: cfg.group_by ?? [],
+        sort_by: (cfg.sort_by ?? []).map(criterion => ({
+          field: criterion.field,
+          order: criterion.order === 'desc' ? 'desc' : 'asc',
+        })),
+      });
+    }
   } catch (_) {
     // use defaults
   }
@@ -146,25 +251,25 @@ export function initEventListeners(): void {
   });
 }
 
-// Derived: alerts grouped by the display config's group_by labels
+// Derived: alerts grouped by the display config's group_by field references
 export const groupedAlerts = derived(
-  [alerts, displayConfig],
-  ([$alerts, $cfg]) => {
-    const groupBy = $cfg.group_by || [];
+  [alerts, activeSortCriteria, activeGroupBy],
+  ([$alerts, $criteria, $groupBy]) => {
+    const groupBy = $groupBy || [];
     if (groupBy.length === 0) {
-      return { ungrouped: [...$alerts].sort(sortByConfig($cfg)) };
+      return { ungrouped: [...$alerts].sort(sortByCriteria($criteria)) };
     }
 
     const groups: Record<string, Alert[]> = {};
     for (const alert of $alerts) {
-      const key = groupBy.map(label => alert.labels[label] || '').join('/') || 'other';
+      const key = groupBy.map(ref => resolveAlertField(alert, ref) ?? '').join('/') || 'other';
       if (!groups[key]) groups[key] = [];
       groups[key].push(alert);
     }
 
     // Sort within each group
     for (const key of Object.keys(groups)) {
-      groups[key].sort(sortByConfig($cfg));
+      groups[key].sort(sortByCriteria($criteria));
     }
 
     // Return groups in sorted key order for stable rendering
@@ -176,12 +281,76 @@ export const groupedAlerts = derived(
   }
 );
 
-function sortByConfig(cfg: DisplayConfig) {
+// Enum orderings used for sorting
+const STATE_ORDER: Record<string, number> = {
+  firing: 0,
+  silenced: 1,
+  inhibited: 2,
+  resolved: 3,
+};
+
+export function resolveAlertField(alert: Alert, ref: string): string | undefined {
+  if (ref.startsWith('field:')) {
+    const name = ref.slice(6);
+    switch (name) {
+      case 'severity': return alert.severity;
+      case 'startsAt': return alert.startsAt;
+      case 'updatedAt': return alert.updatedAt;
+      case 'source': return alert.source;
+      case 'name': return alert.name;
+      case 'state': return alert.state;
+      default: return undefined;
+    }
+  }
+  if (ref.startsWith('label:')) return alert.labels[ref.slice(6)];
+  if (ref.startsWith('annotation:')) return alert.annotations[ref.slice(11)];
+  // bare string → label (backwards compat)
+  return alert.labels[ref];
+}
+
+function compareField(a: Alert, b: Alert, criterion: SortCriterion): number {
+  const { field, order } = criterion;
+  const name = field.startsWith('field:') ? field.slice(6) : null;
+  let result = 0;
+
+  if (name === 'severity') {
+    result = severityOrder(a.severity) - severityOrder(b.severity);
+  } else if (name === 'state') {
+    const ao = STATE_ORDER[a.state] ?? 99;
+    const bo = STATE_ORDER[b.state] ?? 99;
+    result = ao - bo;
+  } else if (name === 'startsAt') {
+    result = new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+  } else if (name === 'updatedAt') {
+    result = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+  } else {
+    const av = resolveAlertField(a, field) ?? '';
+    const bv = resolveAlertField(b, field) ?? '';
+    result = av.localeCompare(bv);
+  }
+
+  return order === 'desc' ? -result : result;
+}
+
+export function sortByCriteria(criteria: SortCriterion[]) {
   return (a: Alert, b: Alert): number => {
-    if (cfg.sort_by === 'severity') {
-      const diff = severityOrder(a.severity) - severityOrder(b.severity);
+    for (const criterion of criteria) {
+      const diff = compareField(a, b, criterion);
       if (diff !== 0) return diff;
     }
-    return new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime();
+    return 0;
   };
+}
+
+export function criteriaEqual(a: SortCriterion[], b: SortCriterion[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((criterion, index) => {
+    const other = b[index];
+    return criterion.field === other?.field && criterion.order === other?.order;
+  });
+}
+
+export function stringArrayEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
 }

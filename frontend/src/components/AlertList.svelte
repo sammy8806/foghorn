@@ -1,6 +1,27 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { groupedAlerts, loading, error, displayConfig, verbose, sourcesHealth, newAlertKeys, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
+  import {
+    groupedAlerts,
+    loading,
+    error,
+    displayConfig,
+    verbose,
+    sourcesHealth,
+    newAlertKeys,
+    refreshAlerts,
+    loadDisplayConfig,
+    initEventListeners,
+    waitForBridge,
+    activeSortMode,
+    activeSortCriteria,
+    activeGroupMode,
+    activeGroupBy,
+    SORT_PRESET_OPTIONS,
+    GROUP_PRESET_OPTIONS,
+    sortByCriteria,
+    criteriaEqual,
+    stringArrayEqual,
+  } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
@@ -12,14 +33,32 @@
     await refreshAlerts();
   });
 
-  $: hasGroups = $displayConfig.group_by?.length > 0;
+  $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
+  $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
 
   let refreshing = false;
+  let sortMenuOpen = false;
+  let groupMenuOpen = false;
   async function handleRefresh() {
     refreshing = true;
     await refreshAlerts();
     refreshing = false;
+  }
+
+  function setSortMode(mode: string) {
+    activeSortMode.set(mode);
+    sortMenuOpen = false;
+  }
+
+  function setGroupMode(mode: string) {
+    activeGroupMode.set(mode);
+    groupMenuOpen = false;
+  }
+
+  function closeSortMenu() {
+    sortMenuOpen = false;
+    groupMenuOpen = false;
   }
 
   $: noHealthYet = $sourcesHealth.length === 0;
@@ -39,7 +78,25 @@
     if (d.getTime() === 0) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
+
+  function currentSortLabel(): string {
+    const matchingPreset = SORT_PRESET_OPTIONS.find(option =>
+      option.criteria && criteriaEqual(option.criteria, $activeSortCriteria)
+    );
+    if (matchingPreset) return matchingPreset.label;
+    return $activeSortMode === 'default' ? 'Default' : 'Custom';
+  }
+
+  function currentGroupLabel(): string {
+    const matchingPreset = GROUP_PRESET_OPTIONS.find(option =>
+      option.fields && stringArrayEqual(option.fields, $activeGroupBy)
+    );
+    if (matchingPreset) return matchingPreset.label;
+    return $activeGroupMode === 'default' ? 'Default' : 'Custom';
+  }
 </script>
+
+<svelte:window on:click={closeSortMenu} />
 
 <div class="alert-list-container">
   <!-- Filter bar -->
@@ -79,6 +136,64 @@
         <span class="status-error">Error: {$error}</span>
       {:else}
         <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+        <div class="sort-toggle-wrap">
+          <button
+            class="sort-toggle"
+            class:active={groupMenuOpen}
+            on:click|stopPropagation={() => {
+              groupMenuOpen = !groupMenuOpen;
+              sortMenuOpen = false;
+            }}
+            title="Change alert grouping"
+          >
+            Group: {currentGroupLabel()} ▾
+          </button>
+          {#if groupMenuOpen}
+            <div class="sort-menu">
+              {#each GROUP_PRESET_OPTIONS as option}
+                <button
+                  class="sort-option"
+                  class:selected={$activeGroupMode === option.mode}
+                  on:click|stopPropagation={() => setGroupMode(option.mode)}
+                >
+                  <span>{option.label}</span>
+                  {#if $activeGroupMode === option.mode}
+                    <span class="sort-check">✓</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <div class="sort-toggle-wrap">
+          <button
+            class="sort-toggle"
+            class:active={sortMenuOpen}
+            on:click|stopPropagation={() => {
+              sortMenuOpen = !sortMenuOpen;
+              groupMenuOpen = false;
+            }}
+            title="Change alert sort order"
+          >
+            Sort: {currentSortLabel()} ▾
+          </button>
+          {#if sortMenuOpen}
+            <div class="sort-menu">
+              {#each SORT_PRESET_OPTIONS as option}
+                <button
+                  class="sort-option"
+                  class:selected={$activeSortMode === option.mode}
+                  on:click|stopPropagation={() => setSortMode(option.mode)}
+                >
+                  <span>{option.label}</span>
+                  {#if $activeSortMode === option.mode}
+                    <span class="sort-check">✓</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
         {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
       {/if}
     </div>
@@ -113,7 +228,7 @@
         {/if}
       {/each}
     {:else}
-      {#each $filteredAlerts as alert (alert.source + ':' + alert.id)}
+      {#each sortedUngroupedAlerts as alert (alert.source + ':' + alert.id)}
         <AlertCard {alert} config={$displayConfig} isNew={$newAlertKeys.has(alert.source + ':' + alert.id)} />
       {/each}
     {/if}
@@ -171,7 +286,7 @@
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
   }
-  .status-left { display: flex; align-items: center; }
+  .status-left { display: flex; align-items: center; gap: 6px; position: relative; }
   .status-right { display: flex; align-items: center; gap: 6px; }
 
   .verbose-toggle {
@@ -189,11 +304,65 @@
   .status-error { color: #ef4444; }
   .status-loading { color: #94a3b8; }
   .status-verbose {
-    margin-left: 8px;
     font-size: 10px;
     font-weight: 600;
     color: #f59e0b;
     text-transform: uppercase;
+  }
+
+  .sort-toggle-wrap {
+    position: relative;
+  }
+
+  .sort-toggle {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+  }
+  .sort-toggle:hover,
+  .sort-toggle.active {
+    color: #e2e8f0;
+  }
+
+  .sort-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 140px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+    z-index: 10;
+  }
+
+  .sort-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .sort-option:hover,
+  .sort-option.selected {
+    background: #1e293b;
+  }
+
+  .sort-check {
+    color: #22c55e;
+    font-weight: 700;
   }
 
   .refresh-status { font-size: 9px; }

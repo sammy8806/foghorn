@@ -12,7 +12,7 @@ export function GetActionsForAlert(arg1:string,arg2:string):Promise<Array<config
 
 export function GetAlerts():Promise<Array<model.Alert>>;
 
-export function GetDisplayConfig():Promise<config.DisplayConfig>;
+export function GetDisplayConfig():Promise<config.NormalizedDisplayConfig>;
 
 export function GetSeverityCounts():Promise<model.SeverityCounts>;
 
