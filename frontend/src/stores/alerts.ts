@@ -42,6 +42,7 @@ export const displayConfig = writable<DisplayConfig>({
   sort_by: 'severity',
 });
 
+export const verbose = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
 

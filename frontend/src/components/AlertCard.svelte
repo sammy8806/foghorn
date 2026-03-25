@@ -1,13 +1,18 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
+  import { verbose } from '../stores/alerts';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
   export let alert: Alert;
   export let config: DisplayConfig;
 
-  $: visibleLabels = (config.visible_labels || []).filter(l => l !== 'alertname' && l !== 'severity');
-  $: visibleAnnotations = config.visible_annotations || [];
+  $: visibleLabels = $verbose
+    ? Object.keys(alert.labels || {})
+    : (config.visible_labels || []).filter(l => l !== 'alertname' && l !== 'severity');
+  $: visibleAnnotations = $verbose
+    ? Object.keys(alert.annotations || {})
+    : (config.visible_annotations || []);
 
   let expanded = false;
   let silenceOpen = false;
@@ -32,7 +37,13 @@
     <div class="alert-body">
       {#each visibleAnnotations as key}
         {#if alert.annotations?.[key]}
-          <p class="annotation"><strong>{key}:</strong> {alert.annotations[key]}</p>
+          <p class="annotation"><strong>{key}:</strong>
+            {#if alert.annotations[key].match(/^https?:\/\//)}
+              <a href={alert.annotations[key]} target="_blank" class="annotation-link">{alert.annotations[key]}</a>
+            {:else}
+              {alert.annotations[key]}
+            {/if}
+          </p>
         {/if}
       {/each}
 
@@ -43,6 +54,26 @@
           {/if}
         {/each}
       </div>
+
+      {#if $verbose}
+        <div class="metadata">
+          <span class="meta-item"><strong>id:</strong> {alert.id}</span>
+          <span class="meta-item"><strong>source:</strong> {alert.source}</span>
+          <span class="meta-item"><strong>sourceType:</strong> {alert.sourceType}</span>
+          <span class="meta-item"><strong>state:</strong> {alert.state}</span>
+          <span class="meta-item"><strong>startsAt:</strong> {alert.startsAt}</span>
+          <span class="meta-item"><strong>updatedAt:</strong> {alert.updatedAt}</span>
+          {#if alert.silencedBy?.length > 0}
+            <span class="meta-item"><strong>silencedBy:</strong> {alert.silencedBy.join(', ')}</span>
+          {/if}
+          {#if alert.inhibitedBy?.length > 0}
+            <span class="meta-item"><strong>inhibitedBy:</strong> {alert.inhibitedBy.join(', ')}</span>
+          {/if}
+          {#if alert.receivers?.length > 0}
+            <span class="meta-item"><strong>receivers:</strong> {alert.receivers.join(', ')}</span>
+          {/if}
+        </div>
+      {/if}
 
       <div class="alert-actions">
         {#if alert.generatorURL}
@@ -150,6 +181,20 @@
     font-family: monospace;
   }
 
+  .metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: monospace;
+    color: #64748b;
+  }
+  .meta-item strong { color: #94a3b8; }
+
   .alert-actions {
     display: flex;
     align-items: center;
@@ -157,12 +202,12 @@
     margin-top: 8px;
   }
 
-  .generator-link {
+  .annotation-link, .generator-link {
     font-size: 11px;
     color: #60a5fa;
     text-decoration: none;
   }
-  .generator-link:hover { text-decoration: underline; }
+  .annotation-link:hover, .generator-link:hover { text-decoration: underline; }
 
   .btn-silence {
     background: none;

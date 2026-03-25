@@ -1,5 +1,21 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+  import { isWails } from './stores/alerts';
   import AlertList from './components/AlertList.svelte';
+
+  onMount(() => {
+    if (!isWails()) return;
+    document.addEventListener('click', (e) => {
+      const anchor = (e.target as HTMLElement).closest('a[href]');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (href && /^https?:\/\//.test(href)) {
+        e.preventDefault();
+        BrowserOpenURL(href);
+      }
+    });
+  });
 </script>
 
 <main>

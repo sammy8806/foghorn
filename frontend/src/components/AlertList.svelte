@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { groupedAlerts, loading, error, displayConfig, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
+  import { groupedAlerts, loading, error, displayConfig, verbose, refreshAlerts, loadDisplayConfig, initEventListeners, waitForBridge } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
@@ -39,6 +39,10 @@
         {/each}
       </select>
     {/if}
+    <label class="verbose-toggle">
+      <input type="checkbox" bind:checked={$verbose} />
+      Verbose
+    </label>
   </div>
 
   <!-- Status bar -->
@@ -49,6 +53,7 @@
       <span class="status-error">Error: {$error}</span>
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+      {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
     {/if}
   </div>
 
@@ -124,8 +129,27 @@
     flex-shrink: 0;
   }
 
+  .verbose-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #94a3b8;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .verbose-toggle input { cursor: pointer; }
+
   .status-error { color: #ef4444; }
   .status-loading { color: #94a3b8; }
+  .status-verbose {
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #f59e0b;
+    text-transform: uppercase;
+  }
 
   .alerts-scroll {
     flex: 1;
