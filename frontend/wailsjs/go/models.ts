@@ -72,11 +72,11 @@ export namespace config {
 	    }
 	}
 	export class UIConfig {
-	    Theme: string;
-	    PopupWidth: number;
-	    PopupHeight: number;
-	    ShowResolved: boolean;
-	    ShowSilenced: boolean;
+	    theme: string;
+	    popup_width: number;
+	    popup_height: number;
+	    show_resolved: boolean;
+	    show_silenced: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UIConfig(source);
@@ -84,11 +84,11 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Theme = source["Theme"];
-	        this.PopupWidth = source["PopupWidth"];
-	        this.PopupHeight = source["PopupHeight"];
-	        this.ShowResolved = source["ShowResolved"];
-	        this.ShowSilenced = source["ShowSilenced"];
+	        this.theme = source["theme"];
+	        this.popup_width = source["popup_width"];
+	        this.popup_height = source["popup_height"];
+	        this.show_resolved = source["show_resolved"];
+	        this.show_silenced = source["show_silenced"];
 	    }
 	}
 	export class NotificationsConfig {
@@ -198,10 +198,10 @@ export namespace config {
 		}
 	}
 	export class DisplayConfig {
-	    VisibleLabels: string[];
-	    VisibleAnnotations: string[];
-	    GroupBy: string[];
-	    SortBy: string;
+	    visible_labels: string[];
+	    visible_annotations: string[];
+	    group_by: string[];
+	    sort_by: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new DisplayConfig(source);
@@ -209,10 +209,10 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.VisibleLabels = source["VisibleLabels"];
-	        this.VisibleAnnotations = source["VisibleAnnotations"];
-	        this.GroupBy = source["GroupBy"];
-	        this.SortBy = source["SortBy"];
+	        this.visible_labels = source["visible_labels"];
+	        this.visible_annotations = source["visible_annotations"];
+	        this.group_by = source["group_by"];
+	        this.sort_by = source["sort_by"];
 	    }
 	}
 	export class SourceConfig {

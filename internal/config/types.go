@@ -27,10 +27,10 @@ type AuthConfig struct {
 }
 
 type DisplayConfig struct {
-	VisibleLabels      []string `yaml:"visible_labels"`
-	VisibleAnnotations []string `yaml:"visible_annotations"`
-	GroupBy            []string `yaml:"group_by"`
-	SortBy             string   `yaml:"sort_by"`
+	VisibleLabels      []string `yaml:"visible_labels" json:"visible_labels"`
+	VisibleAnnotations []string `yaml:"visible_annotations" json:"visible_annotations"`
+	GroupBy            []string `yaml:"group_by" json:"group_by"`
+	SortBy             string   `yaml:"sort_by" json:"sort_by"`
 }
 
 type SoundsConfig struct {
@@ -75,9 +75,9 @@ type ActionDef struct {
 }
 
 type UIConfig struct {
-	Theme        string `yaml:"theme"`
-	PopupWidth   int    `yaml:"popup_width"`
-	PopupHeight  int    `yaml:"popup_height"`
-	ShowResolved bool   `yaml:"show_resolved"`
-	ShowSilenced bool   `yaml:"show_silenced"`
+	Theme        string `yaml:"theme" json:"theme"`
+	PopupWidth   int    `yaml:"popup_width" json:"popup_width"`
+	PopupHeight  int    `yaml:"popup_height" json:"popup_height"`
+	ShowResolved bool   `yaml:"show_resolved" json:"show_resolved"`
+	ShowSilenced bool   `yaml:"show_silenced" json:"show_silenced"`
 }
