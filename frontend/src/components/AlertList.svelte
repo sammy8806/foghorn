@@ -37,17 +37,33 @@
 
   onMount(() => {
     let disposePopupOpening = () => {};
+    let disposeConfigReloaded = () => {};
     let disposed = false;
+
+    const syncUIConfig = async () => {
+      if (!isWails()) return;
+      const uiConfig = await GetUIConfig();
+      filter.update(current => ({
+        ...current,
+        showSilenced: uiConfig.show_silenced ?? current.showSilenced,
+      }));
+    };
 
     const init = async () => {
       await waitForBridge();
       if (disposed) return;
 
       initEventListeners();
-      await loadDisplayConfig();
+      await Promise.all([
+        loadDisplayConfig(),
+        syncUIConfig(),
+      ]);
       await refreshAlerts();
 
       if (!isWails()) return;
+      disposeConfigReloaded = EventsOn('config:reloaded', () => {
+        void syncUIConfig();
+      });
       disposePopupOpening = EventsOn('popup:opening', async () => {
         await layoutPopup();
       });
@@ -57,6 +73,7 @@
 
     return () => {
       disposed = true;
+      disposeConfigReloaded();
       disposePopupOpening();
     };
   });
@@ -195,6 +212,10 @@
         {/each}
       </select>
     {/if}
+    <label class="verbose-toggle">
+      <input type="checkbox" bind:checked={$filter.showAll} />
+      Show all
+    </label>
     <label class="verbose-toggle">
       <input type="checkbox" bind:checked={$verbose} />
       Verbose

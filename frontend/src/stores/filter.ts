@@ -7,6 +7,7 @@ export interface FilterState {
   severity: string; // 'all' | 'critical' | 'warning' | 'info'
   source: string;   // 'all' | source name
   showSilenced: boolean;
+  showAll: boolean;
 }
 
 export const filter = writable<FilterState>({
@@ -14,6 +15,7 @@ export const filter = writable<FilterState>({
   severity: 'all',
   source: 'all',
   showSilenced: true,
+  showAll: false,
 });
 
 export const filteredAlerts = derived([alerts, filter], ([$alerts, $filter]) => {
@@ -21,6 +23,7 @@ export const filteredAlerts = derived([alerts, filter], ([$alerts, $filter]) => 
 });
 
 function matchesFilter(alert: Alert, f: FilterState): boolean {
+  if (f.showAll) return true;
   if (f.severity !== 'all' && alert.severity !== f.severity) return false;
   if (f.source !== 'all' && alert.source !== f.source) return false;
   if (!f.showSilenced && alert.silencedBy?.length > 0) return false;
