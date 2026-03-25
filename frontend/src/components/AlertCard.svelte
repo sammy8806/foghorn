@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
+  import SilenceDialog from './SilenceDialog.svelte';
 
   export let alert: Alert;
   export let config: DisplayConfig;
@@ -9,6 +10,7 @@
   $: visibleAnnotations = config.visible_annotations || [];
 
   let expanded = false;
+  let silenceOpen = false;
 </script>
 
 <div class="alert-card {severityClass(alert.severity)}" class:silenced={alert.silencedBy?.length > 0}>
@@ -42,12 +44,19 @@
         {/each}
       </div>
 
-      {#if alert.generatorURL}
-        <a href={alert.generatorURL} target="_blank" class="generator-link">Open in Prometheus</a>
-      {/if}
+      <div class="alert-actions">
+        {#if alert.generatorURL}
+          <a href={alert.generatorURL} target="_blank" class="generator-link">Open in Prometheus</a>
+        {/if}
+        {#if !alert.silencedBy?.length}
+          <button class="btn-silence" on:click|stopPropagation={() => (silenceOpen = true)}>Silence…</button>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
+
+<SilenceDialog {alert} open={silenceOpen} on:close={() => (silenceOpen = false)} />
 
 <style>
   .alert-card {
@@ -141,12 +150,28 @@
     font-family: monospace;
   }
 
-  .generator-link {
-    display: inline-block;
+  .alert-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-top: 8px;
+  }
+
+  .generator-link {
     font-size: 11px;
     color: #60a5fa;
     text-decoration: none;
   }
   .generator-link:hover { text-decoration: underline; }
+
+  .btn-silence {
+    background: none;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+  .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
 </style>
