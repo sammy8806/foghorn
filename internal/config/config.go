@@ -10,6 +10,17 @@ import (
 
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
+// Default returns a minimal usable config with no sources.
+func Default() *Config {
+	return &Config{
+		UI: UIConfig{
+			Theme:       "system",
+			PopupWidth:  800,
+			PopupHeight: 600,
+		},
+	}
+}
+
 // Load reads and parses a config file, expanding environment variables.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
