@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"foghorn/internal/config"
+	"foghorn/internal/notify"
 	"foghorn/internal/poll"
 	"foghorn/internal/state"
 	"foghorn/internal/tray"
@@ -82,6 +83,7 @@ func main() {
 			bgCtx, cancel := context.WithCancel(context.Background())
 			app.cancel = cancel
 
+			notifier := notify.New(cfg.Notifications)
 			diffCh := poll.New(store, cfg.Sources, nil).Start(bgCtx)
 
 			go func() {
@@ -89,9 +91,10 @@ func main() {
 					select {
 					case <-bgCtx.Done():
 						return
-					case <-diffCh:
+					case event := <-diffCh:
 						counts := store.SeverityCounts()
 						trayMgr.UpdateState(counts)
+						notifier.OnDiff(event.Diff)
 						wailsruntime.EventsEmit(ctx, "alerts:updated")
 					}
 				}
