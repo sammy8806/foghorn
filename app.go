@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"foghorn/internal/action"
 	"foghorn/internal/config"
 	"foghorn/internal/model"
 	"foghorn/internal/provider"
@@ -13,15 +14,20 @@ import (
 
 // App is the Wails-bound struct. Its exported methods become JS bindings.
 type App struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	cfg       *config.Config
-	store     *state.Store
+	ctx        context.Context
+	cancel     context.CancelFunc
+	cfg        *config.Config
+	store      *state.Store
 	silenceMgr *silence.Manager
+	actionEng  *action.Engine
 }
 
 func NewApp(cfg *config.Config, store *state.Store) *App {
-	return &App{cfg: cfg, store: store}
+	return &App{
+		cfg:       cfg,
+		store:     store,
+		actionEng: action.New(cfg.Actions),
+	}
 }
 
 // SetProviders wires providers into the app after startup.
@@ -83,4 +89,29 @@ func (a *App) Unsilence(source, silenceID string) error {
 		return fmt.Errorf("silence manager not initialized")
 	}
 	return a.silenceMgr.Unsilence(a.ctx, source, silenceID)
+}
+
+// GetActionsForAlert returns actions that match the given alert.
+func (a *App) GetActionsForAlert(alertID, source string) []config.ActionConfig {
+	for _, alert := range a.store.All() {
+		if alert.ID == alertID && alert.Source == source {
+			return a.actionEng.ActionsForAlert(alert)
+		}
+	}
+	return nil
+}
+
+// ExecuteAction runs a configured action for a given alert.
+func (a *App) ExecuteAction(actionName, alertID, source string) (string, error) {
+	for _, alert := range a.store.All() {
+		if alert.ID == alertID && alert.Source == source {
+			for _, act := range a.actionEng.ActionsForAlert(alert) {
+				if act.Name == actionName {
+					return a.actionEng.Execute(act, alert)
+				}
+			}
+			return "", fmt.Errorf("action %q not found for alert", actionName)
+		}
+	}
+	return "", fmt.Errorf("alert %s/%s not found", source, alertID)
 }
