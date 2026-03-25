@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
-  import { acknowledgeAlert, resolveAlertAnnotation, resolveAlertLabel, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
@@ -8,9 +8,16 @@
   export let config: DisplayConfig;
   export let isNew: boolean = false;
 
+  function labelName(spec: string): string {
+    return fieldNameFromRef(spec);
+  }
+
   $: visibleLabels = $verbose
     ? Object.keys(alert.labels || {})
-    : (config.visible_labels || []).filter(l => l !== 'alertname' && l !== 'severity');
+    : (config.visible_labels || []).filter(spec => {
+        const name = labelName(spec);
+        return name !== 'alertname' && name !== 'severity';
+      });
   $: visibleAnnotations = $verbose
     ? Object.keys(alert.annotations || {})
     : (config.visible_annotations || []);
@@ -19,15 +26,15 @@
   const skipLabels = new Set(['alertname', 'severity', 'cluster', 'namespace', 'prometheus', 'prometheus_replica']);
   $: subtitle = (() => {
     const sources = config.subtitle_annotations || ['summary', 'description'];
-    for (const key of sources) {
-      const value = resolveAlertAnnotation(alert, key);
-      if (value) return value;
+    for (const spec of sources) {
+      const display = resolveAlertFieldDisplay(alert, spec.startsWith('annotation:') ? spec : `annotation:${spec}`);
+      if (display?.text) return display.text;
     }
     // Fall back to distinguishing labels
     const parts: string[] = [];
     for (const [k] of Object.entries(alert.labels || {})) {
-      const v = resolveAlertLabel(alert, k);
-      if (!skipLabels.has(k) && v) parts.push(`${k}=${v}`);
+      const display = resolveAlertFieldDisplay(alert, `label:${k}`);
+      if (!skipLabels.has(k) && display?.text) parts.push(`${k}=${display.text}`);
     }
     return parts.join(', ');
   })();
@@ -83,23 +90,32 @@
   {#if expanded}
     <div class="alert-body">
       {#each visibleAnnotations as key}
-        {@const annotationValue = resolveAlertAnnotation(alert, key)}
-        {#if annotationValue}
-          <p class="annotation"><strong>{key}:</strong>
-            {#if annotationValue.match(/^https?:\/\//)}
-              <a href={annotationValue} target="_blank" class="annotation-link">{annotationValue}</a>
+        {@const annotationName = fieldNameFromRef(key)}
+        {@const annotationDisplay = resolveAlertFieldDisplay(alert, key.startsWith('annotation:') ? key : `annotation:${key}`)}
+        {#if annotationDisplay?.text}
+          <p class="annotation"><strong>{annotationName}:</strong>
+            {#if annotationDisplay.text.match(/^https?:\/\//)}
+              <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
             {:else}
-              {annotationValue}
+              {annotationDisplay.text}
             {/if}
           </p>
         {/if}
       {/each}
 
       <div class="label-chips">
-        {#each visibleLabels as label}
-          {@const labelValue = resolveAlertLabel(alert, label)}
-          {#if labelValue}
-            <span class="chip">{label}={labelValue}</span>
+        {#each visibleLabels as spec}
+          {@const label = labelName(spec)}
+          {@const labelDisplay = resolveAlertFieldDisplay(alert, spec.startsWith('label:') ? spec : `label:${spec}`)}
+          {#if labelDisplay?.text}
+            <span class="chip">
+              {#if labelDisplay.mode === 'both' && labelDisplay.raw && labelDisplay.resolved && labelDisplay.raw !== labelDisplay.resolved}
+                <span>{label}={labelDisplay.raw}</span>
+                <span class="chip-resolved">({labelDisplay.resolved})</span>
+              {:else}
+                <span>{label}={labelDisplay.text}</span>
+              {/if}
+            </span>
           {/if}
         {/each}
       </div>
@@ -264,6 +280,11 @@
     border-radius: 3px;
     color: #94a3b8;
     font-family: monospace;
+  }
+
+  .chip-resolved {
+    color: #64748b;
+    margin-left: 0.35rem;
   }
 
   .metadata {

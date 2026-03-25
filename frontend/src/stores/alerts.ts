@@ -46,6 +46,21 @@ export interface GroupPresetOption {
   fields?: string[];
 }
 
+export type AlertRefMode = 'raw' | 'resolved' | 'both';
+
+export interface AlertFieldDisplay {
+  text: string;
+  mode: AlertRefMode;
+  raw?: string;
+  resolved?: string;
+}
+
+export interface AlertGroup {
+  key: string;
+  parts: AlertFieldDisplay[];
+  alerts: Alert[];
+}
+
 export interface DisplayConfig {
   visible_labels: string[];
   visible_annotations: string[];
@@ -275,26 +290,28 @@ export const groupedAlerts = derived(
   ([$alerts, $criteria, $groupBy]) => {
     const groupBy = $groupBy || [];
     if (groupBy.length === 0) {
-      return { ungrouped: [...$alerts].sort(sortByCriteria($criteria)) };
+      return [{ key: 'ungrouped', parts: [], alerts: [...$alerts].sort(sortByCriteria($criteria)) }] as AlertGroup[];
     }
 
-    const groups: Record<string, Alert[]> = {};
+    const groups = new Map<string, AlertGroup>();
     for (const alert of $alerts) {
-      const key = groupBy.map(ref => resolveAlertField(alert, ref) ?? '').join('/') || 'other';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(alert);
+      const parts = groupBy
+        .map(ref => resolveAlertFieldDisplay(alert, ref))
+        .filter((item): item is AlertFieldDisplay => !!item);
+      const key = parts.map(part => part.text).join('/') || 'other';
+      const group = groups.get(key);
+      if (group) {
+        group.alerts.push(alert);
+        continue;
+      }
+      groups.set(key, { key, parts, alerts: [alert] });
     }
 
-    // Sort within each group
-    for (const key of Object.keys(groups)) {
-      groups[key].sort(sortByCriteria($criteria));
+    const sorted = [...groups.values()];
+    for (const group of sorted) {
+      group.alerts.sort(sortByCriteria($criteria));
     }
-
-    // Return groups in sorted key order for stable rendering
-    const sorted: Record<string, Alert[]> = {};
-    for (const key of Object.keys(groups).sort()) {
-      sorted[key] = groups[key];
-    }
+    sorted.sort((a, b) => a.key.localeCompare(b.key));
     return sorted;
   }
 );
@@ -308,38 +325,100 @@ const STATE_ORDER: Record<string, number> = {
 };
 
 export function resolveAlertField(alert: Alert, ref: string): string | undefined {
-  if (ref.startsWith('field:')) {
-    const name = ref.slice(6);
-    const resolved = alert.resolvedFields?.[name];
-    if (resolved) return resolved;
-    switch (name) {
-      case 'severity': return alert.severity;
-      case 'startsAt': return alert.startsAt;
-      case 'updatedAt': return alert.updatedAt;
-      case 'source': return alert.source;
-      case 'name': return alert.name;
-      case 'state': return alert.state;
-      default: return undefined;
-    }
-  }
-  if (ref.startsWith('label:')) {
-    const name = ref.slice(6);
-    return alert.resolvedLabels?.[name] ?? alert.labels[name];
-  }
-  if (ref.startsWith('annotation:')) {
-    const name = ref.slice(11);
-    return alert.resolvedAnnotations?.[name] ?? alert.annotations[name];
-  }
-  // bare string → label (backwards compat)
-  return alert.resolvedLabels?.[ref] ?? alert.labels[ref];
+  return resolveAlertFieldDisplay(alert, ref)?.text;
 }
 
 export function resolveAlertLabel(alert: Alert, name: string): string | undefined {
-  return alert.resolvedLabels?.[name] ?? alert.labels?.[name];
+  return resolveAlertFieldDisplay(alert, `label:${name}`)?.text;
 }
 
 export function resolveAlertAnnotation(alert: Alert, name: string): string | undefined {
-  return alert.resolvedAnnotations?.[name] ?? alert.annotations?.[name];
+  return resolveAlertFieldDisplay(alert, `annotation:${name}`)?.text;
+}
+
+export function resolveAlertFieldDisplay(alert: Alert, ref: string): AlertFieldDisplay | undefined {
+  const parsed = parseAlertRef(ref);
+  const { raw, resolved } = getAlertFieldValues(alert, parsed.ref);
+
+  switch (parsed.mode) {
+    case 'raw':
+      if (raw) return { text: raw, mode: 'raw', raw, resolved };
+      if (resolved) return { text: resolved, mode: 'raw', raw, resolved };
+      return undefined;
+    case 'resolved':
+      if (resolved) return { text: resolved, mode: 'resolved', raw, resolved };
+      if (raw) return { text: raw, mode: 'resolved', raw, resolved };
+      return undefined;
+    case 'both':
+      if (raw && resolved && raw !== resolved) {
+        return { text: `${raw} (${resolved})`, mode: 'both', raw, resolved };
+      }
+      if (raw) return { text: raw, mode: 'both', raw, resolved };
+      if (resolved) return { text: resolved, mode: 'both', raw, resolved };
+      return undefined;
+  }
+}
+
+export function fieldNameFromRef(ref: string): string {
+  return parseAlertRef(ref).name;
+}
+
+function parseAlertRef(ref: string): { ref: string; mode: AlertRefMode; kind: 'field' | 'label' | 'annotation'; name: string } {
+  let baseRef = ref;
+  let mode: AlertRefMode = 'both';
+  const lastColon = ref.lastIndexOf(':');
+  if (lastColon > 0) {
+    const suffix = ref.slice(lastColon + 1);
+    if (suffix === 'raw' || suffix === 'resolved' || suffix === 'both') {
+      baseRef = ref.slice(0, lastColon);
+      mode = suffix;
+    }
+  }
+
+  if (baseRef.startsWith('field:')) {
+    return { ref: baseRef, mode, kind: 'field', name: baseRef.slice(6) };
+  }
+  if (baseRef.startsWith('label:')) {
+    return { ref: baseRef, mode, kind: 'label', name: baseRef.slice(6) };
+  }
+  if (baseRef.startsWith('annotation:')) {
+    return { ref: baseRef, mode, kind: 'annotation', name: baseRef.slice(11) };
+  }
+  return { ref: `label:${baseRef}`, mode, kind: 'label', name: baseRef };
+}
+
+function getAlertFieldValues(alert: Alert, ref: string): { raw?: string; resolved?: string } {
+  if (ref.startsWith('field:')) {
+    const name = ref.slice(6);
+    return {
+      raw: getRawFieldValue(alert, name),
+      resolved: alert.resolvedFields?.[name],
+    };
+  }
+  if (ref.startsWith('label:')) {
+    const name = ref.slice(6);
+    return {
+      raw: alert.labels?.[name],
+      resolved: alert.resolvedLabels?.[name],
+    };
+  }
+  const name = ref.slice(11);
+  return {
+    raw: alert.annotations?.[name],
+    resolved: alert.resolvedAnnotations?.[name],
+  };
+}
+
+function getRawFieldValue(alert: Alert, name: string): string | undefined {
+  switch (name) {
+    case 'severity': return alert.severity;
+    case 'startsAt': return alert.startsAt;
+    case 'updatedAt': return alert.updatedAt;
+    case 'source': return alert.source;
+    case 'name': return alert.name;
+    case 'state': return alert.state;
+    default: return undefined;
+  }
 }
 
 function compareField(a: Alert, b: Alert, criterion: SortCriterion): number {

@@ -12,17 +12,23 @@ display:
   visible_labels:
     - alertname
     - severity
-    - cluster
-    - namespace
+    - label:cluster:raw
+    - label:namespace:raw
   visible_annotations:
-    - summary
+    - annotation:summary
   subtitle_annotations:
-    - description
-    - summary
-  # group_by and sort_by field reference syntax:
+    - annotation:description
+    - annotation:summary
+  # group_by, sort_by, visible_labels, visible_annotations, and
+  # subtitle_annotations field reference syntax:
   #   field:<name>       built-in alert field
   #   label:<name>       alert label value
   #   annotation:<name>  alert annotation value
+  #
+  # Optional suffixes:
+  #   :both      show raw plus resolved value when available (default)
+  #   :raw       always show the original value
+  #   :resolved  prefer the resolved value, fall back to original
   #
   # Supported built-in field:* values:
   #   field:severity   critical < warning < info < unknown
@@ -38,7 +44,7 @@ display:
   #   - label:cluster
   group_by:
     - field:source
-    - label:cluster
+    - label:cluster:both
   sort_by:
     - field: field:severity
       order: asc

@@ -300,10 +300,10 @@
         {$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}
       </div>
     {:else if hasGroups}
-      {#each Object.entries($groupedAlerts) as [groupName, groupAlerts]}
-        {@const visibleInGroup = groupAlerts.filter(a => $filteredAlerts.find(f => f.source === a.source && f.id === a.id))}
+      {#each $groupedAlerts as group}
+        {@const visibleInGroup = group.alerts.filter(a => $filteredAlerts.find(f => f.source === a.source && f.id === a.id))}
         {#if visibleInGroup.length > 0}
-          <AlertGroup {groupName} alerts={visibleInGroup} config={$displayConfig} newKeys={$newAlertKeys} />
+          <AlertGroup groupParts={group.parts} alerts={visibleInGroup} config={$displayConfig} newKeys={$newAlertKeys} />
         {/if}
       {/each}
     {:else}

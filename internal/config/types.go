@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+var fieldRefModes = map[string]struct{}{
+	"raw":      {},
+	"resolved": {},
+	"both":     {},
+}
+
 type Config struct {
 	Sources       []SourceConfig      `yaml:"sources"`
 	Display       DisplayConfig       `yaml:"display"`
@@ -85,6 +91,7 @@ func (d *DisplayConfig) ParsedSortBy() []SortCriterion {
 // ResolveFieldRef parses a field reference like "field:severity", "label:cluster",
 // or "annotation:team". Bare strings without a prefix are treated as label names.
 func ResolveFieldRef(ref string) (kind, name string) {
+	ref = stripFieldRefMode(ref)
 	if s, ok := strings.CutPrefix(ref, "field:"); ok {
 		return "field", s
 	}
@@ -95,6 +102,18 @@ func ResolveFieldRef(ref string) (kind, name string) {
 		return "annotation", s
 	}
 	return "label", ref
+}
+
+func stripFieldRefMode(ref string) string {
+	lastColon := strings.LastIndex(ref, ":")
+	if lastColon <= 0 {
+		return ref
+	}
+	mode := ref[lastColon+1:]
+	if _, ok := fieldRefModes[mode]; ok {
+		return ref[:lastColon]
+	}
+	return ref
 }
 
 // defaultOrder returns the default sort direction for a field reference.

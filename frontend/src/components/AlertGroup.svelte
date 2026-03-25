@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Alert, DisplayConfig } from '../stores/alerts';
+  import type { Alert, AlertFieldDisplay, DisplayConfig } from '../stores/alerts';
   import AlertCard from './AlertCard.svelte';
   import { severityColor } from '../utils/severity';
 
-  export let groupName: string;
+  export let groupParts: AlertFieldDisplay[] = [];
   export let alerts: Alert[];
   export let config: DisplayConfig;
   export let newKeys: Set<string> = new Set();
@@ -19,7 +19,25 @@
 <div class="alert-group">
   <div class="group-header" on:click={() => (collapsed = !collapsed)} role="button" tabindex="0" on:keydown={e => e.key === 'Enter' && (collapsed = !collapsed)}>
     <span class="group-dot" style="background: {severityColor(maxSeverity)}" />
-    <span class="group-name">{groupName}</span>
+    <span class="group-name">
+      {#if groupParts.length === 0}
+        ungrouped
+      {:else}
+        {#each groupParts as part, index}
+          <span class="group-part">
+            {#if part.mode === 'both' && part.raw && part.resolved && part.raw !== part.resolved}
+              <span>{part.raw}</span>
+              <span class="group-resolved">({part.resolved})</span>
+            {:else}
+              <span>{part.text}</span>
+            {/if}
+          </span>
+          {#if index < groupParts.length - 1}
+            <span class="group-separator"> / </span>
+          {/if}
+        {/each}
+      {/if}
+    </span>
     <span class="group-count">{alerts.length}</span>
     <span class="chevron">{collapsed ? '▶' : '▼'}</span>
   </div>
@@ -65,6 +83,18 @@
     flex: 1;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .group-resolved {
+    color: #64748b;
+    margin-left: 0.35rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .group-separator {
+    color: #475569;
   }
 
   .group-count {
