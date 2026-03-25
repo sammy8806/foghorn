@@ -24,8 +24,8 @@
     isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
-  import { GetUIConfig } from '../../wailsjs/go/main/App';
-  import { EventsOn, ScreenGetAll, WindowGetSize, WindowSetPosition, WindowSetSize } from '../../wailsjs/runtime/runtime';
+  import { GetUIConfig, LayoutPopup } from '../../wailsjs/go/main/App';
+  import { EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
 
@@ -145,17 +145,7 @@
     const desiredHeight = measureDesiredPopupHeight();
     const height = clamp(desiredHeight, minPopupHeight, maxHeight);
 
-    WindowSetSize(width, height);
-
-    // On macOS the native resize can land a tick after the size request.
-    // Position using the actual post-resize width to avoid drifting off-screen.
-    await new Promise<void>(resolve => setTimeout(resolve, 16));
-    const actualSize = await WindowGetSize().catch(() => ({ w: width, h: height }));
-
-    WindowSetPosition(
-      Math.max(0, screen.width - actualSize.w - popupHorizontalMargin),
-      popupTopMargin,
-    );
+    await LayoutPopup(width, height, popupHorizontalMargin, popupTopMargin, popupBottomMargin);
   }
 
   function measureDesiredPopupHeight(): number {

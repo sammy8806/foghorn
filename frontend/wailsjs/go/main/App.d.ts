@@ -20,6 +20,8 @@ export function GetSourcesHealth():Promise<Array<model.SourceHealth>>;
 
 export function GetUIConfig():Promise<config.UIConfig>;
 
+export function LayoutPopup(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number):Promise<void>;
+
 export function SetProviders(arg1:Record<string, provider.Provider>):Promise<void>;
 
 export function SilenceAlert(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;

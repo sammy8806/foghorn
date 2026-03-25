@@ -24,12 +24,20 @@ type App struct {
 	actionEng  *action.Engine
 }
 
+var currentApp *App
+
 func NewApp(cfg *config.Config, store *state.Store) *App {
-	return &App{
+	app := &App{
 		cfg:       cfg,
 		store:     store,
 		actionEng: action.New(cfg.Actions),
 	}
+	currentApp = app
+	return app
+}
+
+func activeApp() *App {
+	return currentApp
 }
 
 // SetProviders wires providers into the app after startup.
@@ -91,6 +99,10 @@ func (a *App) GetUIConfig() config.UIConfig {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.cfg.UI
+}
+
+func (a *App) LayoutPopup(width, height, rightMargin, topMargin, bottomMargin int) {
+	layoutPopupWindow(width, height, rightMargin, topMargin, bottomMargin)
 }
 
 // SilenceAlert creates a silence for an alert via its source provider.

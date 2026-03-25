@@ -34,6 +34,10 @@ export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }
 
+export function LayoutPopup(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function SetProviders(arg1) {
   return window['go']['main']['App']['SetProviders'](arg1);
 }
