@@ -191,23 +191,33 @@
   }
   .alert-resolved {
     border-left-width: 8px;
-    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35), 0 0 0 1px rgba(34, 197, 94, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.28), 0 0 0 1px rgba(34, 197, 94, 0.16);
     background:
-      linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.06) 28%, rgba(15, 23, 42, 0) 60%),
+      linear-gradient(90deg, rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.05) 26%, rgba(15, 23, 42, 0) 58%),
       var(--card-bg, #1e293b);
-    animation: alert-resolved-flash 1.2s ease-in-out 2;
+    animation: alert-resolved-hover 4.2s ease-in-out infinite;
   }
   .alert-resolved:hover {
     transform: translateX(1px);
-    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.55), 0 0 0 1px rgba(34, 197, 94, 0.4), 0 0 18px rgba(34, 197, 94, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.42), 0 0 0 1px rgba(34, 197, 94, 0.26), 0 0 14px rgba(34, 197, 94, 0.12);
   }
   @keyframes alert-new-pulse {
     0%, 100% { box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.35), 0 0 0 1px rgba(250, 204, 21, 0.2); }
     50% { box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.65), 0 0 0 1px rgba(250, 204, 21, 0.45), 0 0 20px rgba(250, 204, 21, 0.2); }
   }
-  @keyframes alert-resolved-flash {
-    0%, 100% { box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35), 0 0 0 1px rgba(34, 197, 94, 0.2); }
-    50% { box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.7), 0 0 0 1px rgba(34, 197, 94, 0.45), 0 0 20px rgba(34, 197, 94, 0.18); }
+  @keyframes alert-resolved-hover {
+    0%, 100% {
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.24), 0 0 0 1px rgba(34, 197, 94, 0.14), 0 0 8px rgba(34, 197, 94, 0.06);
+      background:
+        linear-gradient(90deg, rgba(34, 197, 94, 0.12), rgba(34, 197, 94, 0.04) 26%, rgba(15, 23, 42, 0) 58%),
+        var(--card-bg, #1e293b);
+    }
+    50% {
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.36), 0 0 0 1px rgba(34, 197, 94, 0.22), 0 0 14px rgba(34, 197, 94, 0.1);
+      background:
+        linear-gradient(90deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.06) 28%, rgba(15, 23, 42, 0) 60%),
+        var(--card-bg, #1e293b);
+    }
   }
 
   .alert-header {
