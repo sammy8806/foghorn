@@ -73,6 +73,26 @@ export namespace config {
 	        this.Token = source["Token"];
 	    }
 	}
+	export class BadgeRule {
+	    label: string;
+	    field: string;
+	    equals: string[];
+	    sources: string[];
+	    source_types: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BadgeRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.field = source["field"];
+	        this.equals = source["equals"];
+	        this.sources = source["sources"];
+	        this.source_types = source["source_types"];
+	    }
+	}
 	export class BetterStackConfig {
 	    OnCallSchedule: string;
 	    TeamName: string;
@@ -239,6 +259,20 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class DisplayPriority {
+	    sources: string[];
+	    source_types: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DisplayPriority(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sources = source["sources"];
+	        this.source_types = source["source_types"];
+	    }
+	}
 	export class DisplayConfig {
 	    visible_labels: string[];
 	    visible_annotations: string[];
@@ -246,6 +280,7 @@ export namespace config {
 	    group_by: string[];
 	    group_by_override_key_mode: string;
 	    group_by_overrides: Record<string, Array<string>>;
+	    priority: DisplayPriority;
 	    badges: BadgeRule[];
 	
 	    static createFrom(source: any = {}) {
@@ -260,6 +295,7 @@ export namespace config {
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
 	        this.group_by_overrides = source["group_by_overrides"];
+	        this.priority = this.convertValues(source["priority"], DisplayPriority);
 	        this.badges = this.convertValues(source["badges"], BadgeRule);
 	    }
 	
@@ -280,26 +316,6 @@ export namespace config {
 		    }
 		    return a;
 		}
-	}
-	export class BadgeRule {
-	    label: string;
-	    field: string;
-	    equals: string[];
-	    sources: string[];
-	    source_types: string[];
-
-	    static createFrom(source: any = {}) {
-	        return new BadgeRule(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.label = source["label"];
-	        this.field = source["field"];
-	        this.equals = source["equals"];
-	        this.sources = source["sources"];
-	        this.source_types = source["source_types"];
-	    }
 	}
 	export class SeverityLevel {
 	    name: string;
@@ -438,6 +454,7 @@ export namespace config {
 		}
 	}
 	
+	
 	export class SortCriterion {
 	    field: string;
 	    order: string;
@@ -459,6 +476,7 @@ export namespace config {
 	    group_by: string[];
 	    group_by_override_key_mode: string;
 	    group_by_overrides: Record<string, Array<string>>;
+	    priority: DisplayPriority;
 	    badges: BadgeRule[];
 	    sort_by: SortCriterion[];
 	
@@ -474,6 +492,7 @@ export namespace config {
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
 	        this.group_by_overrides = source["group_by_overrides"];
+	        this.priority = this.convertValues(source["priority"], DisplayPriority);
 	        this.badges = this.convertValues(source["badges"], BadgeRule);
 	        this.sort_by = this.convertValues(source["sort_by"], SortCriterion);
 	    }
@@ -756,3 +775,4 @@ export namespace model {
 	}
 
 }
+

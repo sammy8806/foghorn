@@ -64,8 +64,14 @@ export interface DisplayConfig {
   group_by: string[];
   group_by_override_key_mode: 'raw' | 'display';
   group_by_overrides: Record<string, string[]>;
+  priority: AlertPriorityConfig;
   badges: BadgeRule[];
   sort_by: SortCriterion[];
+}
+
+export interface AlertPriorityConfig {
+  sources: string[];
+  source_types: string[];
 }
 
 export interface BadgeRule {
@@ -85,6 +91,7 @@ export const displayConfig = writable<DisplayConfig>({
   group_by: ['cluster'],
   group_by_override_key_mode: 'display',
   group_by_overrides: {},
+  priority: { sources: [], source_types: [] },
   badges: [],
   sort_by: [{ field: 'field:severity', order: 'asc' }, { field: 'field:startsAt', order: 'desc' }],
 });
@@ -303,6 +310,10 @@ export async function loadDisplayConfig(): Promise<void> {
         group_by: cfg.group_by ?? [],
         group_by_override_key_mode: cfg.group_by_override_key_mode === 'raw' ? 'raw' : 'display',
         group_by_overrides: cfg.group_by_overrides ?? {},
+        priority: {
+          sources: cfg.priority?.sources ?? [],
+          source_types: cfg.priority?.source_types ?? [],
+        },
         badges: (cfg.badges ?? []).map(rule => ({
           label: rule.label ?? '',
           field: rule.field ?? '',
@@ -404,8 +415,9 @@ export const groupedAlerts = derived(
     const baseGroupBy = $groupBy || [];
     const overrideKeyMode = $config.group_by_override_key_mode ?? 'display';
     const groupByOverrides = $config.group_by_overrides ?? {};
+    const priorityRank = createAlertPriorityRanker($config.priority);
     if (baseGroupBy.length === 0) {
-      return [{ key: 'ungrouped', parts: [], alerts: [...$alerts].sort(sortByCriteria($criteria)) }] as AlertGroup[];
+      return [{ key: 'ungrouped', parts: [], alerts: [...$alerts].sort(sortByCriteria($criteria, priorityRank)) }] as AlertGroup[];
     }
 
     const groups = new Map<string, AlertGroup>();
@@ -424,9 +436,11 @@ export const groupedAlerts = derived(
 
     const sorted = [...groups.values()];
     for (const group of sorted) {
-      group.alerts.sort(sortByCriteria($criteria));
+      group.alerts.sort(sortByCriteria($criteria, priorityRank));
     }
     sorted.sort((a, b) => {
+      const priorityDiff = highestPriorityInGroup(a, priorityRank) - highestPriorityInGroup(b, priorityRank);
+      if (priorityDiff !== 0) return priorityDiff;
       const severityDiff = highestSeverityInGroup(a) - highestSeverityInGroup(b);
       if (severityDiff !== 0) return severityDiff;
       return a.key.localeCompare(b.key);
@@ -464,6 +478,10 @@ function resolveAlertFieldValueForOverride(alert: Alert, ref: string): string | 
 
 function highestSeverityInGroup(group: AlertGroup): number {
   return group.alerts.reduce((highest, alert) => Math.min(highest, severityOrder(alert.severity)), severityOrder('unknown'));
+}
+
+function highestPriorityInGroup(group: AlertGroup, rank: (alert: Alert) => number): number {
+  return group.alerts.reduce((highest, alert) => Math.min(highest, rank(alert)), Number.MAX_SAFE_INTEGER);
 }
 
 function mergeVisibleAlerts(incoming: Alert[]): Alert[] {
@@ -646,6 +664,33 @@ function getRawFieldValue(alert: Alert, name: string): string | undefined {
   }
 }
 
+function createAlertPriorityRanker(priority?: AlertPriorityConfig): (alert: Alert) => number {
+  const sourceRanks = new Map<string, number>();
+  const sourceTypeRanks = new Map<string, number>();
+  const prioritizedSources = priority?.sources ?? [];
+  const prioritizedSourceTypes = priority?.source_types ?? [];
+
+  for (const [index, source] of prioritizedSources.entries()) {
+    const value = source.trim();
+    if (!value || sourceRanks.has(value)) continue;
+    sourceRanks.set(value, index);
+  }
+
+  const sourceTypeOffset = sourceRanks.size;
+  for (const [index, sourceType] of prioritizedSourceTypes.entries()) {
+    const value = sourceType.trim().toLowerCase();
+    if (!value || sourceTypeRanks.has(value)) continue;
+    sourceTypeRanks.set(value, sourceTypeOffset + index);
+  }
+
+  const defaultRank = sourceRanks.size + sourceTypeRanks.size + 1;
+  return (alert: Alert): number => {
+    const sourceRank = sourceRanks.get(alert.source);
+    if (sourceRank !== undefined) return sourceRank;
+    return sourceTypeRanks.get(alert.sourceType.toLowerCase()) ?? defaultRank;
+  };
+}
+
 function compareField(a: Alert, b: Alert, criterion: SortCriterion): number {
   const { field, order } = criterion;
   const name = field.startsWith('field:') ? field.slice(6) : null;
@@ -670,8 +715,10 @@ function compareField(a: Alert, b: Alert, criterion: SortCriterion): number {
   return order === 'desc' ? -result : result;
 }
 
-export function sortByCriteria(criteria: SortCriterion[]) {
+export function sortByCriteria(criteria: SortCriterion[], priorityRank: (alert: Alert) => number = () => 0) {
   return (a: Alert, b: Alert): number => {
+    const priorityDiff = priorityRank(a) - priorityRank(b);
+    if (priorityDiff !== 0) return priorityDiff;
     for (const criterion of criteria) {
       const diff = compareField(a, b, criterion);
       if (diff !== 0) return diff;

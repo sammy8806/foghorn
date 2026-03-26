@@ -60,8 +60,14 @@ type NormalizedDisplayConfig struct {
 	GroupBy                []string            `json:"group_by"`
 	GroupByOverrideKeyMode string              `json:"group_by_override_key_mode"`
 	GroupByOverrides       map[string][]string `json:"group_by_overrides"`
+	Priority               DisplayPriority     `json:"priority"`
 	Badges                 []BadgeRule         `json:"badges"`
 	SortBy                 []SortCriterion     `json:"sort_by"`
+}
+
+type DisplayPriority struct {
+	Sources     []string `yaml:"sources" json:"sources"`
+	SourceTypes []string `yaml:"source_types" json:"source_types"`
 }
 
 type BadgeRule struct {
@@ -79,6 +85,7 @@ type DisplayConfig struct {
 	GroupBy                []string            `yaml:"group_by" json:"group_by"`
 	GroupByOverrideKeyMode string              `yaml:"group_by_override_key_mode" json:"group_by_override_key_mode"`
 	GroupByOverrides       map[string][]string `yaml:"group_by_overrides" json:"group_by_overrides"`
+	Priority               DisplayPriority     `yaml:"priority" json:"priority"`
 	Badges                 []BadgeRule         `yaml:"badges" json:"badges"`
 	SortBy                 interface{}         `yaml:"sort_by" json:"-"`
 }
@@ -93,6 +100,7 @@ func (d *DisplayConfig) Normalize() NormalizedDisplayConfig {
 		GroupBy:                d.GroupBy,
 		GroupByOverrideKeyMode: d.OverrideKeyMode(),
 		GroupByOverrides:       d.GroupByOverrides,
+		Priority:               d.Priority,
 		Badges:                 d.Badges,
 		SortBy:                 d.ParsedSortBy(),
 	}

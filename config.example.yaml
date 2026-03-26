@@ -130,6 +130,13 @@ display:
       equals: [Acknowledged]
       source_types: [betterstack]
 
+  # Optional alert priority. Matching alerts are floated to the top of the list
+  # and their groups sort ahead of others. Specific source names win over
+  # provider-type matches.
+  # priority:
+  #   sources: [betterstack-production]
+  #   source_types: [betterstack]
+
   sort_by:
     - field: field:severity
       order: asc

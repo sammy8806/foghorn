@@ -37,6 +37,9 @@ display:
   group_by_overrides:
     prod:
       - label:namespace
+  priority:
+    sources: [betterstack-production]
+    source_types: [betterstack]
   badges:
     - label: Ack
       field: label:status
@@ -116,6 +119,12 @@ ui:
 	}
 	if got := cfg.Display.GroupByOverrides["prod"]; len(got) != 1 || got[0] != "label:namespace" {
 		t.Fatalf("expected group_by_overrides for prod, got %#v", got)
+	}
+	if got := cfg.Display.Priority.Sources; len(got) != 1 || got[0] != "betterstack-production" {
+		t.Fatalf("expected display priority source override, got %#v", got)
+	}
+	if got := cfg.Display.Priority.SourceTypes; len(got) != 1 || got[0] != "betterstack" {
+		t.Fatalf("expected display priority source_types override, got %#v", got)
 	}
 	if got := cfg.Display.OverrideKeyMode(); got != "raw" {
 		t.Fatalf("expected group_by_override_key_mode raw, got %q", got)
