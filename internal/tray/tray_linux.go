@@ -31,7 +31,10 @@ func newPlatformTray(m *Manager) platformTray {
 		stopCh: make(chan struct{}),
 	}
 
+	installAyatanaWarningFilter()
 	systray.Register(func() {
+		removeAyatanaWarningFilter()
+
 		lt.mu.Lock()
 		if lt.disposed {
 			lt.mu.Unlock()
