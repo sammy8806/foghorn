@@ -122,6 +122,8 @@
   let refreshing = false;
   let sortMenuOpen = false;
   let groupMenuOpen = false;
+  let severityMenuOpen = false;
+  let sourceMenuOpen = false;
   async function handleRefresh() {
     refreshing = true;
     await refreshAlerts();
@@ -138,9 +140,28 @@
     groupMenuOpen = false;
   }
 
-  function closeSortMenu() {
+  function setSeverityFilter(value: string) {
+    filter.update(f => ({ ...f, severity: value }));
+    severityMenuOpen = false;
+  }
+
+  function setSourceFilter(value: string) {
+    filter.update(f => ({ ...f, source: value }));
+    sourceMenuOpen = false;
+  }
+
+  function closeAllMenus() {
     sortMenuOpen = false;
     groupMenuOpen = false;
+    severityMenuOpen = false;
+    sourceMenuOpen = false;
+  }
+
+  function openMenu(menu: 'severity' | 'source' | 'group' | 'sort') {
+    severityMenuOpen = menu === 'severity' ? !severityMenuOpen : false;
+    sourceMenuOpen = menu === 'source' ? !sourceMenuOpen : false;
+    groupMenuOpen = menu === 'group' ? !groupMenuOpen : false;
+    sortMenuOpen = menu === 'sort' ? !sortMenuOpen : false;
   }
 
   $: noHealthYet = $sourcesHealth.length === 0;
@@ -317,7 +338,7 @@
   }
 </script>
 
-<svelte:window on:click={closeSortMenu} />
+<svelte:window on:click={closeAllMenus} />
 
 <div class="alert-list-container">
   {#if showNotificationInfoCard}
@@ -343,85 +364,156 @@
       placeholder="Filter alerts…"
       bind:value={$filter.text}
     />
-    <select class="filter-select" bind:value={$filter.severity}>
-      <option value="all">All severities</option>
-      {#each $severityConfig.levels as level}
-        <option value={level.name}>{severityLabel(level.name)}</option>
-      {/each}
-    </select>
-    {#if $availableSources.length > 1}
-      <select class="filter-select" bind:value={$filter.source}>
-        <option value="all">All sources</option>
-        {#each $availableSources as src}
-          <option value={src}>{src}</option>
-        {/each}
-      </select>
-    {/if}
-    <label class="verbose-toggle">
-      <input type="checkbox" bind:checked={$filter.showAll} />
-      Show all
-    </label>
-    <label class="verbose-toggle">
-      <input type="checkbox" bind:checked={$verbose} />
-      Verbose
-    </label>
-    <div class="filter-spacer"></div>
-    <div class="sort-toggle-wrap">
+
+    <div class="filter-toggle-wrap">
       <button
-        class="sort-toggle"
-        class:active={groupMenuOpen}
-        on:click|stopPropagation={() => {
-          groupMenuOpen = !groupMenuOpen;
-          sortMenuOpen = false;
-        }}
-        title="Change alert grouping"
+        class="filter-toggle"
+        class:active={severityMenuOpen}
+        class:filtered={$filter.severity !== 'all'}
+        on:click|stopPropagation={() => openMenu('severity')}
+        title="Filter by severity"
       >
-        <span class="sort-toggle-label">Group</span>
-        <span class="sort-toggle-value">{currentGroupLabel()}</span>
-        <span class="sort-toggle-caret">▾</span>
+        <span class="filter-toggle-label">Severity</span>
+        <span class="filter-toggle-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
+        <span class="filter-toggle-caret">▾</span>
       </button>
-      {#if groupMenuOpen}
-        <div class="sort-menu">
-          {#each GROUP_PRESET_OPTIONS as option}
+      {#if severityMenuOpen}
+        <div class="filter-menu">
+          <button
+            class="filter-menu-option"
+            class:selected={$filter.severity === 'all'}
+            on:click|stopPropagation={() => setSeverityFilter('all')}
+          >
+            <span>All severities</span>
+            {#if $filter.severity === 'all'}
+              <span class="filter-menu-check">✓</span>
+            {/if}
+          </button>
+          {#each $severityConfig.levels as level}
             <button
-              class="sort-option"
-              class:selected={$activeGroupMode === option.mode}
-              on:click|stopPropagation={() => setGroupMode(option.mode)}
+              class="filter-menu-option"
+              class:selected={$filter.severity === level.name}
+              on:click|stopPropagation={() => setSeverityFilter(level.name)}
             >
-              <span>{option.label}</span>
-              {#if $activeGroupMode === option.mode}
-                <span class="sort-check">✓</span>
+              <span>{severityLabel(level.name)}</span>
+              {#if $filter.severity === level.name}
+                <span class="filter-menu-check">✓</span>
               {/if}
             </button>
           {/each}
         </div>
       {/if}
     </div>
-    <div class="sort-toggle-wrap">
+
+    {#if $availableSources.length > 1}
+      <div class="filter-toggle-wrap">
+        <button
+          class="filter-toggle"
+          class:active={sourceMenuOpen}
+          class:filtered={$filter.source !== 'all'}
+          on:click|stopPropagation={() => openMenu('source')}
+          title="Filter by source"
+        >
+          <span class="filter-toggle-label">Source</span>
+          <span class="filter-toggle-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
+          <span class="filter-toggle-caret">▾</span>
+        </button>
+        {#if sourceMenuOpen}
+          <div class="filter-menu">
+            <button
+              class="filter-menu-option"
+              class:selected={$filter.source === 'all'}
+              on:click|stopPropagation={() => setSourceFilter('all')}
+            >
+              <span>All sources</span>
+              {#if $filter.source === 'all'}
+                <span class="filter-menu-check">✓</span>
+              {/if}
+            </button>
+            {#each $availableSources as src}
+              <button
+                class="filter-menu-option"
+                class:selected={$filter.source === src}
+                on:click|stopPropagation={() => setSourceFilter(src)}
+              >
+                <span>{src}</span>
+                {#if $filter.source === src}
+                  <span class="filter-menu-check">✓</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <button
+      class="filter-pill"
+      class:filter-pill-active={$filter.showAll}
+      on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
+      title="Show all alerts (bypass filters)"
+    >Show all</button>
+
+    <button
+      class="filter-pill"
+      class:filter-pill-active={$verbose}
+      on:click={() => verbose.update(v => !v)}
+      title="Toggle verbose display"
+    >Verbose</button>
+
+    <div class="filter-spacer"></div>
+
+    <div class="filter-toggle-wrap">
       <button
-        class="sort-toggle"
+        class="filter-toggle"
+        class:active={groupMenuOpen}
+        on:click|stopPropagation={() => openMenu('group')}
+        title="Change alert grouping"
+      >
+        <span class="filter-toggle-label">Group</span>
+        <span class="filter-toggle-value">{currentGroupLabel()}</span>
+        <span class="filter-toggle-caret">▾</span>
+      </button>
+      {#if groupMenuOpen}
+        <div class="filter-menu">
+          {#each GROUP_PRESET_OPTIONS as option}
+            <button
+              class="filter-menu-option"
+              class:selected={$activeGroupMode === option.mode}
+              on:click|stopPropagation={() => setGroupMode(option.mode)}
+            >
+              <span>{option.label}</span>
+              {#if $activeGroupMode === option.mode}
+                <span class="filter-menu-check">✓</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <div class="filter-toggle-wrap">
+      <button
+        class="filter-toggle"
         class:active={sortMenuOpen}
-        on:click|stopPropagation={() => {
-          sortMenuOpen = !sortMenuOpen;
-          groupMenuOpen = false;
-        }}
+        on:click|stopPropagation={() => openMenu('sort')}
         title="Change alert sort order"
       >
-        <span class="sort-toggle-label">Sort</span>
-        <span class="sort-toggle-value">{currentSortLabel()}</span>
-        <span class="sort-toggle-caret">▾</span>
+        <span class="filter-toggle-label">Sort</span>
+        <span class="filter-toggle-value">{currentSortLabel()}</span>
+        <span class="filter-toggle-caret">▾</span>
       </button>
       {#if sortMenuOpen}
-        <div class="sort-menu">
+        <div class="filter-menu">
           {#each SORT_PRESET_OPTIONS as option}
             <button
-              class="sort-option"
+              class="filter-menu-option"
               class:selected={$activeSortMode === option.mode}
               on:click|stopPropagation={() => setSortMode(option.mode)}
             >
               <span>{option.label}</span>
               {#if $activeSortMode === option.mode}
-                <span class="sort-check">✓</span>
+                <span class="filter-menu-check">✓</span>
               {/if}
             </button>
           {/each}
@@ -567,8 +659,9 @@
 
   .filter-bar {
     display: flex;
-    gap: 6px;
-    padding: 8px;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px;
     background: #0f172a;
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
@@ -579,28 +672,20 @@
   }
 
   .filter-input {
-    flex: 0 1 160px;
+    flex: 1 1 180px;
     min-width: 100px;
+    max-width: 280px;
     background: #1e293b;
     border: 1px solid #334155;
-    border-radius: 4px;
+    border-radius: 999px;
     color: #e2e8f0;
     font-size: 12px;
-    padding: 5px 10px;
+    padding: 5px 12px;
     outline: none;
+    transition: border-color 0.15s;
   }
   .filter-input:focus { border-color: #3b82f6; }
-
-  .filter-select {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 4px;
-    color: #e2e8f0;
-    font-size: 12px;
-    padding: 5px 8px;
-    outline: none;
-    cursor: pointer;
-  }
+  .filter-input::placeholder { color: #64748b; }
 
   .status-bar {
     display: flex;
@@ -618,17 +703,34 @@
     flex: 1;
   }
 
-  .verbose-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
+  /* Toggle pill buttons (Show all, Verbose) */
+  .filter-pill {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid #334155;
+    border-radius: 999px;
     color: #94a3b8;
     cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 5px 10px;
     white-space: nowrap;
+    transition: all 0.15s;
     user-select: none;
   }
-  .verbose-toggle input { cursor: pointer; }
+  .filter-pill:hover {
+    color: #e2e8f0;
+    border-color: #475569;
+    background: rgba(36, 50, 71, 0.92);
+  }
+  .filter-pill-active {
+    color: #f0f9ff;
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+  .filter-pill-active:hover {
+    background: rgba(59, 130, 246, 0.28);
+    border-color: rgba(59, 130, 246, 0.5);
+  }
 
   .status-error { color: #ef4444; }
   .status-loading { color: #94a3b8; }
@@ -705,11 +807,12 @@
     border-color: #475569;
     color: #f8fafc;
   }
-  .sort-toggle-wrap {
+  /* Dropdown toggle buttons (Severity, Source, Group, Sort) */
+  .filter-toggle-wrap {
     position: relative;
   }
 
-  .sort-toggle {
+  .filter-toggle {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -720,32 +823,46 @@
     cursor: pointer;
     font-size: 11px;
     line-height: 1;
-    padding: 4px 10px;
+    padding: 5px 10px;
     white-space: nowrap;
+    transition: all 0.15s;
   }
-  .sort-toggle:hover,
-  .sort-toggle.active {
+  .filter-toggle:hover,
+  .filter-toggle.active {
     color: #e2e8f0;
     border-color: #475569;
     background: rgba(36, 50, 71, 0.92);
   }
-  .sort-toggle-label {
+  .filter-toggle.filtered {
+    color: #f0f9ff;
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+  .filter-toggle.filtered:hover,
+  .filter-toggle.filtered.active {
+    background: rgba(59, 130, 246, 0.28);
+    border-color: rgba(59, 130, 246, 0.5);
+  }
+  .filter-toggle-label {
     color: #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 9px;
     font-weight: 700;
   }
-  .sort-toggle-value {
+  .filter-toggle.filtered .filter-toggle-label {
+    color: #93c5fd;
+  }
+  .filter-toggle-value {
     color: #f8fafc;
     font-weight: 600;
   }
-  .sort-toggle-caret {
+  .filter-toggle-caret {
     color: #64748b;
     font-size: 10px;
   }
 
-  .sort-menu {
+  .filter-menu {
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
@@ -758,7 +875,7 @@
     z-index: 10;
   }
 
-  .sort-option {
+  .filter-menu-option {
     width: 100%;
     display: flex;
     align-items: center;
@@ -773,12 +890,12 @@
     padding: 6px 8px;
     text-align: left;
   }
-  .sort-option:hover,
-  .sort-option.selected {
+  .filter-menu-option:hover,
+  .filter-menu-option.selected {
     background: #1e293b;
   }
 
-  .sort-check {
+  .filter-menu-check {
     color: #22c55e;
     font-weight: 700;
   }
