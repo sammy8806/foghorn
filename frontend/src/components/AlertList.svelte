@@ -376,90 +376,110 @@
         {:else if $error}
           <span class="status-error">Error: {$error}</span>
         {:else}
-          <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
-          {#if newVisibleCount > 0}
-            <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
-              {newVisibleCount} new
-            </span>
-            <button
-              class="status-link-btn"
-              on:click={acknowledgeAllAlerts}
-              title="Mark all new alerts as seen"
-            >
-              Unmark all
-            </button>
-          {/if}
-          {#if resolvedVisibleCount > 0}
-            <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">
-              {resolvedVisibleCount} resolved
-            </span>
-            <button
-              class="status-link-btn status-link-btn-resolved"
-              on:click={acknowledgeAllResolvedAlerts}
-              title="Mark all resolved alerts as seen"
-            >
-              Mark resolved seen
-            </button>
-          {/if}
-          <div class="sort-toggle-wrap">
-            <button
-              class="sort-toggle"
-              class:active={groupMenuOpen}
-              on:click|stopPropagation={() => {
-                groupMenuOpen = !groupMenuOpen;
-                sortMenuOpen = false;
-              }}
-              title="Change alert grouping"
-            >
-              Group: {currentGroupLabel()} ▾
-            </button>
-            {#if groupMenuOpen}
-              <div class="sort-menu">
-                {#each GROUP_PRESET_OPTIONS as option}
+          <div class="status-row status-row-primary">
+            <div class="status-section status-section-summary">
+              <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+              {#if newVisibleCount > 0}
+                <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
+                  {newVisibleCount} new
+                </span>
+              {/if}
+              {#if resolvedVisibleCount > 0}
+                <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">
+                  {resolvedVisibleCount} resolved
+                </span>
+              {/if}
+              {#if $verbose}<span class="status-verbose">Verbose</span>{/if}
+            </div>
+
+            {#if newVisibleCount > 0 || resolvedVisibleCount > 0}
+              <div class="status-section status-section-actions">
+                {#if newVisibleCount > 0}
                   <button
-                    class="sort-option"
-                    class:selected={$activeGroupMode === option.mode}
-                    on:click|stopPropagation={() => setGroupMode(option.mode)}
+                    class="status-action-btn"
+                    on:click={acknowledgeAllAlerts}
+                    title="Mark all new alerts as seen"
                   >
-                    <span>{option.label}</span>
-                    {#if $activeGroupMode === option.mode}
-                      <span class="sort-check">✓</span>
-                    {/if}
+                    Clear new
                   </button>
-                {/each}
+                {/if}
+                {#if resolvedVisibleCount > 0}
+                  <button
+                    class="status-action-btn"
+                    on:click={acknowledgeAllResolvedAlerts}
+                    title="Mark all resolved alerts as seen"
+                  >
+                    Clear resolved
+                  </button>
+                {/if}
               </div>
             {/if}
           </div>
-          <div class="sort-toggle-wrap">
-            <button
-              class="sort-toggle"
-              class:active={sortMenuOpen}
-              on:click|stopPropagation={() => {
-                sortMenuOpen = !sortMenuOpen;
-                groupMenuOpen = false;
-              }}
-              title="Change alert sort order"
-            >
-              Sort: {currentSortLabel()} ▾
-            </button>
-            {#if sortMenuOpen}
-              <div class="sort-menu">
-                {#each SORT_PRESET_OPTIONS as option}
-                  <button
-                    class="sort-option"
-                    class:selected={$activeSortMode === option.mode}
-                    on:click|stopPropagation={() => setSortMode(option.mode)}
-                  >
-                    <span>{option.label}</span>
-                    {#if $activeSortMode === option.mode}
-                      <span class="sort-check">✓</span>
-                    {/if}
-                  </button>
-                {/each}
-              </div>
-            {/if}
+
+          <div class="status-row status-row-secondary">
+            <div class="sort-toggle-wrap">
+              <button
+                class="sort-toggle"
+                class:active={groupMenuOpen}
+                on:click|stopPropagation={() => {
+                  groupMenuOpen = !groupMenuOpen;
+                  sortMenuOpen = false;
+                }}
+                title="Change alert grouping"
+              >
+                <span class="sort-toggle-label">Group</span>
+                <span class="sort-toggle-value">{currentGroupLabel()}</span>
+                <span class="sort-toggle-caret">▾</span>
+              </button>
+              {#if groupMenuOpen}
+                <div class="sort-menu">
+                  {#each GROUP_PRESET_OPTIONS as option}
+                    <button
+                      class="sort-option"
+                      class:selected={$activeGroupMode === option.mode}
+                      on:click|stopPropagation={() => setGroupMode(option.mode)}
+                    >
+                      <span>{option.label}</span>
+                      {#if $activeGroupMode === option.mode}
+                        <span class="sort-check">✓</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+            <div class="sort-toggle-wrap">
+              <button
+                class="sort-toggle"
+                class:active={sortMenuOpen}
+                on:click|stopPropagation={() => {
+                  sortMenuOpen = !sortMenuOpen;
+                  groupMenuOpen = false;
+                }}
+                title="Change alert sort order"
+              >
+                <span class="sort-toggle-label">Sort</span>
+                <span class="sort-toggle-value">{currentSortLabel()}</span>
+                <span class="sort-toggle-caret">▾</span>
+              </button>
+              {#if sortMenuOpen}
+                <div class="sort-menu">
+                  {#each SORT_PRESET_OPTIONS as option}
+                    <button
+                      class="sort-option"
+                      class:selected={$activeSortMode === option.mode}
+                      on:click|stopPropagation={() => setSortMode(option.mode)}
+                    >
+                      <span>{option.label}</span>
+                      {#if $activeSortMode === option.mode}
+                        <span class="sort-check">✓</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           </div>
-          {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
         {/if}
       </div>
       <div class="status-right" title={refreshing ? 'Refreshing…' : healthTitle}>
@@ -619,23 +639,68 @@
 
   .status-bar {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 4px 10px;
+    gap: 10px;
+    padding: 6px 10px;
     font-size: 11px;
     color: #475569;
-    background: #0a1120;
+    background:
+      linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(10, 17, 32, 0.98));
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
   }
   .status-bar-secondary {
-    padding-top: 3px;
-    padding-bottom: 3px;
+    align-items: center;
+    padding-top: 5px;
+    padding-bottom: 5px;
     background: #0d1627;
     border-top: 1px solid rgba(51, 65, 85, 0.35);
   }
-  .status-left { display: flex; align-items: center; gap: 6px; position: relative; }
-  .status-right { display: flex; align-items: center; gap: 6px; }
+  .status-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    position: relative;
+  }
+  .status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 4px 8px;
+    border: 1px solid #223044;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.75);
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+  .status-row-primary {
+    flex-wrap: wrap;
+  }
+  .status-row-secondary {
+    gap: 6px;
+  }
+  .status-section {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .status-section-summary {
+    flex-wrap: wrap;
+  }
+  .status-section-actions {
+    flex-wrap: wrap;
+  }
 
   .verbose-toggle {
     display: flex;
@@ -651,11 +716,22 @@
 
   .status-error { color: #ef4444; }
   .status-loading { color: #94a3b8; }
+  .status-count {
+    color: #cbd5e1;
+    font-weight: 600;
+    white-space: nowrap;
+  }
   .status-verbose {
     font-size: 10px;
     font-weight: 600;
-    color: #f59e0b;
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 999px;
+    padding: 2px 7px;
     text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
   }
   .status-new {
     font-size: 10px;
@@ -667,6 +743,7 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
+    white-space: nowrap;
   }
   .status-resolved {
     font-size: 10px;
@@ -678,6 +755,7 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     box-shadow: 0 0 14px rgba(59, 130, 246, 0.2);
+    white-space: nowrap;
   }
   .status-oncall-label {
     color: #7dd3fc;
@@ -694,33 +772,60 @@
     white-space: nowrap;
   }
 
-  .status-link-btn {
-    background: none;
-    border: none;
+  .status-action-btn {
+    background: rgba(30, 41, 59, 0.88);
+    border: 1px solid #334155;
+    border-radius: 999px;
     color: #cbd5e1;
     cursor: pointer;
     font-size: 11px;
-    padding: 0;
+    font-weight: 600;
+    padding: 3px 9px;
+    white-space: nowrap;
   }
-  .status-link-btn:hover {
+  .status-action-btn:hover {
+    background: #243247;
+    border-color: #475569;
     color: #f8fafc;
-    text-decoration: underline;
   }
   .sort-toggle-wrap {
     position: relative;
   }
 
   .sort-toggle {
-    background: none;
-    border: none;
-    color: #94a3b8;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(30, 41, 59, 0.72);
+    border: 1px solid #334155;
+    border-radius: 999px;
+    color: #cbd5e1;
     cursor: pointer;
     font-size: 11px;
-    padding: 0;
+    line-height: 1;
+    padding: 4px 10px;
+    white-space: nowrap;
   }
   .sort-toggle:hover,
   .sort-toggle.active {
     color: #e2e8f0;
+    border-color: #475569;
+    background: rgba(36, 50, 71, 0.92);
+  }
+  .sort-toggle-label {
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .sort-toggle-value {
+    color: #f8fafc;
+    font-weight: 600;
+  }
+  .sort-toggle-caret {
+    color: #64748b;
+    font-size: 10px;
   }
 
   .sort-menu {
@@ -765,16 +870,16 @@
   .refresh-ok { color: #22c55e; }
   .refresh-fail { color: #ef4444; }
   .refresh-pending { color: #f59e0b; }
-  .refresh-time { color: #475569; font-size: 10px; }
+  .refresh-time { color: #94a3b8; font-size: 10px; }
 
   .refresh-btn {
     background: none;
     border: 1px solid #334155;
-    border-radius: 4px;
+    border-radius: 999px;
     color: #94a3b8;
     font-size: 14px;
     line-height: 1;
-    padding: 1px 5px;
+    padding: 2px 7px;
     cursor: pointer;
   }
   .refresh-btn:hover { background: #1e293b; color: #e2e8f0; }
@@ -795,5 +900,15 @@
     color: #475569;
     padding: 40px 20px;
     font-size: 13px;
+  }
+
+  @media (max-width: 640px) {
+    .status-bar {
+      gap: 8px;
+    }
+
+    .status-right {
+      align-self: flex-start;
+    }
   }
 </style>
