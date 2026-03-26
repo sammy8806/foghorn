@@ -6,6 +6,10 @@ import "log"
 
 type noopTray struct{}
 
+func Supported() bool {
+	return false
+}
+
 func newPlatformTray(_ *Manager) platformTray {
 	log.Println("tray: native tray is only implemented on macOS")
 	return &noopTray{}

@@ -19,6 +19,10 @@ import (
 	"unsafe"
 )
 
+func Supported() bool {
+	return true
+}
+
 type darwinTray struct {
 	handle cgo.Handle
 	target unsafe.Pointer

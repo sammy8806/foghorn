@@ -76,7 +76,7 @@ func main() {
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       true,
+		StartHidden:       tray.Supported(),
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
