@@ -172,6 +172,10 @@ export const sourcesHealth = writable<SourceHealth[]>([]);
 export const newAlertKeys = writable<Set<string>>(new Set());
 let hasLoadedOnce = false;
 
+function healthBySource(entries: SourceHealth[]): Map<string, SourceHealth> {
+  return new Map(entries.map(entry => [entry.source, entry]));
+}
+
 export async function refreshAlerts(): Promise<void> {
   try {
     if (!isWails()) {
@@ -187,20 +191,33 @@ export async function refreshAlerts(): Promise<void> {
       GetSourcesHealth(),
     ]);
     const incoming = alertList || [];
+    const currentHealth = health || [];
 
     // Track newly appeared alerts until the user acknowledges them.
     const prev = get(alerts);
+    const prevHealth = healthBySource(get(sourcesHealth));
+    const nextHealth = healthBySource(currentHealth);
     const incomingKeys = new Set(incoming.map(a => a.source + ':' + a.id));
     const prevKeys = new Set(prev.map(a => a.source + ':' + a.id));
     const unseenKeys = new Set<string>();
+    const baselineSources = new Set<string>();
+
+    for (const [source, next] of nextHealth) {
+      const previous = prevHealth.get(source);
+      if (next.ok && (!previous || !previous.ok)) {
+        baselineSources.add(source);
+      }
+    }
 
     for (const key of get(newAlertKeys)) {
       if (incomingKeys.has(key)) unseenKeys.add(key);
     }
 
     if (prev.length > 0 || hasLoadedOnce) {
-      for (const key of incomingKeys) {
+      for (const alert of incoming) {
+        const key = alert.source + ':' + alert.id;
         if (!prevKeys.has(key)) unseenKeys.add(key);
+        if (baselineSources.has(alert.source)) unseenKeys.delete(key);
       }
     }
 
@@ -209,7 +226,7 @@ export async function refreshAlerts(): Promise<void> {
 
     alerts.set(incoming);
     severityCounts.set(counts || { critical: 0, warning: 0, info: 0 });
-    sourcesHealth.set(health || []);
+    sourcesHealth.set(currentHealth);
     error.set(null);
   } catch (e) {
     error.set(String(e));
@@ -315,10 +332,18 @@ export const groupedAlerts = derived(
     for (const group of sorted) {
       group.alerts.sort(sortByCriteria($criteria));
     }
-    sorted.sort((a, b) => a.key.localeCompare(b.key));
+    sorted.sort((a, b) => {
+      const severityDiff = highestSeverityInGroup(a) - highestSeverityInGroup(b);
+      if (severityDiff !== 0) return severityDiff;
+      return a.key.localeCompare(b.key);
+    });
     return sorted;
   }
 );
+
+function highestSeverityInGroup(group: AlertGroup): number {
+  return group.alerts.reduce((highest, alert) => Math.min(highest, severityOrder(alert.severity)), severityOrder('unknown'));
+}
 
 // Enum orderings used for sorting
 const STATE_ORDER: Record<string, number> = {
