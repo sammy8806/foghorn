@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourcesHealth } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
@@ -196,10 +196,15 @@ export interface OnCallStatus {
   lastUpdated: string;
 }
 
+export interface SourceCapabilities {
+  supportsSilence: boolean;
+}
+
 export const verbose = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
 export const sourcesHealth = writable<SourceHealth[]>([]);
+export const sourceCapabilities = writable<Record<string, SourceCapabilities>>({});
 export const onCallStatus = writable<OnCallStatus[]>([]);
 // Set of "source:id" keys that have appeared since the user last acknowledged them.
 export const newAlertKeys = writable<Set<string>>(new Set());
@@ -346,6 +351,16 @@ export async function loadSeverityConfig(): Promise<void> {
   }
 }
 
+export async function loadSourceCapabilities(): Promise<void> {
+  if (!isWails()) return;
+  try {
+    const capabilities = await GetSourceCapabilities();
+    sourceCapabilities.set(capabilities ?? {});
+  } catch (_) {
+    sourceCapabilities.set({});
+  }
+}
+
 export function acknowledgeAlert(alertKey: string): void {
   newAlertKeys.update(keys => {
     if (!keys.has(alertKey)) return keys;
@@ -406,6 +421,7 @@ export function initEventListeners(): void {
   EventsOn('config:reloaded', () => {
     loadSeverityConfig();
     loadDisplayConfig();
+    loadSourceCapabilities();
     refreshAlerts();
   });
 }

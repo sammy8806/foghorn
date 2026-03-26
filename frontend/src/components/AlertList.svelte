@@ -15,6 +15,7 @@
     refreshAlerts,
     loadDisplayConfig,
     loadSeverityConfig,
+    loadSourceCapabilities,
     initEventListeners,
     waitForBridge,
     activeSortMode,
@@ -82,6 +83,7 @@
       await Promise.all([
         loadDisplayConfig(),
         loadSeverityConfig(),
+        loadSourceCapabilities(),
         syncUIConfig(),
         syncEnvironmentInfo(),
         syncNotificationPermissionStatus(),
@@ -91,6 +93,7 @@
       if (!isWails()) return;
       disposeConfigReloaded = EventsOn('config:reloaded', () => {
         void loadSeverityConfig();
+        void loadSourceCapabilities();
         void syncUIConfig();
         void syncEnvironmentInfo();
         void syncNotificationPermissionStatus();

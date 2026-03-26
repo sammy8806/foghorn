@@ -46,10 +46,6 @@ export function GetSourcesHealth() {
   return window['go']['main']['App']['GetSourcesHealth']();
 }
 
-export function GetSourceCapabilities() {
-  return window['go']['main']['App']['GetSourceCapabilities']();
-}
-
 export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }

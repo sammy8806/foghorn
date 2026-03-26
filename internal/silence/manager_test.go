@@ -18,6 +18,7 @@ type mockProvider struct {
 
 func (m *mockProvider) Name() string                                   { return m.name }
 func (m *mockProvider) Type() string                                   { return "mock" }
+func (m *mockProvider) SupportsSilence() bool                          { return true }
 func (m *mockProvider) Fetch(_ context.Context) ([]model.Alert, error) { return nil, nil }
 func (m *mockProvider) Silence(_ context.Context, req model.SilenceRequest) (string, error) {
 	m.lastReq = req
