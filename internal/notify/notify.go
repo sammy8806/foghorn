@@ -8,14 +8,10 @@ import (
 
 	"foghorn/internal/config"
 	"foghorn/internal/model"
-
-	"github.com/gen2brain/beeep"
 )
 
 // send is the notification dispatcher; overridable in tests.
-var send = func(title, body string) error {
-	return beeep.Notify(title, body, "")
-}
+var send = defaultSend
 
 // Engine sends OS notifications for alert changes.
 type Engine struct {
@@ -28,10 +24,6 @@ type Engine struct {
 }
 
 const defaultBatchWindow = 3 * time.Second
-
-func init() {
-	beeep.AppName = "Foghorn"
-}
 
 func SendNewAlertNotification(alert model.Alert) error {
 	title, body := newAlertNotificationContent(alert)
