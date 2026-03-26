@@ -25,28 +25,18 @@ severities:
   levels:
     - name: critical
       color: "#ef4444"
-      aliases: [critical, page, sev1, p1]
+      aliases: [ critical, page, sev1, p1 ]
     - name: warning
       color: "#f59e0b"
-      aliases: [warning, warn, sev2, p2]
+      aliases: [ warning, warn, sev2, p2 ]
     - name: info
       color: "#3b82f6"
-      aliases: [info, sev3, p3]
+      aliases: [ info, sev3, p3 ]
     - name: unknown
       color: "#6b7280"
-      aliases: [unknown, none]
+      aliases: [ unknown, none ]
 
 display:
-  visible_labels:
-    - alertname
-    - severity
-    - label:cluster:raw
-    - label:namespace:raw
-  visible_annotations:
-    - annotation:summary
-  subtitle_annotations:
-    - annotation:description
-    - annotation:summary
   # group_by, sort_by, visible_labels, visible_annotations, and
   # subtitle_annotations field reference syntax:
   #   field:<name>       built-in alert field
@@ -70,13 +60,39 @@ display:
   #   - cluster
   # is equivalent to:
   #   - label:cluster
+
+  subtitle_annotations:
+    - description
+    - summary
+
+  visible_labels:
+    - cluster:raw
+    - namespace
+    - region
+    - job
+    - job_name
+    - pod
+    - operation
+    - environment
+    - svcname
+    - replica
+    - persistentvolumeclaim
+
+  visible_annotations:
+    - description
+    - summary
+    - link
+    - runbook
+
   group_by:
     - field:source
-    - label:cluster:both
+    - label:cluster
+
   # Controls how group_by_overrides keys are matched:
   #   display  match the rendered top-level group label (default)
   #   raw      match the underlying raw values for the top-level group fields
   group_by_override_key_mode: display
+
   # Optional per-group refinement. The key is the top-level group key produced by
   # group_by. Matching groups append the listed fields, while all other groups
   # keep the default group_by as-is. Keys use the mode above.
@@ -91,6 +107,7 @@ display:
   # group_by_overrides:
   #   saas-cs-0b:
   #     - label:namespace
+
   sort_by:
     - field: field:severity
       order: asc
@@ -109,33 +126,33 @@ notifications:
   on_resolved: false
   batch_threshold: 5
 
-actions: []
+actions: [ ]
 
 resolvers:
-  # Optional local-only value resolvers. These run after alerts are fetched and
-  # only affect display/grouping/sorting/filtering in the UI. Raw labels remain
-  # untouched for silences, actions, and provider requests.
-  #
-  # Each resolver targets one field reference and executes a local command.
-  # The command should print the resolved value to stdout.
-  #
-  # Available templates in command/args/env:
-  #   {{.Value}}               raw value for the configured field
-  #   {{.Ref}}                 full field ref, e.g. label:cluster
-  #   {{.Kind}}                field | label | annotation
-  #   {{.Name}}                field/label/annotation name
-  #   {{.Alert.Source}}        alert source
-  #   {{.Labels.cluster}}      alert label access
-  #   {{.Annotations.summary}} alert annotation access
-  #
-  # Example: map internal cluster IDs to customer-facing names using a local script.
-  # - name: cluster-name
-  #   field: label:cluster
-  #   command: ./scripts/resolve-cluster
-  #   args:
-  #     - "{{.Value}}"
-  #   timeout: 500ms
-  #   cache_ttl: 24h
+# Optional local-only value resolvers. These run after alerts are fetched and
+# only affect display/grouping/sorting/filtering in the UI. Raw labels remain
+# untouched for silences, actions, and provider requests.
+#
+# Each resolver targets one field reference and executes a local command.
+# The command should print the resolved value to stdout.
+#
+# Available templates in command/args/env:
+#   {{.Value}}               raw value for the configured field
+#   {{.Ref}}                 full field ref, e.g. label:cluster
+#   {{.Kind}}                field | label | annotation
+#   {{.Name}}                field/label/annotation name
+#   {{.Alert.Source}}        alert source
+#   {{.Labels.cluster}}      alert label access
+#   {{.Annotations.summary}} alert annotation access
+#
+# Example: map internal cluster IDs to customer-facing names using a local script.
+# - name: cluster-name
+#   field: label:cluster
+#   command: ./scripts/resolve-cluster
+#   args:
+#     - "{{.Value}}"
+#   timeout: 500ms
+#   cache_ttl: 24h
 
 ui:
   theme: system

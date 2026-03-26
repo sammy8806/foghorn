@@ -80,6 +80,22 @@ func (a *App) GetAlerts() []model.Alert {
 	return resolveEng.ResolveAlerts(a.store.All())
 }
 
+// ResolveDiff applies display resolvers to diff payloads before they are sent to the UI.
+func (a *App) ResolveDiff(diff model.Diff) model.Diff {
+	a.mu.RLock()
+	resolveEng := a.resolveEng
+	a.mu.RUnlock()
+
+	if resolveEng == nil {
+		return diff
+	}
+
+	diff.New = resolveEng.ResolveAlerts(diff.New)
+	diff.Resolved = resolveEng.ResolveAlerts(diff.Resolved)
+	diff.Changed = resolveEng.ResolveAlerts(diff.Changed)
+	return diff
+}
+
 // GetSeverityCounts returns current severity counts.
 func (a *App) GetSeverityCounts() model.SeverityCounts {
 	return a.store.SeverityCounts()
