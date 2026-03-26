@@ -23,6 +23,10 @@ func Supported() bool {
 	return true
 }
 
+func StartHiddenByDefault() bool {
+	return true
+}
+
 type darwinTray struct {
 	handle cgo.Handle
 	target unsafe.Pointer

@@ -76,7 +76,7 @@ func main() {
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       tray.Supported(),
+		StartHidden:       tray.StartHiddenByDefault(),
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
@@ -131,7 +131,7 @@ func main() {
 				_ = stopWatch // cleaned up when process exits
 			}
 
-			go trayMgr.Run(nil)
+			trayMgr.Run(nil)
 		},
 		OnBeforeClose: func(ctx context.Context) bool {
 			if quitting.Load() {

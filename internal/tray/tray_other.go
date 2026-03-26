@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build !darwin && (!linux || !linux_tray)
 
 package tray
 
@@ -7,6 +7,10 @@ import "log"
 type noopTray struct{}
 
 func Supported() bool {
+	return false
+}
+
+func StartHiddenByDefault() bool {
 	return false
 }
 
