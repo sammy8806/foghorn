@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { GetUIConfig } from '../../wailsjs/go/main/App';
   import { SilenceAlert } from '../../wailsjs/go/main/App';
   import type { Alert } from '../stores/alerts';
 
@@ -9,18 +10,64 @@
   const dispatch = createEventDispatcher<{ close: void; silenced: void }>();
 
   let duration = '2h';
+  let createdBy = '';
   let comment = '';
   let loading = false;
   let error = '';
+  let debugDefaultCreatedBy = '';
+  let debugLoadError = '';
+  let debugUIConfig = '';
+  let debugUIConfigKeys = '';
+  let debugUIConfigCtor = '';
+  let debugTrace = '';
+  let initializedForOpen = false;
 
   const presets = ['30m', '1h', '2h', '4h', '8h', '24h'];
+
+  async function loadDefaults() {
+    debugTrace = 'loadDefaults:start';
+    console.log('SilenceDialog loadDefaults:start', { open, alert });
+    try {
+      const uiConfig = await GetUIConfig();
+      debugTrace = 'loadDefaults:resolved';
+      debugUIConfig = String(uiConfig);
+      debugUIConfigKeys = Object.getOwnPropertyNames(uiConfig ?? {}).join(', ');
+      debugUIConfigCtor = uiConfig?.constructor?.name ?? '';
+      console.log('SilenceDialog GetUIConfig raw', uiConfig);
+      console.log('SilenceDialog GetUIConfig keys', Object.getOwnPropertyNames(uiConfig ?? {}));
+      console.log('SilenceDialog GetUIConfig probes', {
+        default_created_by: uiConfig?.default_created_by,
+        DefaultCreatedBy: uiConfig?.DefaultCreatedBy,
+        defaultCreatedBy: uiConfig?.defaultCreatedBy,
+      });
+      const resolvedCreatedBy =
+        uiConfig.default_created_by ??
+        uiConfig.DefaultCreatedBy ??
+        uiConfig.defaultCreatedBy ??
+        '';
+      debugDefaultCreatedBy = resolvedCreatedBy;
+      debugLoadError = '';
+      createdBy = resolvedCreatedBy.trim();
+      debugTrace = `loadDefaults:assigned:${createdBy || '<empty>'}`;
+      console.log('SilenceDialog loadDefaults:assigned', { resolvedCreatedBy, createdBy });
+    } catch {
+      debugDefaultCreatedBy = '';
+      debugLoadError = 'GetUIConfig failed';
+      debugUIConfig = '';
+      debugUIConfigKeys = '';
+      debugUIConfigCtor = '';
+      createdBy = '';
+      debugTrace = 'loadDefaults:catch';
+      console.log('SilenceDialog loadDefaults:catch');
+    }
+  }
 
   async function submit() {
     if (!alert) return;
     loading = true;
     error = '';
     try {
-      await SilenceAlert(alert.id, alert.source, duration, comment);
+      await SilenceAlert(alert.id, alert.source, duration, createdBy, comment);
       dispatch('silenced');
       dispatch('close');
     } catch (e) {
@@ -31,6 +78,7 @@
   }
 
   function close() {
+    console.log('SilenceDialog close');
     dispatch('close');
   }
 
@@ -38,11 +86,40 @@
     if (e.key === 'Escape') close();
     if (e.key === 'Enter' && !loading) submit();
   }
+
+  $: if (open && !initializedForOpen) {
+    initializedForOpen = true;
+    debugTrace = 'dialog:opened';
+    console.log('SilenceDialog reactive open transition', { open, initializedForOpen, alert });
+    duration = '2h';
+    comment = '';
+    error = '';
+    debugDefaultCreatedBy = '';
+    debugLoadError = '';
+    debugUIConfig = '';
+    debugUIConfigKeys = '';
+    debugUIConfigCtor = '';
+    createdBy = '';
+    void loadDefaults();
+  }
+
+  $: if (!open) {
+    initializedForOpen = false;
+  }
+
+  $: console.log('SilenceDialog state', { open, initializedForOpen, createdBy, debugTrace });
 </script>
 
 {#if open && alert}
   <div class="overlay" on:click={close} on:keydown={handleKeydown} role="presentation">
-    <div class="dialog" on:click|stopPropagation role="dialog" aria-modal="true" aria-labelledby="silence-title">
+    <div
+      class="dialog"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="silence-title"
+    >
       <div class="dialog-header">
         <h3 id="silence-title">Silence Alert</h3>
         <button class="btn-close" on:click={close} aria-label="Close">✕</button>
@@ -76,6 +153,24 @@
         </label>
 
         <label class="field">
+          <span>Created by</span>
+          <input
+            class="input"
+            type="text"
+            bind:value={createdBy}
+            placeholder="Username"
+          />
+          <span class="debug-value">debug default_created_by: "{debugDefaultCreatedBy}"</span>
+          <span class="debug-value">debug uiConfig: {debugUIConfig}</span>
+          <span class="debug-value">debug uiConfig ctor: {debugUIConfigCtor}</span>
+          <span class="debug-value">debug uiConfig keys: {debugUIConfigKeys}</span>
+          <span class="debug-value">debug trace: {debugTrace}</span>
+          {#if debugLoadError}
+            <span class="debug-error">{debugLoadError}</span>
+          {/if}
+        </label>
+
+        <label class="field">
           <span>Comment</span>
           <textarea
             class="input textarea"
@@ -92,7 +187,7 @@
 
       <div class="dialog-footer">
         <button class="btn btn-cancel" on:click={close} disabled={loading}>Cancel</button>
-        <button class="btn btn-primary" on:click={submit} disabled={loading || !duration}>
+        <button class="btn btn-primary" on:click={submit} disabled={loading || !duration || !createdBy.trim()}>
           {loading ? 'Silencing…' : 'Silence'}
         </button>
       </div>
@@ -175,6 +270,16 @@
     margin-bottom: 14px;
     font-size: 12px;
     color: #94a3b8;
+  }
+
+  .debug-value {
+    color: #64748b;
+    font-size: 11px;
+  }
+
+  .debug-error {
+    color: #f59e0b;
+    font-size: 11px;
   }
 
   .duration-row {

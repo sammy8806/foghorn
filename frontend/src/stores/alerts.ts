@@ -248,6 +248,10 @@ export function acknowledgeAlert(alertKey: string): void {
   });
 }
 
+export function acknowledgeAllAlerts(): void {
+  newAlertKeys.set(new Set());
+}
+
 // Detect whether we're running inside the Wails webview or a plain browser.
 export const isWails = (): boolean => !!(window as any).runtime || !!(window as any)['go'];
 

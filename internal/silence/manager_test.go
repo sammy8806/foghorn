@@ -16,8 +16,8 @@ type mockProvider struct {
 	unsilenced []string
 }
 
-func (m *mockProvider) Name() string { return m.name }
-func (m *mockProvider) Type() string { return "mock" }
+func (m *mockProvider) Name() string                                   { return m.name }
+func (m *mockProvider) Type() string                                   { return "mock" }
 func (m *mockProvider) Fetch(_ context.Context) ([]model.Alert, error) { return nil, nil }
 func (m *mockProvider) Silence(_ context.Context, req model.SilenceRequest) (string, error) {
 	m.lastReq = req
@@ -44,7 +44,7 @@ func TestSilenceAlert(t *testing.T) {
 		Labels: map[string]string{"alertname": "HighCPU", "severity": "warning", "cluster": "prod"},
 	}
 
-	id, err := mgr.SilenceAlert(context.Background(), alert, "2h", "test silence")
+	id, err := mgr.SilenceAlert(context.Background(), alert, "2h", "alice", "test silence", "fallback")
 	if err != nil {
 		t.Fatalf("SilenceAlert() error: %v", err)
 	}
@@ -53,6 +53,9 @@ func TestSilenceAlert(t *testing.T) {
 	}
 	if mp.lastReq.Comment != "test silence" {
 		t.Errorf("expected comment 'test silence', got %q", mp.lastReq.Comment)
+	}
+	if mp.lastReq.CreatedBy != "alice" {
+		t.Errorf("expected createdBy 'alice', got %q", mp.lastReq.CreatedBy)
 	}
 	if mp.lastReq.EndsAt.Sub(mp.lastReq.StartsAt) < 2*time.Hour-time.Second {
 		t.Errorf("expected 2h duration, got %v", mp.lastReq.EndsAt.Sub(mp.lastReq.StartsAt))
@@ -66,7 +69,7 @@ func TestSilenceUnknownSource(t *testing.T) {
 	mgr := New(map[string]provider.Provider{})
 
 	alert := model.Alert{Source: "nonexistent", Name: "Alert"}
-	_, err := mgr.SilenceAlert(context.Background(), alert, "1h", "")
+	_, err := mgr.SilenceAlert(context.Background(), alert, "1h", "", "", "")
 	if err == nil {
 		t.Error("expected error for unknown source, got nil")
 	}
@@ -90,8 +93,28 @@ func TestInvalidDuration(t *testing.T) {
 	mgr := New(map[string]provider.Provider{"test-am": mp})
 
 	alert := model.Alert{Source: "test-am", Name: "Alert", Labels: map[string]string{}}
-	_, err := mgr.SilenceAlert(context.Background(), alert, "not-a-duration", "")
+	_, err := mgr.SilenceAlert(context.Background(), alert, "not-a-duration", "", "", "")
 	if err == nil {
 		t.Error("expected error for invalid duration, got nil")
+	}
+}
+
+func TestSilenceAlertFallsBackToDefaultCreatedBy(t *testing.T) {
+	mp := &mockProvider{name: "test-am", silenceID: "silence-abc"}
+	mgr := New(map[string]provider.Provider{"test-am": mp})
+
+	alert := model.Alert{
+		ID:     "fp123",
+		Source: "test-am",
+		Name:   "HighCPU",
+		Labels: map[string]string{"alertname": "HighCPU"},
+	}
+
+	_, err := mgr.SilenceAlert(context.Background(), alert, "2h", "", "test silence", "configured-user")
+	if err != nil {
+		t.Fatalf("SilenceAlert() error: %v", err)
+	}
+	if mp.lastReq.CreatedBy != "configured-user" {
+		t.Errorf("expected createdBy 'configured-user', got %q", mp.lastReq.CreatedBy)
 	}
 }

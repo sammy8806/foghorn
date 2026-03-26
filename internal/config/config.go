@@ -2,8 +2,11 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"os/user"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,9 +17,10 @@ var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 func Default() *Config {
 	return &Config{
 		UI: UIConfig{
-			Theme:       "system",
-			PopupWidth:  800,
-			PopupHeight: 600,
+			Theme:            "system",
+			PopupWidth:       800,
+			PopupHeight:      600,
+			DefaultCreatedBy: defaultCreatedBy(),
 		},
 	}
 }
@@ -73,5 +77,32 @@ func validate(cfg *Config) error {
 	if cfg.UI.PopupHeight == 0 {
 		cfg.UI.PopupHeight = 600
 	}
+	if strings.TrimSpace(cfg.UI.DefaultCreatedBy) == "" {
+		cfg.UI.DefaultCreatedBy = defaultCreatedBy()
+	}
 	return nil
+}
+
+func CurrentUsername() string {
+	if current, err := user.Current(); err == nil {
+		if value := strings.TrimSpace(current.Username); value != "" {
+			log.Printf("config: resolved current username via os/user: %q", value)
+			return value
+		}
+		log.Printf("config: os/user returned empty username")
+	} else {
+		log.Printf("config: os/user lookup failed: %v", err)
+	}
+	for _, envKey := range []string{"USER", "USERNAME"} {
+		if value := strings.TrimSpace(os.Getenv(envKey)); value != "" {
+			log.Printf("config: resolved current username via env %s: %q", envKey, value)
+			return value
+		}
+	}
+	log.Printf("config: falling back to default username %q", "foghorn")
+	return "foghorn"
+}
+
+func defaultCreatedBy() string {
+	return CurrentUsername()
 }

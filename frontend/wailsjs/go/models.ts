@@ -77,6 +77,7 @@ export namespace config {
 	    popup_height: number;
 	    show_resolved: boolean;
 	    show_silenced: boolean;
+	    default_created_by: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UIConfig(source);
@@ -89,6 +90,7 @@ export namespace config {
 	        this.popup_height = source["popup_height"];
 	        this.show_resolved = source["show_resolved"];
 	        this.show_silenced = source["show_silenced"];
+	        this.default_created_by = source["default_created_by"];
 	    }
 	}
 	export class ResolverConfig {

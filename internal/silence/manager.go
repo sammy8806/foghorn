@@ -3,6 +3,7 @@ package silence
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"foghorn/internal/model"
@@ -20,7 +21,7 @@ func New(providers map[string]provider.Provider) *Manager {
 
 // SilenceAlert creates a silence for a specific alert on its source provider.
 // duration is expressed as a duration string, e.g. "2h", "30m".
-func (m *Manager) SilenceAlert(ctx context.Context, alert model.Alert, duration string, comment string) (string, error) {
+func (m *Manager) SilenceAlert(ctx context.Context, alert model.Alert, duration string, createdBy string, comment string, defaultCreatedBy string) (string, error) {
 	p, ok := m.providers[alert.Source]
 	if !ok {
 		return "", fmt.Errorf("no provider registered for source %q", alert.Source)
@@ -38,7 +39,7 @@ func (m *Manager) SilenceAlert(ctx context.Context, alert model.Alert, duration 
 		Matchers:  matchers,
 		StartsAt:  time.Now(),
 		EndsAt:    time.Now().Add(dur),
-		CreatedBy: "foghorn",
+		CreatedBy: resolveCreatedBy(createdBy, defaultCreatedBy),
 		Comment:   comment,
 	}
 
@@ -71,7 +72,7 @@ func (m *Manager) SilenceByLabels(ctx context.Context, source string, labels map
 		Matchers:  matchers,
 		StartsAt:  time.Now(),
 		EndsAt:    time.Now().Add(dur),
-		CreatedBy: "foghorn",
+		CreatedBy: resolveCreatedBy("", ""),
 		Comment:   comment,
 	}
 
@@ -99,4 +100,14 @@ func matchersFromAlert(alert model.Alert) []model.Matcher {
 		})
 	}
 	return matchers
+}
+
+func resolveCreatedBy(createdBy, fallback string) string {
+	if value := strings.TrimSpace(createdBy); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(fallback); value != "" {
+		return value
+	}
+	return "foghorn"
 }

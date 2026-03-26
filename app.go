@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"foghorn/internal/action"
@@ -106,7 +107,10 @@ func (a *App) GetActions() []config.ActionConfig {
 func (a *App) GetUIConfig() config.UIConfig {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.cfg.UI
+	ui := a.cfg.UI
+	ui.DefaultCreatedBy = config.CurrentUsername()
+	log.Printf("app: GetUIConfig returning default_created_by=%q", ui.DefaultCreatedBy)
+	return ui
 }
 
 func (a *App) LayoutPopup(width, height, rightMargin, topMargin, bottomMargin int) {
@@ -114,7 +118,7 @@ func (a *App) LayoutPopup(width, height, rightMargin, topMargin, bottomMargin in
 }
 
 // SilenceAlert creates a silence for an alert via its source provider.
-func (a *App) SilenceAlert(alertID, source, duration, comment string) error {
+func (a *App) SilenceAlert(alertID, source, duration, createdBy, comment string) error {
 	a.mu.RLock()
 	silenceMgr := a.silenceMgr
 	ctx := a.ctx
@@ -126,7 +130,7 @@ func (a *App) SilenceAlert(alertID, source, duration, comment string) error {
 	alerts := a.store.All()
 	for _, alert := range alerts {
 		if alert.ID == alertID && alert.Source == source {
-			_, err := silenceMgr.SilenceAlert(ctx, alert, duration, comment)
+			_, err := silenceMgr.SilenceAlert(ctx, alert, duration, createdBy, comment, config.CurrentUsername())
 			return err
 		}
 	}

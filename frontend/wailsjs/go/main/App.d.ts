@@ -24,7 +24,7 @@ export function LayoutPopup(arg1:number,arg2:number,arg3:number,arg4:number,arg5
 
 export function SetProviders(arg1:Record<string, provider.Provider>):Promise<void>;
 
-export function SilenceAlert(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+export function SilenceAlert(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function Unsilence(arg1:string,arg2:string):Promise<void>;
 

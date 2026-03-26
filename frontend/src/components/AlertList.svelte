@@ -8,6 +8,7 @@
     verbose,
     sourcesHealth,
     newAlertKeys,
+    acknowledgeAllAlerts,
     refreshAlerts,
     loadDisplayConfig,
     initEventListeners,
@@ -235,6 +236,13 @@
           <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
             {newVisibleCount} new
           </span>
+          <button
+            class="status-link-btn"
+            on:click={acknowledgeAllAlerts}
+            title="Mark all new alerts as seen"
+          >
+            Unmark all
+          </button>
         {/if}
         <div class="sort-toggle-wrap">
           <button
@@ -419,6 +427,19 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
+  }
+
+  .status-link-btn {
+    background: none;
+    border: none;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+  }
+  .status-link-btn:hover {
+    color: #f8fafc;
+    text-decoration: underline;
   }
 
   .sort-toggle-wrap {
