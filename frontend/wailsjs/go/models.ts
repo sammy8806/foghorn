@@ -260,6 +260,7 @@ export namespace config {
 		}
 	}
 	export class DisplayPriority {
+	    mode: string;
 	    sources: string[];
 	    source_types: string[];
 	
@@ -269,6 +270,7 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
 	        this.sources = source["sources"];
 	        this.source_types = source["source_types"];
 	    }

@@ -70,6 +70,7 @@ export interface DisplayConfig {
 }
 
 export interface AlertPriorityConfig {
+  mode: 'before_sort' | 'after_sort';
   sources: string[];
   source_types: string[];
 }
@@ -91,7 +92,7 @@ export const displayConfig = writable<DisplayConfig>({
   group_by: ['cluster'],
   group_by_override_key_mode: 'display',
   group_by_overrides: {},
-  priority: { sources: [], source_types: [] },
+  priority: { mode: 'before_sort', sources: [], source_types: [] },
   badges: [],
   sort_by: [{ field: 'field:severity', order: 'asc' }, { field: 'field:startsAt', order: 'desc' }],
 });
@@ -311,6 +312,7 @@ export async function loadDisplayConfig(): Promise<void> {
         group_by_override_key_mode: cfg.group_by_override_key_mode === 'raw' ? 'raw' : 'display',
         group_by_overrides: cfg.group_by_overrides ?? {},
         priority: {
+          mode: cfg.priority?.mode === 'after_sort' ? 'after_sort' : 'before_sort',
           sources: cfg.priority?.sources ?? [],
           source_types: cfg.priority?.source_types ?? [],
         },
@@ -416,8 +418,9 @@ export const groupedAlerts = derived(
     const overrideKeyMode = $config.group_by_override_key_mode ?? 'display';
     const groupByOverrides = $config.group_by_overrides ?? {};
     const priorityRank = createAlertPriorityRanker($config.priority);
+    const applyPriorityFirst = ($config.priority?.mode ?? 'before_sort') !== 'after_sort';
     if (baseGroupBy.length === 0) {
-      return [{ key: 'ungrouped', parts: [], alerts: [...$alerts].sort(sortByCriteria($criteria, priorityRank)) }] as AlertGroup[];
+      return [{ key: 'ungrouped', parts: [], alerts: [...$alerts].sort(sortByCriteria($criteria, priorityRank, applyPriorityFirst)) }] as AlertGroup[];
     }
 
     const groups = new Map<string, AlertGroup>();
@@ -436,13 +439,19 @@ export const groupedAlerts = derived(
 
     const sorted = [...groups.values()];
     for (const group of sorted) {
-      group.alerts.sort(sortByCriteria($criteria, priorityRank));
+      group.alerts.sort(sortByCriteria($criteria, priorityRank, applyPriorityFirst));
     }
     sorted.sort((a, b) => {
-      const priorityDiff = highestPriorityInGroup(a, priorityRank) - highestPriorityInGroup(b, priorityRank);
-      if (priorityDiff !== 0) return priorityDiff;
+      if (applyPriorityFirst) {
+        const priorityDiff = highestPriorityInGroup(a, priorityRank) - highestPriorityInGroup(b, priorityRank);
+        if (priorityDiff !== 0) return priorityDiff;
+      }
       const severityDiff = highestSeverityInGroup(a) - highestSeverityInGroup(b);
       if (severityDiff !== 0) return severityDiff;
+      if (!applyPriorityFirst) {
+        const priorityDiff = highestPriorityInGroup(a, priorityRank) - highestPriorityInGroup(b, priorityRank);
+        if (priorityDiff !== 0) return priorityDiff;
+      }
       return a.key.localeCompare(b.key);
     });
     return sorted;
@@ -715,13 +724,23 @@ function compareField(a: Alert, b: Alert, criterion: SortCriterion): number {
   return order === 'desc' ? -result : result;
 }
 
-export function sortByCriteria(criteria: SortCriterion[], priorityRank: (alert: Alert) => number = () => 0) {
+export function sortByCriteria(
+  criteria: SortCriterion[],
+  priorityRank: (alert: Alert) => number = () => 0,
+  priorityFirst: boolean = true,
+) {
   return (a: Alert, b: Alert): number => {
-    const priorityDiff = priorityRank(a) - priorityRank(b);
-    if (priorityDiff !== 0) return priorityDiff;
+    if (priorityFirst) {
+      const priorityDiff = priorityRank(a) - priorityRank(b);
+      if (priorityDiff !== 0) return priorityDiff;
+    }
     for (const criterion of criteria) {
       const diff = compareField(a, b, criterion);
       if (diff !== 0) return diff;
+    }
+    if (!priorityFirst) {
+      const priorityDiff = priorityRank(a) - priorityRank(b);
+      if (priorityDiff !== 0) return priorityDiff;
     }
     return 0;
   };

@@ -66,6 +66,7 @@ type NormalizedDisplayConfig struct {
 }
 
 type DisplayPriority struct {
+	Mode        string   `yaml:"mode" json:"mode"`
 	Sources     []string `yaml:"sources" json:"sources"`
 	SourceTypes []string `yaml:"source_types" json:"source_types"`
 }

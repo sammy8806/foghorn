@@ -38,6 +38,7 @@ display:
     prod:
       - label:namespace
   priority:
+    mode: after_sort
     sources: [betterstack-production]
     source_types: [betterstack]
   badges:
@@ -122,6 +123,9 @@ ui:
 	}
 	if got := cfg.Display.Priority.Sources; len(got) != 1 || got[0] != "betterstack-production" {
 		t.Fatalf("expected display priority source override, got %#v", got)
+	}
+	if got := cfg.Display.Priority.Mode; got != "after_sort" {
+		t.Fatalf("expected display priority mode after_sort, got %q", got)
 	}
 	if got := cfg.Display.Priority.SourceTypes; len(got) != 1 || got[0] != "betterstack" {
 		t.Fatalf("expected display priority source_types override, got %#v", got)

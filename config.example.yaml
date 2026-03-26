@@ -133,7 +133,12 @@ display:
   # Optional alert priority. Matching alerts are floated to the top of the list
   # and their groups sort ahead of others. Specific source names win over
   # provider-type matches.
+  #
+  # mode:
+  #   before_sort  apply provider priority before sort_by (default)
+  #   after_sort   use provider priority only as a tie-breaker after sort_by
   # priority:
+  #   mode: after_sort
   #   sources: [betterstack-production]
   #   source_types: [betterstack]
 
