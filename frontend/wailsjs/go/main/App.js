@@ -50,6 +50,10 @@ export function OpenNotificationSettings() {
   return window['go']['main']['App']['OpenNotificationSettings']();
 }
 
+export function ResolveDiff(arg1) {
+  return window['go']['main']['App']['ResolveDiff'](arg1);
+}
+
 export function SetProviders(arg1) {
   return window['go']['main']['App']['SetProviders'](arg1);
 }

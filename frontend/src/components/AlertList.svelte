@@ -41,6 +41,15 @@
   const popupHeightBuffer = 25;
   let notificationPermissionStatus = '';
   let notificationSettingsError = '';
+  let environmentPlatform = '';
+  let environmentBuildType = '';
+
+  async function syncEnvironmentInfo() {
+    if (!isWails()) return;
+    const environment = await Environment();
+    environmentPlatform = environment.platform;
+    environmentBuildType = environment.buildType;
+  }
 
   async function syncNotificationPermissionStatus() {
     if (!isWails()) return;
@@ -70,6 +79,7 @@
         loadDisplayConfig(),
         loadSeverityConfig(),
         syncUIConfig(),
+        syncEnvironmentInfo(),
         syncNotificationPermissionStatus(),
       ]);
       await refreshAlerts();
@@ -78,6 +88,7 @@
       disposeConfigReloaded = EventsOn('config:reloaded', () => {
         void loadSeverityConfig();
         void syncUIConfig();
+        void syncEnvironmentInfo();
         void syncNotificationPermissionStatus();
       });
       disposePopupOpening = EventsOn('popup:opening', async () => {
@@ -127,7 +138,16 @@
   $: noHealthYet = $sourcesHealth.length === 0;
   $: allSourcesOK = $sourcesHealth.length > 0 && $sourcesHealth.every(h => h.ok);
   $: anySourceFailing = $sourcesHealth.length > 0 && $sourcesHealth.some(h => !h.ok);
-  $: showNotificationInfoCard = notificationPermissionStatus === 'denied' || notificationPermissionStatus === 'not_determined' || notificationPermissionStatus === 'unsupported_legacy';
+  $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
+  $: isMacOSDevMode = environmentPlatform === 'darwin' && (
+    normalizedBuildType === 'dev' ||
+    normalizedBuildType === 'development'
+  );
+  $: showNotificationInfoCard = !isMacOSDevMode && (
+    notificationPermissionStatus === 'denied' ||
+    notificationPermissionStatus === 'not_determined' ||
+    notificationPermissionStatus === 'unsupported_legacy'
+  );
   $: notificationInfoTitle = notificationPermissionStatus === 'denied'
     ? 'Notifications are configured, but currently blocked'
     : 'Notifications are configured, but not allowed yet';
@@ -135,7 +155,7 @@
     ? 'Foghorn is not allowed to show notifications in macOS Notification Center.'
     : notificationPermissionStatus === 'unsupported_legacy'
       ? 'This macOS version does not expose notification permission status directly. Open Notification settings and make sure Foghorn is allowed.'
-      : 'macOS has not granted notification permission to Foghorn yet. If you are running via wails dev, build and launch the Foghorn .app bundle once so it appears in Notification settings.';
+      : 'macOS has not granted notification permission to Foghorn yet.';
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : $sourcesHealth.map(h =>
