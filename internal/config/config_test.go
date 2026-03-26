@@ -146,3 +146,20 @@ ui:
 		t.Errorf("expected expanded password 'testpass', got %q", cfg.Sources[0].Auth.Password)
 	}
 }
+
+func TestDefaultEnablesNewAlertNotifications(t *testing.T) {
+	cfg := Default()
+
+	if !cfg.Notifications.Enabled {
+		t.Fatal("expected notifications to be enabled by default")
+	}
+	if !cfg.Notifications.OnNew {
+		t.Fatal("expected new alert notifications to be enabled by default")
+	}
+	if cfg.Notifications.OnResolved {
+		t.Fatal("expected resolved alert notifications to remain disabled by default")
+	}
+	if cfg.Notifications.BatchThreshold != 5 {
+		t.Fatalf("expected default batch threshold 5, got %d", cfg.Notifications.BatchThreshold)
+	}
+}

@@ -75,6 +75,7 @@ sounds:
   enabled: false
 
 notifications:
+  # On macOS these are delivered through Notification Center.
   enabled: true
   on_new: true
   on_resolved: false

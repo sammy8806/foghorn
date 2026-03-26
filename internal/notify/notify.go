@@ -29,6 +29,15 @@ type Engine struct {
 
 const defaultBatchWindow = 3 * time.Second
 
+func init() {
+	beeep.AppName = "Foghorn"
+}
+
+func SendNewAlertNotification(alert model.Alert) error {
+	title, body := newAlertNotificationContent(alert)
+	return send(title, body)
+}
+
 func New(cfg config.NotificationsConfig) *Engine {
 	return &Engine{
 		cfg:         cfg,
@@ -101,16 +110,7 @@ func (e *Engine) flushBatch() {
 }
 
 func (e *Engine) sendNew(alert model.Alert) {
-	title := fmt.Sprintf("[%s] %s", severityLabel(alert.Severity), alert.Name)
-	body := ""
-	if s := alert.Annotations["summary"]; s != "" {
-		body = s
-	} else if d := alert.Annotations["description"]; d != "" {
-		body = d
-	}
-	if body == "" {
-		body = fmt.Sprintf("Source: %s", alert.Source)
-	}
+	title, body := newAlertNotificationContent(alert)
 	e.send(title, body)
 }
 
@@ -137,4 +137,18 @@ func severityLabel(s string) string {
 	default:
 		return s
 	}
+}
+
+func newAlertNotificationContent(alert model.Alert) (string, string) {
+	title := fmt.Sprintf("[%s] %s", severityLabel(alert.Severity), alert.Name)
+	body := ""
+	if s := alert.Annotations["summary"]; s != "" {
+		body = s
+	} else if d := alert.Annotations["description"]; d != "" {
+		body = d
+	}
+	if body == "" {
+		body = fmt.Sprintf("Source: %s", alert.Source)
+	}
+	return title, body
 }

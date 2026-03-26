@@ -9,6 +9,7 @@ import (
 	"foghorn/internal/action"
 	"foghorn/internal/config"
 	"foghorn/internal/model"
+	"foghorn/internal/notify"
 	"foghorn/internal/provider"
 	"foghorn/internal/resolve"
 	"foghorn/internal/silence"
@@ -115,6 +116,23 @@ func (a *App) GetUIConfig() config.UIConfig {
 
 func (a *App) LayoutPopup(width, height, rightMargin, topMargin, bottomMargin int) {
 	layoutPopupWindow(width, height, rightMargin, topMargin, bottomMargin)
+}
+
+func (a *App) TestNotificationForAlert(alertID, source string) error {
+	for _, alert := range a.store.All() {
+		if alert.ID == alertID && alert.Source == source {
+			return notify.SendNewAlertNotification(alert)
+		}
+	}
+	return fmt.Errorf("alert %s/%s not found", source, alertID)
+}
+
+func (a *App) GetNotificationPermissionStatus() string {
+	return notify.NotificationPermissionStatus()
+}
+
+func (a *App) OpenNotificationSettings() error {
+	return notify.OpenNotificationSettings()
 }
 
 // SilenceAlert creates a silence for an alert via its source provider.

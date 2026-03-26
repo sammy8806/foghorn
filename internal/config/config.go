@@ -16,6 +16,12 @@ var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 // Default returns a minimal usable config with no sources.
 func Default() *Config {
 	return &Config{
+		Notifications: NotificationsConfig{
+			Enabled:        true,
+			OnNew:          true,
+			OnResolved:     false,
+			BatchThreshold: 5,
+		},
 		UI: UIConfig{
 			Theme:            "system",
 			PopupWidth:       800,
@@ -76,6 +82,9 @@ func validate(cfg *Config) error {
 	}
 	if cfg.UI.PopupHeight == 0 {
 		cfg.UI.PopupHeight = 600
+	}
+	if cfg.Notifications.BatchThreshold == 0 {
+		cfg.Notifications.BatchThreshold = 5
 	}
 	if strings.TrimSpace(cfg.UI.DefaultCreatedBy) == "" {
 		cfg.UI.DefaultCreatedBy = defaultCreatedBy()

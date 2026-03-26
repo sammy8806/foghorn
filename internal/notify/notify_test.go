@@ -113,3 +113,29 @@ func TestNotificationsDisabled(t *testing.T) {
 		t.Errorf("expected no notifications when disabled, got %d", len(sent))
 	}
 }
+
+func TestSendNewAlertNotification(t *testing.T) {
+	originalSend := send
+	defer func() {
+		send = originalSend
+	}()
+
+	var gotTitle string
+	var gotBody string
+	send = func(title, body string) error {
+		gotTitle = title
+		gotBody = body
+		return nil
+	}
+
+	if err := SendNewAlertNotification(makeAlert("Alert1", "critical")); err != nil {
+		t.Fatalf("SendNewAlertNotification() error: %v", err)
+	}
+
+	if gotTitle != "[CRITICAL] Alert1" {
+		t.Fatalf("unexpected title: %q", gotTitle)
+	}
+	if gotBody != "Test alert summary for Alert1" {
+		t.Fatalf("unexpected body: %q", gotBody)
+	}
+}

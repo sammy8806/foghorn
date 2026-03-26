@@ -27,7 +27,7 @@
     isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
-  import { GetUIConfig, LayoutPopup } from '../../wailsjs/go/main/App';
+  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
@@ -37,6 +37,13 @@
   const popupBottomMargin = 16;
   const minPopupHeight = 220;
   const popupHeightBuffer = 25;
+  let notificationPermissionStatus = '';
+  let notificationSettingsError = '';
+
+  async function syncNotificationPermissionStatus() {
+    if (!isWails()) return;
+    notificationPermissionStatus = await GetNotificationPermissionStatus();
+  }
 
   onMount(() => {
     let disposePopupOpening = () => {};
@@ -60,12 +67,14 @@
       await Promise.all([
         loadDisplayConfig(),
         syncUIConfig(),
+        syncNotificationPermissionStatus(),
       ]);
       await refreshAlerts();
 
       if (!isWails()) return;
       disposeConfigReloaded = EventsOn('config:reloaded', () => {
         void syncUIConfig();
+        void syncNotificationPermissionStatus();
       });
       disposePopupOpening = EventsOn('popup:opening', async () => {
         await layoutPopup();
@@ -114,6 +123,15 @@
   $: noHealthYet = $sourcesHealth.length === 0;
   $: allSourcesOK = $sourcesHealth.length > 0 && $sourcesHealth.every(h => h.ok);
   $: anySourceFailing = $sourcesHealth.length > 0 && $sourcesHealth.some(h => !h.ok);
+  $: showNotificationInfoCard = notificationPermissionStatus === 'denied' || notificationPermissionStatus === 'not_determined' || notificationPermissionStatus === 'unsupported_legacy';
+  $: notificationInfoTitle = notificationPermissionStatus === 'denied'
+    ? 'Notifications are configured, but currently blocked'
+    : 'Notifications are configured, but not allowed yet';
+  $: notificationInfoText = notificationPermissionStatus === 'denied'
+    ? 'Foghorn is not allowed to show notifications in macOS Notification Center.'
+    : notificationPermissionStatus === 'unsupported_legacy'
+      ? 'This macOS version does not expose notification permission status directly. Open Notification settings and make sure Foghorn is allowed.'
+      : 'macOS has not granted notification permission to Foghorn yet.';
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : $sourcesHealth.map(h =>
@@ -194,11 +212,35 @@
   function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
   }
+
+  async function handleOpenNotificationSettings() {
+    notificationSettingsError = '';
+    try {
+      await OpenNotificationSettings();
+    } catch (e) {
+      notificationSettingsError = String(e);
+    }
+  }
 </script>
 
 <svelte:window on:click={closeSortMenu} />
 
 <div class="alert-list-container">
+  {#if showNotificationInfoCard}
+    <div class="info-card info-card-warning">
+      <div class="info-card-copy">
+        <div class="info-card-title">{notificationInfoTitle}</div>
+        <div class="info-card-text">{notificationInfoText}</div>
+        {#if notificationSettingsError}
+          <div class="info-card-error">{notificationSettingsError}</div>
+        {/if}
+      </div>
+      <button class="info-card-action" on:click={handleOpenNotificationSettings}>
+        Open Notification Settings
+      </button>
+    </div>
+  {/if}
+
   <!-- Filter bar -->
   <div class="filter-bar">
     <input
@@ -382,6 +424,57 @@
     overflow: hidden;
   }
 
+  .info-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 8px 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #7c2d12;
+    background: linear-gradient(135deg, rgba(120, 53, 15, 0.22), rgba(30, 41, 59, 0.92));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .info-card-copy {
+    min-width: 0;
+  }
+
+  .info-card-title {
+    color: #fed7aa;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .info-card-text {
+    color: #fdba74;
+    font-size: 11px;
+    margin-top: 2px;
+  }
+
+  .info-card-error {
+    color: #fecaca;
+    font-size: 11px;
+    margin-top: 4px;
+  }
+
+  .info-card-action {
+    flex-shrink: 0;
+    border: 1px solid #fb923c;
+    background: rgba(251, 146, 60, 0.12);
+    color: #ffedd5;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .info-card-action:hover {
+    background: rgba(251, 146, 60, 0.2);
+  }
+
   .filter-bar {
     display: flex;
     gap: 6px;
@@ -472,7 +565,6 @@
     color: #f8fafc;
     text-decoration: underline;
   }
-
   .sort-toggle-wrap {
     position: relative;
   }

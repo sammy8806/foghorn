@@ -22,6 +22,10 @@ export function GetDisplayConfig() {
   return window['go']['main']['App']['GetDisplayConfig']();
 }
 
+export function GetNotificationPermissionStatus() {
+  return window['go']['main']['App']['GetNotificationPermissionStatus']();
+}
+
 export function GetSeverityCounts() {
   return window['go']['main']['App']['GetSeverityCounts']();
 }
@@ -38,12 +42,20 @@ export function LayoutPopup(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function OpenNotificationSettings() {
+  return window['go']['main']['App']['OpenNotificationSettings']();
+}
+
 export function SetProviders(arg1) {
   return window['go']['main']['App']['SetProviders'](arg1);
 }
 
 export function SilenceAlert(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SilenceAlert'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function TestNotificationForAlert(arg1, arg2) {
+  return window['go']['main']['App']['TestNotificationForAlert'](arg1, arg2);
 }
 
 export function Unsilence(arg1, arg2) {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
   import { acknowledgeAlert, acknowledgeResolvedAlert, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
+  import { TestNotificationForAlert } from '../../wailsjs/go/main/App';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
@@ -42,6 +43,8 @@
 
   let expanded = false;
   let silenceOpen = false;
+  let testingNotification = false;
+  let testNotificationStatus = '';
   let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
 
   $: alertKey = alert.source + ':' + alert.id;
@@ -62,6 +65,19 @@
     if (!acknowledgeTimer) return;
     clearTimeout(acknowledgeTimer);
     acknowledgeTimer = null;
+  }
+
+  async function handleTestNotification() {
+    testingNotification = true;
+    testNotificationStatus = '';
+    try {
+      await TestNotificationForAlert(alert.id, alert.source);
+      testNotificationStatus = 'Notification sent';
+    } catch (e) {
+      testNotificationStatus = `Notification failed: ${String(e)}`;
+    } finally {
+      testingNotification = false;
+    }
   }
 </script>
 
@@ -152,6 +168,19 @@
       <div class="alert-actions">
         {#if alert.generatorURL}
           <a href={alert.generatorURL} target="_blank" class="generator-link">Open in Prometheus</a>
+        {/if}
+        {#if $verbose}
+          <button
+            class="btn-silence"
+            on:click|stopPropagation={handleTestNotification}
+            disabled={testingNotification}
+            title="Send a notification preview using this alert"
+          >
+            {testingNotification ? 'Sending…' : 'Test notification'}
+          </button>
+          {#if testNotificationStatus}
+            <span class="action-status">{testNotificationStatus}</span>
+          {/if}
         {/if}
         {#if !alert.silencedBy?.length && !isResolved}
           <button class="btn-silence" on:click|stopPropagation={() => (silenceOpen = true)}>Silence…</button>
@@ -365,5 +394,15 @@
     font-size: 11px;
     padding: 2px 8px;
   }
+  .btn-silence:disabled {
+    color: #64748b;
+    cursor: default;
+  }
   .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
+
+  .action-status {
+    font-size: 11px;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
 </style>
