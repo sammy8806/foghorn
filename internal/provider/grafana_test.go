@@ -71,6 +71,63 @@ func TestGrafanaFetch(t *testing.T) {
 	}
 }
 
+func TestGrafanaFetchUsesConfiguredSeverityLabel(t *testing.T) {
+	alerts := []map[string]interface{}{
+		{
+			"fingerprint":  "graf123",
+			"startsAt":     "2026-03-25T10:00:00Z",
+			"updatedAt":    "2026-03-25T10:05:00Z",
+			"generatorURL": "https://grafana.example.com/alerting/graf123/view",
+			"labels": map[string]string{
+				"alertname":      "DatasourceError",
+				"priority":       "warning",
+				"grafana_folder": "Infra",
+			},
+			"annotations": map[string]string{
+				"summary": "Datasource health check failed",
+			},
+			"status": map[string]interface{}{
+				"state":       "active",
+				"silencedBy":  []string{},
+				"inhibitedBy": []string{},
+				"mutedBy":     []string{},
+			},
+			"receivers": []map[string]string{
+				{"name": "grafana-default-email"},
+			},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/alertmanager/grafana/api/v2/alerts" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(alerts)
+	}))
+	defer server.Close()
+
+	grafana := NewGrafana(config.SourceConfig{
+		Name:          "grafana-main",
+		Type:          "grafana",
+		URL:           server.URL,
+		PollInterval:  30 * time.Second,
+		SeverityLabel: "priority",
+	})
+
+	result, err := grafana.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch() error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(result))
+	}
+	if result[0].Severity != "warning" {
+		t.Fatalf("expected severity warning from priority label, got %q", result[0].Severity)
+	}
+}
+
 func TestGrafanaSilenceAccepts202(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/alertmanager/grafana/api/v2/silences" || r.Method != http.MethodPost {

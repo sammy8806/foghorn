@@ -16,6 +16,8 @@ export function GetDisplayConfig():Promise<config.NormalizedDisplayConfig>;
 
 export function GetNotificationPermissionStatus():Promise<string>;
 
+export function GetSeverityConfig():Promise<config.NormalizedSeverityConfig>;
+
 export function GetSeverityCounts():Promise<model.SeverityCounts>;
 
 export function GetSourcesHealth():Promise<Array<model.SourceHealth>>;

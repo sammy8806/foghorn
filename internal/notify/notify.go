@@ -3,6 +3,7 @@ package notify
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +16,8 @@ var send = defaultSend
 
 // Engine sends OS notifications for alert changes.
 type Engine struct {
-	cfg config.NotificationsConfig
+	cfg    config.NotificationsConfig
+	scheme config.SeverityScheme
 
 	mu          sync.Mutex
 	pending     []model.Alert // batch accumulation
@@ -26,13 +28,15 @@ type Engine struct {
 const defaultBatchWindow = 3 * time.Second
 
 func SendNewAlertNotification(alert model.Alert) error {
-	title, body := newAlertNotificationContent(alert)
+	normalized, _ := config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
+	title, body := newAlertNotificationContent(alert, normalized.Scheme())
 	return send(title, body)
 }
 
-func New(cfg config.NotificationsConfig) *Engine {
+func New(cfg config.NotificationsConfig, severities config.NormalizedSeverityConfig) *Engine {
 	return &Engine{
 		cfg:         cfg,
+		scheme:      severities.Scheme(),
 		batchWindow: defaultBatchWindow,
 	}
 }
@@ -83,14 +87,17 @@ func (e *Engine) flushBatch() {
 
 	if len(pending) >= threshold {
 		// Batch notification
-		critCount := 0
+		highestName := ""
+		highestRank := len(e.scheme.Levels) + 1
 		for _, a := range pending {
-			if a.Severity == "critical" {
-				critCount++
+			rank := e.scheme.Rank(a.Severity)
+			if rank < highestRank {
+				highestRank = rank
+				highestName = e.scheme.Canonicalize(a.Severity)
 			}
 		}
 		title := fmt.Sprintf("Foghorn: %d new alerts", len(pending))
-		body := fmt.Sprintf("%d critical, %d other", critCount, len(pending)-critCount)
+		body := fmt.Sprintf("Highest severity: %s", severityLabel(highestName))
 		e.send(title, body)
 		return
 	}
@@ -102,7 +109,7 @@ func (e *Engine) flushBatch() {
 }
 
 func (e *Engine) sendNew(alert model.Alert) {
-	title, body := newAlertNotificationContent(alert)
+	title, body := newAlertNotificationContent(alert, e.scheme)
 	e.send(title, body)
 }
 
@@ -119,20 +126,11 @@ func (e *Engine) send(title, body string) {
 }
 
 func severityLabel(s string) string {
-	switch s {
-	case "critical":
-		return "CRITICAL"
-	case "warning":
-		return "WARNING"
-	case "info":
-		return "INFO"
-	default:
-		return s
-	}
+	return strings.ToUpper(strings.TrimSpace(s))
 }
 
-func newAlertNotificationContent(alert model.Alert) (string, string) {
-	title := fmt.Sprintf("[%s] %s", severityLabel(alert.Severity), alert.Name)
+func newAlertNotificationContent(alert model.Alert, scheme config.SeverityScheme) (string, string) {
+	title := fmt.Sprintf("[%s] %s", severityLabel(scheme.Canonicalize(alert.Severity)), alert.Name)
 	body := ""
 	if s := alert.Annotations["summary"]; s != "" {
 		body = s

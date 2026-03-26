@@ -8,6 +8,15 @@ import (
 	"foghorn/internal/model"
 )
 
+func testSeverityConfig(t *testing.T) config.NormalizedSeverityConfig {
+	t.Helper()
+	severities, err := config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
+	if err != nil {
+		t.Fatalf("NormalizeSeverityConfig() error: %v", err)
+	}
+	return severities
+}
+
 func makeAlert(name, severity string) model.Alert {
 	return model.Alert{
 		ID:       name,
@@ -36,7 +45,7 @@ func TestBatchingBelowThreshold(t *testing.T) {
 		OnNew:          true,
 		BatchThreshold: 5,
 	}
-	e := New(cfg)
+	e := New(cfg, testSeverityConfig(t))
 	e.batchWindow = 50 * time.Millisecond
 
 	diff := model.Diff{
@@ -68,7 +77,7 @@ func TestBatchingAboveThreshold(t *testing.T) {
 		OnNew:          true,
 		BatchThreshold: 3,
 	}
-	e := New(cfg)
+	e := New(cfg, testSeverityConfig(t))
 	e.batchWindow = 50 * time.Millisecond
 
 	diff := model.Diff{
@@ -101,7 +110,7 @@ func TestNotificationsDisabled(t *testing.T) {
 	}
 
 	cfg := config.NotificationsConfig{Enabled: false}
-	e := New(cfg)
+	e := New(cfg, testSeverityConfig(t))
 
 	e.OnDiff(model.Diff{
 		New: []model.Alert{makeAlert("Alert1", "critical")},

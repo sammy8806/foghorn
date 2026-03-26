@@ -69,7 +69,7 @@ func (p *Prometheus) Fetch(ctx context.Context) ([]model.Alert, error) {
 
 	alerts := make([]model.Alert, 0, len(envelope.Data.Alerts))
 	for _, a := range envelope.Data.Alerts {
-		alerts = append(alerts, a.toAlert(p.cfg.Name))
+		alerts = append(alerts, a.toAlert(p.cfg.Name, p.cfg.SeverityLabel))
 	}
 
 	p.mu.Lock()
@@ -124,7 +124,7 @@ type promAlert struct {
 	Value       string            `json:"value"`
 }
 
-func (a promAlert) toAlert(source string) model.Alert {
+func (a promAlert) toAlert(source, severityLabel string) model.Alert {
 	activeAt, _ := time.Parse(time.RFC3339Nano, a.ActiveAt)
 
 	// Generate a stable fingerprint from labels
@@ -135,7 +135,7 @@ func (a promAlert) toAlert(source string) model.Alert {
 		Source:      source,
 		SourceType:  "prometheus",
 		Name:        a.Labels["alertname"],
-		Severity:    a.Labels["severity"],
+		Severity:    severityFromLabels(a.Labels, severityLabel),
 		State:       a.State,
 		Labels:      a.Labels,
 		Annotations: a.Annotations,

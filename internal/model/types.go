@@ -71,8 +71,4 @@ type Diff struct {
 }
 
 // SeverityCounts tracks alert counts per severity level.
-type SeverityCounts struct {
-	Critical int `json:"critical"`
-	Warning  int `json:"warning"`
-	Info     int `json:"info"`
-}
+type SeverityCounts map[string]int

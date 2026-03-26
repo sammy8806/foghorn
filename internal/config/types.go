@@ -13,6 +13,7 @@ var fieldRefModes = map[string]struct{}{
 
 type Config struct {
 	Sources       []SourceConfig      `yaml:"sources"`
+	Severities    SeverityConfig      `yaml:"severities"`
 	Display       DisplayConfig       `yaml:"display"`
 	Sounds        SoundsConfig        `yaml:"sounds"`
 	Notifications NotificationsConfig `yaml:"notifications"`
@@ -22,12 +23,13 @@ type Config struct {
 }
 
 type SourceConfig struct {
-	Name         string        `yaml:"name"`
-	Type         string        `yaml:"type"`
-	URL          string        `yaml:"url"`
-	Auth         AuthConfig    `yaml:"auth"`
-	PollInterval time.Duration `yaml:"poll_interval"`
-	Filters      []string      `yaml:"filters"`
+	Name          string        `yaml:"name"`
+	Type          string        `yaml:"type"`
+	URL           string        `yaml:"url"`
+	Auth          AuthConfig    `yaml:"auth"`
+	PollInterval  time.Duration `yaml:"poll_interval"`
+	Filters       []string      `yaml:"filters"`
+	SeverityLabel string        `yaml:"severity_label"`
 }
 
 type AuthConfig struct {

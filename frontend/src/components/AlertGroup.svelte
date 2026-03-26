@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Alert, AlertFieldDisplay, DisplayConfig } from '../stores/alerts';
   import AlertCard from './AlertCard.svelte';
-  import { severityColor } from '../utils/severity';
+  import { severityColor, severityOrder } from '../utils/severity';
 
   export let groupParts: AlertFieldDisplay[] = [];
   export let alerts: Alert[];
@@ -10,9 +10,8 @@
   export let resolvedKeys: Set<string> = new Set();
 
   $: maxSeverity = alerts.reduce((worst, a) => {
-    const order = { critical: 0, warning: 1, info: 2 };
-    return (order[a.severity] ?? 3) < (order[worst] ?? 3) ? a.severity : worst;
-  }, 'info');
+    return severityOrder(a.severity) < severityOrder(worst) ? a.severity : worst;
+  }, alerts[0]?.severity ?? 'unknown');
 
   let collapsed = false;
 </script>

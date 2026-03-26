@@ -2,7 +2,7 @@
   import type { Alert, DisplayConfig } from '../stores/alerts';
   import { acknowledgeAlert, acknowledgeResolvedAlert, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
   import { TestNotificationForAlert } from '../../wailsjs/go/main/App';
-  import { severityClass, severityColor, formatDuration } from '../utils/severity';
+  import { severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
   export let alert: Alert;
@@ -82,7 +82,8 @@
 </script>
 
 <div
-  class="alert-card {severityClass(alert.severity)}"
+  class="alert-card"
+  style:border-left-color={severityColor(alert.severity)}
   class:silenced={alert.silencedBy?.length > 0}
   class:alert-new={isNew}
   class:alert-resolved={isResolved}
@@ -202,9 +203,6 @@
     overflow: hidden;
     transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   }
-  .severity-critical { border-left-color: #ef4444; }
-  .severity-warning { border-left-color: #f59e0b; }
-  .severity-info { border-left-color: #3b82f6; }
   .silenced { opacity: 0.6; }
   .alert-new {
     border-left-width: 8px;

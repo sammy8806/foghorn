@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"foghorn/internal/config"
 	"foghorn/internal/model"
 )
 
@@ -15,13 +16,23 @@ type Store struct {
 	bySource map[string]map[string]model.Alert
 	// health tracks the last poll result per source
 	health map[string]model.SourceHealth
+	// severityScheme normalizes raw provider severities into configured canonical values.
+	severityScheme config.SeverityScheme
 }
 
 func New() *Store {
+	normalized, _ := config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
 	return &Store{
-		bySource: make(map[string]map[string]model.Alert),
-		health:   make(map[string]model.SourceHealth),
+		bySource:       make(map[string]map[string]model.Alert),
+		health:         make(map[string]model.SourceHealth),
+		severityScheme: normalized.Scheme(),
 	}
+}
+
+func (s *Store) SetSeverityConfig(cfg config.NormalizedSeverityConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.severityScheme = cfg.Scheme()
 }
 
 // Update replaces all alerts for a source and returns the diff.
@@ -36,6 +47,7 @@ func (s *Store) Update(source string, alerts []model.Alert) model.Diff {
 
 	curr := make(map[string]model.Alert, len(alerts))
 	for _, a := range alerts {
+		a.Severity = s.severityScheme.Canonicalize(a.Severity)
 		curr[a.Key()] = a
 	}
 
@@ -87,17 +99,10 @@ func (s *Store) SeverityCounts() model.SeverityCounts {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var counts model.SeverityCounts
+	counts := model.SeverityCounts(s.severityScheme.EmptyCounts())
 	for _, alerts := range s.bySource {
 		for _, a := range alerts {
-			switch a.Severity {
-			case "critical":
-				counts.Critical++
-			case "warning":
-				counts.Warning++
-			default:
-				counts.Info++
-			}
+			counts[s.severityScheme.Canonicalize(a.Severity)]++
 		}
 	}
 	return counts

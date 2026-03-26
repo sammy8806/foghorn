@@ -1,31 +1,4 @@
-export type Severity = 'critical' | 'warning' | 'info' | 'unknown';
-
-export function severityOrder(severity: string): number {
-  switch (severity?.toLowerCase()) {
-    case 'critical': return 0;
-    case 'warning': return 1;
-    case 'info': return 2;
-    default: return 3;
-  }
-}
-
-export function severityClass(severity: string): string {
-  switch (severity?.toLowerCase()) {
-    case 'critical': return 'severity-critical';
-    case 'warning': return 'severity-warning';
-    case 'info': return 'severity-info';
-    default: return 'severity-unknown';
-  }
-}
-
-export function severityColor(severity: string): string {
-  switch (severity?.toLowerCase()) {
-    case 'critical': return '#ef4444';
-    case 'warning': return '#f59e0b';
-    case 'info': return '#3b82f6';
-    default: return '#6b7280';
-  }
-}
+export { canonicalSeverity, severityColor, severityLabel, severityOrder } from '../stores/severity';
 
 export function formatDuration(startTime: string): string {
   const start = new Date(startTime);

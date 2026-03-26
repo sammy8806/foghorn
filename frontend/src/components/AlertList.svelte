@@ -13,6 +13,7 @@
     acknowledgeAllResolvedAlerts,
     refreshAlerts,
     loadDisplayConfig,
+    loadSeverityConfig,
     initEventListeners,
     waitForBridge,
     activeSortMode,
@@ -27,6 +28,7 @@
     isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
+  import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
@@ -66,6 +68,7 @@
       initEventListeners();
       await Promise.all([
         loadDisplayConfig(),
+        loadSeverityConfig(),
         syncUIConfig(),
         syncNotificationPermissionStatus(),
       ]);
@@ -73,6 +76,7 @@
 
       if (!isWails()) return;
       disposeConfigReloaded = EventsOn('config:reloaded', () => {
+        void loadSeverityConfig();
         void syncUIConfig();
         void syncNotificationPermissionStatus();
       });
@@ -251,9 +255,9 @@
     />
     <select class="filter-select" bind:value={$filter.severity}>
       <option value="all">All severities</option>
-      <option value="critical">Critical</option>
-      <option value="warning">Warning</option>
-      <option value="info">Info</option>
+      {#each $severityConfig.levels as level}
+        <option value={level.name}>{severityLabel(level.name)}</option>
+      {/each}
     </select>
     {#if $availableSources.length > 1}
       <select class="filter-select" bind:value={$filter.source}>

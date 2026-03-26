@@ -16,6 +16,7 @@ var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 // Default returns a minimal usable config with no sources.
 func Default() *Config {
 	return &Config{
+		Severities: DefaultSeverityConfig(),
 		Notifications: NotificationsConfig{
 			Enabled:        true,
 			OnNew:          true,
@@ -63,6 +64,22 @@ func expandEnvVars(input string) string {
 }
 
 func validate(cfg *Config) error {
+	normalizedSeverities, err := NormalizeSeverityConfig(cfg.Severities)
+	if err != nil {
+		return err
+	}
+	cfg.Severities = SeverityConfig{
+		Default: normalizedSeverities.Default,
+		Levels:  make([]SeverityLevel, 0, len(normalizedSeverities.Levels)),
+	}
+	for _, level := range normalizedSeverities.Levels {
+		cfg.Severities.Levels = append(cfg.Severities.Levels, SeverityLevel{
+			Name:    level.Name,
+			Color:   level.Color,
+			Aliases: level.Aliases,
+		})
+	}
+
 	for i, src := range cfg.Sources {
 		if src.Name == "" {
 			return fmt.Errorf("source[%d]: name is required", i)
@@ -75,6 +92,9 @@ func validate(cfg *Config) error {
 		}
 		if src.PollInterval == 0 {
 			cfg.Sources[i].PollInterval = 30_000_000_000 // 30s default
+		}
+		if strings.TrimSpace(src.SeverityLabel) == "" {
+			cfg.Sources[i].SeverityLabel = "severity"
 		}
 	}
 	if cfg.UI.PopupWidth == 0 {

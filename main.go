@@ -95,12 +95,19 @@ func main() {
 				app.UpdateConfig(nextCfg)
 				app.SetProviders(buildProviders(nextCfg.Sources))
 				store.SyncSources(sourceNames(nextCfg.Sources))
+				severities, err := config.NormalizeSeverityConfig(nextCfg.Severities)
+				if err != nil {
+					log.Printf("config: invalid severities after reload, using defaults: %v", err)
+					severities, _ = config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
+				}
+				store.SetSeverityConfig(severities)
+				trayMgr.SetSeverityConfig(severities)
 
 				bgCtx, cancel := context.WithCancel(context.Background())
 				stopRuntime = cancel
 				app.cancel = cancel
 
-				notifier := notify.New(nextCfg.Notifications)
+				notifier := notify.New(nextCfg.Notifications, severities)
 				pollEng := poll.New(store, nextCfg.Sources, nil)
 				diffCh := pollEng.Start(bgCtx)
 

@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
-import { GetAlerts, GetSeverityCounts, GetDisplayConfig, GetSourcesHealth } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetDisplayConfig, GetSeverityConfig, GetSeverityCounts, GetSourcesHealth } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { severityOrder } from '../utils/severity';
+import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
 export interface Alert {
   id: string;
@@ -23,11 +23,7 @@ export interface Alert {
   receivers: string[];
 }
 
-export interface SeverityCounts {
-  critical: number;
-  warning: number;
-  info: number;
-}
+export type SeverityCounts = Record<string, number>;
 
 export interface SortCriterion {
   field: string;
@@ -72,7 +68,7 @@ export interface DisplayConfig {
 }
 
 export const alerts = writable<Alert[]>([]);
-export const severityCounts = writable<SeverityCounts>({ critical: 0, warning: 0, info: 0 });
+export const severityCounts = writable<SeverityCounts>(emptySeverityCounts());
 export const displayConfig = writable<DisplayConfig>({
   visible_labels: ['alertname', 'severity', 'cluster', 'namespace'],
   visible_annotations: ['summary'],
@@ -196,7 +192,7 @@ export async function refreshAlerts(): Promise<void> {
     if (!isWails()) {
       // No backend — show empty state instead of hanging/crashing.
       alerts.set([]);
-      severityCounts.set({ critical: 0, warning: 0, info: 0 });
+      severityCounts.set(emptySeverityCounts());
       error.set('Dev mode: no Wails backend connected');
       return;
     }
@@ -244,7 +240,7 @@ export async function refreshAlerts(): Promise<void> {
     hasLoadedOnce = true;
 
     alerts.set(mergeVisibleAlerts(incoming));
-    severityCounts.set(counts || { critical: 0, warning: 0, info: 0 });
+    severityCounts.set(counts || emptySeverityCounts());
     sourcesHealth.set(currentHealth);
     error.set(null);
   } catch (e) {
@@ -274,6 +270,18 @@ export async function loadDisplayConfig(): Promise<void> {
     }
   } catch (_) {
     // use defaults
+  }
+}
+
+export async function loadSeverityConfig(): Promise<void> {
+  if (!isWails()) return;
+  try {
+    const cfg = await GetSeverityConfig();
+    setSeverityConfig(cfg ?? undefined);
+    severityCounts.update(current => ({ ...emptySeverityCounts(), ...(current ?? {}) }));
+  } catch (_) {
+    setSeverityConfig();
+    severityCounts.set(emptySeverityCounts());
   }
 }
 
@@ -335,6 +343,7 @@ export function initEventListeners(): void {
     refreshAlerts();
   });
   EventsOn('config:reloaded', () => {
+    loadSeverityConfig();
     loadDisplayConfig();
     refreshAlerts();
   });
@@ -342,8 +351,8 @@ export function initEventListeners(): void {
 
 // Derived: alerts grouped by the display config's group_by field references
 export const groupedAlerts = derived(
-  [alerts, activeSortCriteria, activeGroupBy, displayConfig],
-  ([$alerts, $criteria, $groupBy, $config]) => {
+  [alerts, activeSortCriteria, activeGroupBy, displayConfig, severityConfig],
+  ([$alerts, $criteria, $groupBy, $config, _severityConfig]) => {
     const baseGroupBy = $groupBy || [];
     const overrideKeyMode = $config.group_by_override_key_mode ?? 'display';
     const groupByOverrides = $config.group_by_overrides ?? {};

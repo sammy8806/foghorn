@@ -247,6 +247,54 @@ export namespace config {
 	        this.group_by_overrides = source["group_by_overrides"];
 	    }
 	}
+	export class SeverityLevel {
+	    name: string;
+	    color: string;
+	    aliases: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SeverityLevel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.aliases = source["aliases"];
+	    }
+	}
+	export class SeverityConfig {
+	    default: string;
+	    levels: SeverityLevel[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SeverityConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.default = source["default"];
+	        this.levels = this.convertValues(source["levels"], SeverityLevel);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SourceConfig {
 	    Name: string;
 	    Type: string;
@@ -254,6 +302,7 @@ export namespace config {
 	    Auth: AuthConfig;
 	    PollInterval: number;
 	    Filters: string[];
+	    SeverityLabel: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SourceConfig(source);
@@ -267,6 +316,7 @@ export namespace config {
 	        this.Auth = this.convertValues(source["Auth"], AuthConfig);
 	        this.PollInterval = source["PollInterval"];
 	        this.Filters = source["Filters"];
+	        this.SeverityLabel = source["SeverityLabel"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -289,6 +339,7 @@ export namespace config {
 	}
 	export class Config {
 	    Sources: SourceConfig[];
+	    Severities: SeverityConfig;
 	    Display: DisplayConfig;
 	    Sounds: SoundsConfig;
 	    Notifications: NotificationsConfig;
@@ -303,6 +354,7 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Sources = this.convertValues(source["Sources"], SourceConfig);
+	        this.Severities = this.convertValues(source["Severities"], SeverityConfig);
 	        this.Display = this.convertValues(source["Display"], DisplayConfig);
 	        this.Sounds = this.convertValues(source["Sounds"], SoundsConfig);
 	        this.Notifications = this.convertValues(source["Notifications"], NotificationsConfig);
@@ -386,6 +438,59 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class NormalizedSeverityLevel {
+	    name: string;
+	    color: string;
+	    aliases: string[];
+	    rank: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NormalizedSeverityLevel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.aliases = source["aliases"];
+	        this.rank = source["rank"];
+	    }
+	}
+	export class NormalizedSeverityConfig {
+	    default: string;
+	    levels: NormalizedSeverityLevel[];
+	
+	    static createFrom(source: any = {}) {
+	        return new NormalizedSeverityConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.default = source["default"];
+	        this.levels = this.convertValues(source["levels"], NormalizedSeverityLevel);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
 	
 	
 	
@@ -461,22 +566,6 @@ export namespace model {
 		    }
 		    return a;
 		}
-	}
-	export class SeverityCounts {
-	    critical: number;
-	    warning: number;
-	    info: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new SeverityCounts(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.critical = source["critical"];
-	        this.warning = source["warning"];
-	        this.info = source["info"];
-	    }
 	}
 	export class SourceHealth {
 	    source: string;

@@ -26,6 +26,10 @@ export function GetNotificationPermissionStatus() {
   return window['go']['main']['App']['GetNotificationPermissionStatus']();
 }
 
+export function GetSeverityConfig() {
+  return window['go']['main']['App']['GetSeverityConfig']();
+}
+
 export function GetSeverityCounts() {
   return window['go']['main']['App']['GetSeverityCounts']();
 }

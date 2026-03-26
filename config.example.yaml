@@ -15,6 +15,26 @@ sources:
   #     type: bearer
   #     token: ${FOGHORN_GRAFANA_TOKEN}
   #   poll_interval: 30s
+  #   # Optional: treat another alert label as the severity source.
+  #   # Falls back to the standard `severity` label when absent.
+  #   severity_label: priority
+
+severities:
+  # Canonical severity used when an alert label does not match any configured alias.
+  default: unknown
+  levels:
+    - name: critical
+      color: "#ef4444"
+      aliases: [critical, page, sev1, p1]
+    - name: warning
+      color: "#f59e0b"
+      aliases: [warning, warn, sev2, p2]
+    - name: info
+      color: "#3b82f6"
+      aliases: [info, sev3, p3]
+    - name: unknown
+      color: "#6b7280"
+      aliases: [unknown, none]
 
 display:
   visible_labels:
@@ -39,7 +59,7 @@ display:
   #   :resolved  prefer the resolved value, fall back to original
   #
   # Supported built-in field:* values:
-  #   field:severity   critical < warning < info < unknown
+  #   field:severity   configured severity order from severities.levels
   #   field:startsAt   alert start time
   #   field:updatedAt  last update time
   #   field:source     source name

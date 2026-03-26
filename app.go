@@ -85,6 +85,18 @@ func (a *App) GetSeverityCounts() model.SeverityCounts {
 	return a.store.SeverityCounts()
 }
 
+// GetSeverityConfig returns the normalized severity configuration.
+func (a *App) GetSeverityConfig() config.NormalizedSeverityConfig {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	normalized, err := config.NormalizeSeverityConfig(a.cfg.Severities)
+	if err != nil {
+		normalized, _ = config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
+	}
+	return normalized
+}
+
 // GetSourcesHealth returns the poll health for all configured sources.
 func (a *App) GetSourcesHealth() []model.SourceHealth {
 	return a.store.SourcesHealth()

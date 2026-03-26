@@ -89,7 +89,7 @@ func (a *alertmanagerAPI) Fetch(ctx context.Context) ([]model.Alert, error) {
 
 	alerts := make([]model.Alert, 0, len(raw))
 	for _, r := range raw {
-		alerts = append(alerts, r.toAlert(a.cfg.Name, a.kind))
+		alerts = append(alerts, r.toAlert(a.cfg.Name, a.kind, a.cfg.SeverityLabel))
 	}
 
 	a.mu.Lock()
@@ -227,7 +227,7 @@ type amMatcher struct {
 	IsEqual bool   `json:"isEqual"`
 }
 
-func (r amAlert) toAlert(source, sourceType string) model.Alert {
+func (r amAlert) toAlert(source, sourceType, severityLabel string) model.Alert {
 	startsAt, _ := time.Parse(time.RFC3339, r.StartsAt)
 	updatedAt, _ := time.Parse(time.RFC3339, r.UpdatedAt)
 
@@ -241,7 +241,7 @@ func (r amAlert) toAlert(source, sourceType string) model.Alert {
 		Source:       source,
 		SourceType:   sourceType,
 		Name:         r.Labels["alertname"],
-		Severity:     r.Labels["severity"],
+		Severity:     severityFromLabels(r.Labels, severityLabel),
 		State:        r.Status.State,
 		Labels:       r.Labels,
 		Annotations:  r.Annotations,
@@ -252,4 +252,11 @@ func (r amAlert) toAlert(source, sourceType string) model.Alert {
 		InhibitedBy:  r.Status.InhibitedBy,
 		Receivers:    receivers,
 	}
+}
+
+func severityFromLabels(labels map[string]string, severityLabel string) string {
+	if value := strings.TrimSpace(labels[severityLabel]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(labels["severity"])
 }

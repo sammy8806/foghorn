@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"foghorn/internal/config"
 	"foghorn/internal/model"
 )
 
@@ -82,11 +83,43 @@ func TestSeverityCounts(t *testing.T) {
 	})
 
 	counts := s.SeverityCounts()
-	if counts.Critical != 1 {
-		t.Errorf("expected 1 critical, got %d", counts.Critical)
+	if counts["critical"] != 1 {
+		t.Errorf("expected 1 critical, got %d", counts["critical"])
 	}
-	if counts.Warning != 2 {
-		t.Errorf("expected 2 warning, got %d", counts.Warning)
+	if counts["warning"] != 2 {
+		t.Errorf("expected 2 warning, got %d", counts["warning"])
+	}
+}
+
+func TestSeverityCountsWithAliases(t *testing.T) {
+	s := New()
+	severities, err := config.NormalizeSeverityConfig(config.SeverityConfig{
+		Default: "unknown",
+		Levels: []config.SeverityLevel{
+			{Name: "critical", Aliases: []string{"critical", "sev1"}},
+			{Name: "warning", Aliases: []string{"warning", "sev2"}},
+			{Name: "unknown", Aliases: []string{"unknown"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NormalizeSeverityConfig() error: %v", err)
+	}
+	s.SetSeverityConfig(severities)
+	s.Update("src1", []model.Alert{
+		makeAlert("a1", "src1", "Alert1", "sev1", "active"),
+		makeAlert("a2", "src1", "Alert2", "sev2", "active"),
+		makeAlert("a3", "src1", "Alert3", "mystery", "active"),
+	})
+
+	counts := s.SeverityCounts()
+	if counts["critical"] != 1 {
+		t.Errorf("expected 1 critical, got %d", counts["critical"])
+	}
+	if counts["warning"] != 1 {
+		t.Errorf("expected 1 warning, got %d", counts["warning"])
+	}
+	if counts["unknown"] != 1 {
+		t.Errorf("expected 1 unknown, got %d", counts["unknown"])
 	}
 }
 
