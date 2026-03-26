@@ -37,6 +37,11 @@ display:
   group_by_overrides:
     prod:
       - label:namespace
+  badges:
+    - label: Ack
+      field: label:status
+      equals: [Acknowledged]
+      source_types: [betterstack]
   sort_by: severity
 
 sounds:
@@ -114,6 +119,12 @@ ui:
 	}
 	if got := cfg.Display.OverrideKeyMode(); got != "raw" {
 		t.Fatalf("expected group_by_override_key_mode raw, got %q", got)
+	}
+	if len(cfg.Display.Badges) != 1 {
+		t.Fatalf("expected 1 display badge, got %d", len(cfg.Display.Badges))
+	}
+	if cfg.Display.Badges[0].Label != "Ack" {
+		t.Fatalf("expected display badge label Ack, got %q", cfg.Display.Badges[0].Label)
 	}
 }
 

@@ -246,6 +246,7 @@ export namespace config {
 	    group_by: string[];
 	    group_by_override_key_mode: string;
 	    group_by_overrides: Record<string, Array<string>>;
+	    badges: BadgeRule[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DisplayConfig(source);
@@ -259,6 +260,45 @@ export namespace config {
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
 	        this.group_by_overrides = source["group_by_overrides"];
+	        this.badges = this.convertValues(source["badges"], BadgeRule);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BadgeRule {
+	    label: string;
+	    field: string;
+	    equals: string[];
+	    sources: string[];
+	    source_types: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new BadgeRule(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.field = source["field"];
+	        this.equals = source["equals"];
+	        this.sources = source["sources"];
+	        this.source_types = source["source_types"];
 	    }
 	}
 	export class SeverityLevel {
@@ -419,6 +459,7 @@ export namespace config {
 	    group_by: string[];
 	    group_by_override_key_mode: string;
 	    group_by_overrides: Record<string, Array<string>>;
+	    badges: BadgeRule[];
 	    sort_by: SortCriterion[];
 	
 	    static createFrom(source: any = {}) {
@@ -433,6 +474,7 @@ export namespace config {
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
 	        this.group_by_overrides = source["group_by_overrides"];
+	        this.badges = this.convertValues(source["badges"], BadgeRule);
 	        this.sort_by = this.convertValues(source["sort_by"], SortCriterion);
 	    }
 	
@@ -714,4 +756,3 @@ export namespace model {
 	}
 
 }
-

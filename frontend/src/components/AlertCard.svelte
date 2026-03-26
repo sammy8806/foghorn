@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
-  import { acknowledgeAlert, acknowledgeResolvedAlert, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
   import { TestNotificationForAlert } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
@@ -23,6 +23,7 @@
   $: visibleAnnotations = $verbose
     ? Object.keys(alert.annotations || {})
     : (config.visible_annotations || []);
+  $: matchedBadges = (config.badges || []).filter(rule => alertMatchesBadgeRule(alert, rule));
 
   // Auto-pick a subtitle from configured annotations, falling back to distinguishing labels
   const skipLabels = new Set(['alertname', 'severity', 'cluster', 'namespace', 'prometheus', 'prometheus_replica']);
@@ -108,6 +109,9 @@
     {#if alert.inhibitedBy?.length > 0}
       <span class="badge badge-inhibited">inhibited</span>
     {/if}
+    {#each matchedBadges as badgeRule}
+      <span class="badge badge-custom" title={`${fieldNameFromRef(badgeRule.field)} matches ${badgeRule.equals.join(', ')}`}>{badgeRule.label}</span>
+    {/each}
     <span class="alert-source">{alert.source}</span>
     <span class="alert-duration">{formatDuration(alert.startsAt)}</span>
     <span class="chevron" class:expanded>{expanded ? '▲' : '▼'}</span>
@@ -319,6 +323,11 @@
   }
   .badge-silenced { background: #334155; color: #94a3b8; }
   .badge-inhibited { background: #292524; color: #a8a29e; }
+  .badge-custom {
+    background: #0f766e;
+    color: #ccfbf1;
+    border: 1px solid rgba(94, 234, 212, 0.25);
+  }
 
   .chevron { font-size: 10px; color: #64748b; }
 

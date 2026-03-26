@@ -64,7 +64,16 @@ export interface DisplayConfig {
   group_by: string[];
   group_by_override_key_mode: 'raw' | 'display';
   group_by_overrides: Record<string, string[]>;
+  badges: BadgeRule[];
   sort_by: SortCriterion[];
+}
+
+export interface BadgeRule {
+  label: string;
+  field: string;
+  equals: string[];
+  sources: string[];
+  source_types: string[];
 }
 
 export const alerts = writable<Alert[]>([]);
@@ -76,6 +85,7 @@ export const displayConfig = writable<DisplayConfig>({
   group_by: ['cluster'],
   group_by_override_key_mode: 'display',
   group_by_overrides: {},
+  badges: [],
   sort_by: [{ field: 'field:severity', order: 'asc' }, { field: 'field:startsAt', order: 'desc' }],
 });
 
@@ -293,6 +303,13 @@ export async function loadDisplayConfig(): Promise<void> {
         group_by: cfg.group_by ?? [],
         group_by_override_key_mode: cfg.group_by_override_key_mode === 'raw' ? 'raw' : 'display',
         group_by_overrides: cfg.group_by_overrides ?? {},
+        badges: (cfg.badges ?? []).map(rule => ({
+          label: rule.label ?? '',
+          field: rule.field ?? '',
+          equals: rule.equals ?? [],
+          sources: rule.sources ?? [],
+          source_types: rule.source_types ?? [],
+        })),
         sort_by: (cfg.sort_by ?? []).map(criterion => ({
           field: criterion.field,
           order: criterion.order === 'desc' ? 'desc' : 'asc',
@@ -532,6 +549,16 @@ export function resolveAlertLabel(alert: Alert, name: string): string | undefine
 
 export function resolveAlertAnnotation(alert: Alert, name: string): string | undefined {
   return resolveAlertFieldDisplay(alert, `annotation:${name}`)?.text;
+}
+
+export function alertMatchesBadgeRule(alert: Alert, rule: BadgeRule): boolean {
+  if (!rule.label || !rule.field || !rule.equals?.length) return false;
+  if (rule.sources?.length && !rule.sources.includes(alert.source)) return false;
+  if (rule.source_types?.length && !rule.source_types.includes(alert.sourceType)) return false;
+
+  const value = resolveAlertField(alert, rule.field);
+  if (!value) return false;
+  return rule.equals.some(candidate => candidate.localeCompare(value, undefined, { sensitivity: 'accent' }) === 0);
 }
 
 export function resolveAlertFieldDisplay(alert: Alert, ref: string): AlertFieldDisplay | undefined {

@@ -121,6 +121,15 @@ display:
   #   saas-cs-0b:
   #     - label:namespace
 
+  # Optional alert bubbles. Each rule renders a badge when the configured field
+  # exactly matches one of the listed values. Use sources/source_types to limit
+  # a rule to specific providers.
+  badges:
+    - label: Ack
+      field: label:status
+      equals: [Acknowledged]
+      source_types: [betterstack]
+
   sort_by:
     - field: field:severity
       order: asc
