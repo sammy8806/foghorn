@@ -56,6 +56,8 @@ func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, ch chan<
 	switch src.Type {
 	case "alertmanager":
 		p = provider.NewAlertmanager(src)
+	case "grafana":
+		p = provider.NewGrafana(src)
 	case "prometheus":
 		p = provider.NewPrometheus(src)
 	default:

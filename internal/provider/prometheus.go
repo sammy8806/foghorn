@@ -93,9 +93,7 @@ func (p *Prometheus) Unsilence(_ context.Context, _ string) error {
 }
 
 func (p *Prometheus) applyAuth(req *http.Request) {
-	if p.cfg.Auth.Type == "basic" && p.cfg.Auth.Username != "" {
-		req.SetBasicAuth(p.cfg.Auth.Username, p.cfg.Auth.Password)
-	}
+	applyAuth(req, p.cfg.Auth)
 }
 
 func (p *Prometheus) recordError(err error) {
@@ -109,9 +107,9 @@ func (p *Prometheus) recordError(err error) {
 // --- Prometheus API response types ---
 
 type promAlertsResponse struct {
-	Status string          `json:"status"`
-	Data   promAlertsData  `json:"data"`
-	Error  string          `json:"error"`
+	Status string         `json:"status"`
+	Data   promAlertsData `json:"data"`
+	Error  string         `json:"error"`
 }
 
 type promAlertsData struct {

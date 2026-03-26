@@ -172,6 +172,8 @@ func buildProviders(sources []config.SourceConfig) map[string]provider.Provider 
 		switch src.Type {
 		case "alertmanager":
 			providers[src.Name] = provider.NewAlertmanager(src)
+		case "grafana":
+			providers[src.Name] = provider.NewGrafana(src)
 		case "prometheus":
 			providers[src.Name] = provider.NewPrometheus(src)
 		default:

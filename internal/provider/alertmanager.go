@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,33 +15,45 @@ import (
 	"foghorn/internal/model"
 )
 
-type Alertmanager struct {
+type alertmanagerAPI struct {
 	cfg    config.SourceConfig
 	client *http.Client
 	mu     sync.RWMutex
 	health model.ProviderHealth
+	apiV2  string
+	kind   string
 }
 
-func NewAlertmanager(cfg config.SourceConfig) *Alertmanager {
-	return &Alertmanager{
+func NewAlertmanager(cfg config.SourceConfig) *alertmanagerAPI {
+	return newAlertmanagerAPI(cfg, "alertmanager", "/api/v2")
+}
+
+func NewGrafana(cfg config.SourceConfig) *alertmanagerAPI {
+	return newAlertmanagerAPI(cfg, "grafana", "/api/alertmanager/grafana/api/v2")
+}
+
+func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanagerAPI {
+	return &alertmanagerAPI{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		apiV2: apiV2,
+		kind:  kind,
 	}
 }
 
-func (a *Alertmanager) Name() string { return a.cfg.Name }
-func (a *Alertmanager) Type() string { return "alertmanager" }
+func (a *alertmanagerAPI) Name() string { return a.cfg.Name }
+func (a *alertmanagerAPI) Type() string { return a.kind }
 
-func (a *Alertmanager) Health(_ context.Context) model.ProviderHealth {
+func (a *alertmanagerAPI) Health(_ context.Context) model.ProviderHealth {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.health
 }
 
-func (a *Alertmanager) Fetch(ctx context.Context) ([]model.Alert, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", a.cfg.URL+"/api/v2/alerts", nil)
+func (a *alertmanagerAPI) Fetch(ctx context.Context) ([]model.Alert, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", a.endpoint("/alerts"), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +79,7 @@ func (a *Alertmanager) Fetch(ctx context.Context) ([]model.Alert, error) {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		a.recordError(fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body)))
-		return nil, fmt.Errorf("alertmanager %s returned HTTP %d", a.cfg.Name, resp.StatusCode)
+		return nil, fmt.Errorf("%s %s returned HTTP %d", a.kind, a.cfg.Name, resp.StatusCode)
 	}
 
 	var raw []amAlert
@@ -76,7 +89,7 @@ func (a *Alertmanager) Fetch(ctx context.Context) ([]model.Alert, error) {
 
 	alerts := make([]model.Alert, 0, len(raw))
 	for _, r := range raw {
-		alerts = append(alerts, r.toAlert(a.cfg.Name))
+		alerts = append(alerts, r.toAlert(a.cfg.Name, a.kind))
 	}
 
 	a.mu.Lock()
@@ -90,7 +103,7 @@ func (a *Alertmanager) Fetch(ctx context.Context) ([]model.Alert, error) {
 	return alerts, nil
 }
 
-func (a *Alertmanager) Silence(ctx context.Context, req model.SilenceRequest) (string, error) {
+func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest) (string, error) {
 	body := amSilenceRequest{
 		Matchers:  make([]amMatcher, len(req.Matchers)),
 		StartsAt:  req.StartsAt.Format(time.RFC3339),
@@ -112,7 +125,7 @@ func (a *Alertmanager) Silence(ctx context.Context, req model.SilenceRequest) (s
 		return "", err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.cfg.URL+"/api/v2/silences", bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.endpoint("/silences"), bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", err
 	}
@@ -125,9 +138,9 @@ func (a *Alertmanager) Silence(ctx context.Context, req model.SilenceRequest) (s
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("silence on %s returned HTTP %d: %s", a.cfg.Name, resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("silence on %s %s returned HTTP %d: %s", a.kind, a.cfg.Name, resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -139,8 +152,8 @@ func (a *Alertmanager) Silence(ctx context.Context, req model.SilenceRequest) (s
 	return result.SilenceID, nil
 }
 
-func (a *Alertmanager) Unsilence(ctx context.Context, silenceID string) error {
-	req, err := http.NewRequestWithContext(ctx, "DELETE", a.cfg.URL+"/api/v2/silence/"+silenceID, nil)
+func (a *alertmanagerAPI) Unsilence(ctx context.Context, silenceID string) error {
+	req, err := http.NewRequestWithContext(ctx, "DELETE", a.endpoint("/silence/"+silenceID), nil)
 	if err != nil {
 		return err
 	}
@@ -152,19 +165,21 @@ func (a *Alertmanager) Unsilence(ctx context.Context, silenceID string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("delete silence on %s returned HTTP %d", a.cfg.Name, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("delete silence on %s %s returned HTTP %d", a.kind, a.cfg.Name, resp.StatusCode)
 	}
 	return nil
 }
 
-func (a *Alertmanager) applyAuth(req *http.Request) {
-	if a.cfg.Auth.Type == "basic" && a.cfg.Auth.Username != "" {
-		req.SetBasicAuth(a.cfg.Auth.Username, a.cfg.Auth.Password)
-	}
+func (a *alertmanagerAPI) endpoint(path string) string {
+	return strings.TrimRight(a.cfg.URL, "/") + a.apiV2 + path
 }
 
-func (a *Alertmanager) recordError(err error) {
+func (a *alertmanagerAPI) applyAuth(req *http.Request) {
+	applyAuth(req, a.cfg.Auth)
+}
+
+func (a *alertmanagerAPI) recordError(err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.health.Connected = false
@@ -212,7 +227,7 @@ type amMatcher struct {
 	IsEqual bool   `json:"isEqual"`
 }
 
-func (r amAlert) toAlert(source string) model.Alert {
+func (r amAlert) toAlert(source, sourceType string) model.Alert {
 	startsAt, _ := time.Parse(time.RFC3339, r.StartsAt)
 	updatedAt, _ := time.Parse(time.RFC3339, r.UpdatedAt)
 
@@ -224,7 +239,7 @@ func (r amAlert) toAlert(source string) model.Alert {
 	return model.Alert{
 		ID:           r.Fingerprint,
 		Source:       source,
-		SourceType:   "alertmanager",
+		SourceType:   sourceType,
 		Name:         r.Labels["alertname"],
 		Severity:     r.Labels["severity"],
 		State:        r.Status.State,

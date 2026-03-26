@@ -59,6 +59,7 @@ export namespace config {
 	    Type: string;
 	    Username: string;
 	    Password: string;
+	    Token: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AuthConfig(source);
@@ -69,6 +70,7 @@ export namespace config {
 	        this.Type = source["Type"];
 	        this.Username = source["Username"];
 	        this.Password = source["Password"];
+	        this.Token = source["Token"];
 	    }
 	}
 	export class UIConfig {

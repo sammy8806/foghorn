@@ -7,6 +7,14 @@ sources:
       username: ${FOGHORN_AM_USER}
       password: ${FOGHORN_AM_PASS}
     poll_interval: 30s
+  # - name: grafana-alerting
+  #   type: grafana
+  #   # Grafana base URL. Foghorn appends /api/alertmanager/grafana/api/v2.
+  #   url: https://grafana.example.com
+  #   auth:
+  #     type: bearer
+  #     token: ${FOGHORN_GRAFANA_TOKEN}
+  #   poll_interval: 30s
 
 display:
   visible_labels:

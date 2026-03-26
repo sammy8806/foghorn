@@ -34,6 +34,7 @@ type AuthConfig struct {
 	Type     string `yaml:"type"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	Token    string `yaml:"token"`
 }
 
 // SortCriterion is a single sort field with optional order direction.
