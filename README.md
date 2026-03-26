@@ -67,6 +67,10 @@ will start with a normal visible window instead.
 
 ## Building
 
+To build on macOS, use `make build` (or `make build-macos`).
+This wraps `wails build` and then re-signs the `.app` bundle with the bundle identifier from `Info.plist`, which is required for macOS notifications to work reliably.
+
+On non-macOS platforms, `make build` falls back to `wails build`.
 To build a redistributable production package, use:
 
 ```bash

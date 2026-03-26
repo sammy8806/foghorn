@@ -10,7 +10,24 @@ package notify
 #import <UserNotifications/UserNotifications.h>
 #import <dispatch/dispatch.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+
+static char *foghornNSErrorString(NSError *error) {
+	if (error == nil) {
+		return NULL;
+	}
+	const char *domain = error.domain != nil ? error.domain.UTF8String : "";
+	const char *description = error.localizedDescription != nil ? error.localizedDescription.UTF8String : "";
+	int code = (int)error.code;
+	size_t len = snprintf(NULL, 0, "%s\x1f%d\x1f%s", domain, code, description);
+	char *buffer = malloc(len + 1);
+	if (buffer == NULL) {
+		return strdup(description);
+	}
+	snprintf(buffer, len + 1, "%s\x1f%d\x1f%s", domain, code, description);
+	return buffer;
+}
 
 static char *foghornSendUserNotification(const char *title, const char *body) {
 	if (@available(macOS 10.14, *)) {
@@ -38,7 +55,7 @@ static char *foghornSendUserNotification(const char *title, const char *body) {
 			dispatch_semaphore_wait(authSem, DISPATCH_TIME_FOREVER);
 
 			if (authError != nil) {
-				return strdup(authError.localizedDescription.UTF8String);
+				return foghornNSErrorString(authError);
 			}
 			if (!granted) {
 				return strdup("permission_denied");
@@ -65,7 +82,7 @@ static char *foghornSendUserNotification(const char *title, const char *body) {
 		dispatch_semaphore_wait(sendSem, DISPATCH_TIME_FOREVER);
 
 		if (deliveryError != nil) {
-			return strdup(deliveryError.localizedDescription.UTF8String);
+			return foghornNSErrorString(deliveryError);
 		}
 
 		return NULL;
@@ -77,7 +94,9 @@ static char *foghornSendUserNotification(const char *title, const char *body) {
 import "C"
 
 import (
-	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"unsafe"
 )
 
@@ -90,7 +109,14 @@ func defaultSend(title, body string) error {
 	errPtr := C.foghornSendUserNotification(cTitle, cBody)
 	if errPtr != nil {
 		defer C.free(unsafe.Pointer(errPtr))
-		return fmt.Errorf(C.GoString(errPtr))
+		message := C.GoString(errPtr)
+		parts := strings.SplitN(message, "\x1f", 3)
+		if len(parts) == 3 {
+			code, _ := strconv.Atoi(parts[1])
+			executablePath, _ := os.Executable()
+			return formatMacNotificationError(parts[0], code, parts[2], bundleIdentifier(), executablePath)
+		}
+		return formatMacNotificationError("", 0, message, bundleIdentifier(), "")
 	}
 	return nil
 }

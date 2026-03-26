@@ -210,7 +210,7 @@
     background:
       linear-gradient(90deg, rgba(250, 204, 21, 0.18), rgba(250, 204, 21, 0.05) 28%, rgba(15, 23, 42, 0) 60%),
       var(--card-bg, #1e293b);
-    animation: alert-new-pulse 1.4s ease-in-out infinite;
+    animation: alert-new-pulse 1.2s ease-in-out 3 forwards;
   }
   .alert-new:hover {
     transform: translateX(1px);

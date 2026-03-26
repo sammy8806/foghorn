@@ -135,7 +135,7 @@
     ? 'Foghorn is not allowed to show notifications in macOS Notification Center.'
     : notificationPermissionStatus === 'unsupported_legacy'
       ? 'This macOS version does not expose notification permission status directly. Open Notification settings and make sure Foghorn is allowed.'
-      : 'macOS has not granted notification permission to Foghorn yet.';
+      : 'macOS has not granted notification permission to Foghorn yet. If you are running via wails dev, build and launch the Foghorn .app bundle once so it appears in Notification settings.';
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : $sourcesHealth.map(h =>
