@@ -106,3 +106,11 @@ func CurrentUsername() string {
 func defaultCreatedBy() string {
 	return CurrentUsername()
 }
+
+func ResolveCreatedByDefault(configured string) string {
+	if value := strings.TrimSpace(configured); value != "" {
+		log.Printf("config: using configured default_created_by: %q", value)
+		return value
+	}
+	return CurrentUsername()
+}

@@ -108,7 +108,7 @@ func (a *App) GetUIConfig() config.UIConfig {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	ui := a.cfg.UI
-	ui.DefaultCreatedBy = config.CurrentUsername()
+	ui.DefaultCreatedBy = config.ResolveCreatedByDefault(ui.DefaultCreatedBy)
 	log.Printf("app: GetUIConfig returning default_created_by=%q", ui.DefaultCreatedBy)
 	return ui
 }
@@ -122,6 +122,7 @@ func (a *App) SilenceAlert(alertID, source, duration, createdBy, comment string)
 	a.mu.RLock()
 	silenceMgr := a.silenceMgr
 	ctx := a.ctx
+	defaultCreatedBy := config.ResolveCreatedByDefault(a.cfg.UI.DefaultCreatedBy)
 	a.mu.RUnlock()
 
 	if silenceMgr == nil {
@@ -130,7 +131,7 @@ func (a *App) SilenceAlert(alertID, source, duration, createdBy, comment string)
 	alerts := a.store.All()
 	for _, alert := range alerts {
 		if alert.ID == alertID && alert.Source == source {
-			_, err := silenceMgr.SilenceAlert(ctx, alert, duration, createdBy, comment, config.CurrentUsername())
+			_, err := silenceMgr.SilenceAlert(ctx, alert, duration, createdBy, comment, defaultCreatedBy)
 			return err
 		}
 	}
