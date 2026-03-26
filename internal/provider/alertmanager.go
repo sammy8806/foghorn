@@ -43,8 +43,9 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 	}
 }
 
-func (a *alertmanagerAPI) Name() string { return a.cfg.Name }
-func (a *alertmanagerAPI) Type() string { return a.kind }
+func (a *alertmanagerAPI) Name() string          { return a.cfg.Name }
+func (a *alertmanagerAPI) Type() string          { return a.kind }
+func (a *alertmanagerAPI) SupportsSilence() bool { return true }
 
 func (a *alertmanagerAPI) Health(_ context.Context) model.ProviderHealth {
 	a.mu.RLock()

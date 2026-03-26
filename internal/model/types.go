@@ -63,6 +63,10 @@ type SourceHealth struct {
 	ConsecFails int       `json:"consecFails"`
 }
 
+type SourceCapabilities struct {
+	SupportsSilence bool `json:"supportsSilence"`
+}
+
 type OnCallUser struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`

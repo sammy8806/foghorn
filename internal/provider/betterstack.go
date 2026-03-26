@@ -31,8 +31,9 @@ func NewBetterStack(cfg config.SourceConfig) *BetterStack {
 	}
 }
 
-func (b *BetterStack) Name() string { return b.cfg.Name }
-func (b *BetterStack) Type() string { return "betterstack" }
+func (b *BetterStack) Name() string          { return b.cfg.Name }
+func (b *BetterStack) Type() string          { return "betterstack" }
+func (b *BetterStack) SupportsSilence() bool { return false }
 
 func (b *BetterStack) Health(_ context.Context) model.ProviderHealth {
 	b.mu.RLock()

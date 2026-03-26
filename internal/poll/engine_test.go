@@ -19,8 +19,9 @@ type mockProvider struct {
 	onCallErr  error
 }
 
-func (m *mockProvider) Name() string { return m.name }
-func (m *mockProvider) Type() string { return "mock" }
+func (m *mockProvider) Name() string          { return m.name }
+func (m *mockProvider) Type() string          { return "mock" }
+func (m *mockProvider) SupportsSilence() bool { return true }
 func (m *mockProvider) Fetch(_ context.Context) ([]model.Alert, error) {
 	m.fetchCount.Add(1)
 	return m.alerts, nil

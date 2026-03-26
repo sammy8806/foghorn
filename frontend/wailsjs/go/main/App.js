@@ -38,8 +38,16 @@ export function GetSeverityCounts() {
   return window['go']['main']['App']['GetSeverityCounts']();
 }
 
+export function GetSourceCapabilities() {
+  return window['go']['main']['App']['GetSourceCapabilities']();
+}
+
 export function GetSourcesHealth() {
   return window['go']['main']['App']['GetSourcesHealth']();
+}
+
+export function GetSourceCapabilities() {
+  return window['go']['main']['App']['GetSourceCapabilities']();
 }
 
 export function GetUIConfig() {

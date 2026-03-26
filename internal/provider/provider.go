@@ -9,6 +9,7 @@ import (
 type Provider interface {
 	Name() string
 	Type() string
+	SupportsSilence() bool
 	Fetch(ctx context.Context) ([]model.Alert, error)
 	Silence(ctx context.Context, req model.SilenceRequest) (string, error)
 	Unsilence(ctx context.Context, silenceID string) error

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
-  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import { TestNotificationForAlert } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
@@ -49,6 +49,7 @@
   let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
 
   $: alertKey = alert.source + ':' + alert.id;
+  $: supportsSilence = !!$sourceCapabilities[alert.source]?.supportsSilence;
 
   function scheduleAcknowledge() {
     if ((!isNew && !isResolved) || acknowledgeTimer) return;
@@ -172,7 +173,7 @@
 
       <div class="alert-actions">
         {#if alert.generatorURL}
-          <a href={alert.generatorURL} target="_blank" class="generator-link">Open in Prometheus</a>
+          <a href={alert.generatorURL} target="_blank" class="generator-link">Open Reference</a>
         {/if}
         {#if $verbose}
           <button
@@ -187,7 +188,7 @@
             <span class="action-status">{testNotificationStatus}</span>
           {/if}
         {/if}
-        {#if !alert.silencedBy?.length && !isResolved}
+        {#if supportsSilence && !alert.silencedBy?.length && !isResolved}
           <button class="btn-silence" on:click|stopPropagation={() => (silenceOpen = true)}>Silence…</button>
         {/if}
       </div>

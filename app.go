@@ -23,6 +23,7 @@ type App struct {
 	cancel     context.CancelFunc
 	cfg        *config.Config
 	store      *state.Store
+	providers  map[string]provider.Provider
 	silenceMgr *silence.Manager
 	actionEng  *action.Engine
 	resolveEng *resolve.Engine
@@ -49,6 +50,7 @@ func activeApp() *App {
 func (a *App) SetProviders(providers map[string]provider.Provider) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.providers = providers
 	a.silenceMgr = silence.New(providers)
 }
 
@@ -116,6 +118,19 @@ func (a *App) GetSeverityConfig() config.NormalizedSeverityConfig {
 // GetSourcesHealth returns the poll health for all configured sources.
 func (a *App) GetSourcesHealth() []model.SourceHealth {
 	return a.store.SourcesHealth()
+}
+
+func (a *App) GetSourceCapabilities() map[string]model.SourceCapabilities {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	out := make(map[string]model.SourceCapabilities, len(a.providers))
+	for source, p := range a.providers {
+		out[source] = model.SourceCapabilities{
+			SupportsSilence: p.SupportsSilence(),
+		}
+	}
+	return out
 }
 
 func (a *App) GetOnCallStatus() []model.OnCallStatus {

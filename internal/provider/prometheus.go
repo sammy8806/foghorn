@@ -30,8 +30,9 @@ func NewPrometheus(cfg config.SourceConfig) *Prometheus {
 	}
 }
 
-func (p *Prometheus) Name() string { return p.cfg.Name }
-func (p *Prometheus) Type() string { return "prometheus" }
+func (p *Prometheus) Name() string          { return p.cfg.Name }
+func (p *Prometheus) Type() string          { return "prometheus" }
+func (p *Prometheus) SupportsSilence() bool { return false }
 
 func (p *Prometheus) Health(_ context.Context) model.ProviderHealth {
 	p.mu.RLock()

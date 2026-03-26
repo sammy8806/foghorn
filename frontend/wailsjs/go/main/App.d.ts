@@ -22,6 +22,8 @@ export function GetSeverityConfig():Promise<config.NormalizedSeverityConfig>;
 
 export function GetSeverityCounts():Promise<model.SeverityCounts>;
 
+export function GetSourceCapabilities():Promise<Record<string, model.SourceCapabilities>>;
+
 export function GetSourcesHealth():Promise<Array<model.SourceHealth>>;
 
 export function GetUIConfig():Promise<config.UIConfig>;
