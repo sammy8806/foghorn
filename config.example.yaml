@@ -45,6 +45,24 @@ display:
   group_by:
     - field:source
     - label:cluster:both
+  # Controls how group_by_overrides keys are matched:
+  #   display  match the rendered top-level group label (default)
+  #   raw      match the underlying raw values for the top-level group fields
+  group_by_override_key_mode: display
+  # Optional per-group refinement. The key is the top-level group key produced by
+  # group_by. Matching groups append the listed fields, while all other groups
+  # keep the default group_by as-is. Keys use the mode above.
+  #
+  # Example with display mode:
+  # group_by_overrides:
+  #   local-alertmanager/saas-cs-0b:
+  #     - label:namespace
+  #
+  # Example with raw mode and `group_by: [label:cluster:both]`:
+  # group_by_override_key_mode: raw
+  # group_by_overrides:
+  #   saas-cs-0b:
+  #     - label:namespace
   sort_by:
     - field: field:severity
       order: asc

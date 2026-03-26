@@ -66,6 +66,8 @@ export interface DisplayConfig {
   visible_annotations: string[];
   subtitle_annotations: string[];
   group_by: string[];
+  group_by_override_key_mode: 'raw' | 'display';
+  group_by_overrides: Record<string, string[]>;
   sort_by: SortCriterion[];
 }
 
@@ -76,6 +78,8 @@ export const displayConfig = writable<DisplayConfig>({
   visible_annotations: ['summary'],
   subtitle_annotations: ['summary', 'description'],
   group_by: ['cluster'],
+  group_by_override_key_mode: 'display',
+  group_by_overrides: {},
   sort_by: [{ field: 'field:severity', order: 'asc' }, { field: 'field:startsAt', order: 'desc' }],
 });
 
@@ -260,6 +264,8 @@ export async function loadDisplayConfig(): Promise<void> {
         visible_annotations: cfg.visible_annotations ?? [],
         subtitle_annotations: cfg.subtitle_annotations ?? [],
         group_by: cfg.group_by ?? [],
+        group_by_override_key_mode: cfg.group_by_override_key_mode === 'raw' ? 'raw' : 'display',
+        group_by_overrides: cfg.group_by_overrides ?? {},
         sort_by: (cfg.sort_by ?? []).map(criterion => ({
           field: criterion.field,
           order: criterion.order === 'desc' ? 'desc' : 'asc',
@@ -336,18 +342,20 @@ export function initEventListeners(): void {
 
 // Derived: alerts grouped by the display config's group_by field references
 export const groupedAlerts = derived(
-  [alerts, activeSortCriteria, activeGroupBy],
-  ([$alerts, $criteria, $groupBy]) => {
-    const groupBy = $groupBy || [];
-    if (groupBy.length === 0) {
+  [alerts, activeSortCriteria, activeGroupBy, displayConfig],
+  ([$alerts, $criteria, $groupBy, $config]) => {
+    const baseGroupBy = $groupBy || [];
+    const overrideKeyMode = $config.group_by_override_key_mode ?? 'display';
+    const groupByOverrides = $config.group_by_overrides ?? {};
+    if (baseGroupBy.length === 0) {
       return [{ key: 'ungrouped', parts: [], alerts: [...$alerts].sort(sortByCriteria($criteria)) }] as AlertGroup[];
     }
 
     const groups = new Map<string, AlertGroup>();
     for (const alert of $alerts) {
-      const parts = groupBy
-        .map(ref => resolveAlertFieldDisplay(alert, ref))
-        .filter((item): item is AlertFieldDisplay => !!item);
+      const baseKey = groupKeyForOverride(alert, baseGroupBy, overrideKeyMode);
+      const effectiveGroupBy = [...baseGroupBy, ...(groupByOverrides[baseKey] ?? [])];
+      const parts = resolveGroupParts(alert, effectiveGroupBy);
       const key = parts.map(part => part.text).join('/') || 'other';
       const group = groups.get(key);
       if (group) {
@@ -369,6 +377,33 @@ export const groupedAlerts = derived(
     return sorted;
   }
 );
+
+function resolveGroupParts(alert: Alert, groupBy: string[]): AlertFieldDisplay[] {
+  return groupBy
+    .map(ref => resolveAlertFieldDisplay(alert, ref))
+    .filter((item): item is AlertFieldDisplay => !!item);
+}
+
+function groupKeyFromParts(parts: AlertFieldDisplay[]): string {
+  return parts.map(part => part.text).join('/') || 'other';
+}
+
+function groupKeyForOverride(alert: Alert, groupBy: string[], mode: 'raw' | 'display'): string {
+  if (mode === 'display') {
+    return groupKeyFromParts(resolveGroupParts(alert, groupBy));
+  }
+
+  return groupBy
+    .map(ref => resolveAlertFieldValueForOverride(alert, ref))
+    .filter((value): value is string => !!value)
+    .join('/') || 'other';
+}
+
+function resolveAlertFieldValueForOverride(alert: Alert, ref: string): string | undefined {
+  const parsed = parseAlertRef(ref);
+  const { raw, resolved } = getAlertFieldValues(alert, parsed.ref);
+  return raw ?? resolved;
+}
 
 function highestSeverityInGroup(group: AlertGroup): number {
   return group.alerts.reduce((highest, alert) => Math.min(highest, severityOrder(alert.severity)), severityOrder('unknown'));

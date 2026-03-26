@@ -228,6 +228,8 @@ export namespace config {
 	    visible_annotations: string[];
 	    subtitle_annotations: string[];
 	    group_by: string[];
+	    group_by_override_key_mode: string;
+	    group_by_overrides: Record<string, Array<string>>;
 	
 	    static createFrom(source: any = {}) {
 	        return new DisplayConfig(source);
@@ -239,6 +241,8 @@ export namespace config {
 	        this.visible_annotations = source["visible_annotations"];
 	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
+	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
+	        this.group_by_overrides = source["group_by_overrides"];
 	    }
 	}
 	export class SourceConfig {
@@ -343,6 +347,8 @@ export namespace config {
 	    visible_annotations: string[];
 	    subtitle_annotations: string[];
 	    group_by: string[];
+	    group_by_override_key_mode: string;
+	    group_by_overrides: Record<string, Array<string>>;
 	    sort_by: SortCriterion[];
 	
 	    static createFrom(source: any = {}) {
@@ -355,6 +361,8 @@ export namespace config {
 	        this.visible_annotations = source["visible_annotations"];
 	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
+	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
+	        this.group_by_overrides = source["group_by_overrides"];
 	        this.sort_by = this.convertValues(source["sort_by"], SortCriterion);
 	    }
 	

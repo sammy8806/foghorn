@@ -23,6 +23,10 @@ display:
   visible_labels: [alertname, severity]
   visible_annotations: [summary]
   group_by: [cluster]
+  group_by_override_key_mode: raw
+  group_by_overrides:
+    prod:
+      - label:namespace
   sort_by: severity
 
 sounds:
@@ -82,6 +86,12 @@ ui:
 	}
 	if cfg.Resolvers[0].CacheTTL != 24*time.Hour {
 		t.Fatalf("expected resolver cache_ttl 24h, got %v", cfg.Resolvers[0].CacheTTL)
+	}
+	if got := cfg.Display.GroupByOverrides["prod"]; len(got) != 1 || got[0] != "label:namespace" {
+		t.Fatalf("expected group_by_overrides for prod, got %#v", got)
+	}
+	if got := cfg.Display.OverrideKeyMode(); got != "raw" {
+		t.Fatalf("expected group_by_override_key_mode raw, got %q", got)
 	}
 }
 

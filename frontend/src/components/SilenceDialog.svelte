@@ -29,6 +29,7 @@
     console.log('SilenceDialog loadDefaults:start', { open, alert });
     try {
       const uiConfig = await GetUIConfig();
+      const uiConfigAny = uiConfig as any;
       debugTrace = 'loadDefaults:resolved';
       debugUIConfig = String(uiConfig);
       debugUIConfigKeys = Object.getOwnPropertyNames(uiConfig ?? {}).join(', ');
@@ -37,13 +38,13 @@
       console.log('SilenceDialog GetUIConfig keys', Object.getOwnPropertyNames(uiConfig ?? {}));
       console.log('SilenceDialog GetUIConfig probes', {
         default_created_by: uiConfig?.default_created_by,
-        DefaultCreatedBy: uiConfig?.DefaultCreatedBy,
-        defaultCreatedBy: uiConfig?.defaultCreatedBy,
+        DefaultCreatedBy: uiConfigAny?.DefaultCreatedBy,
+        defaultCreatedBy: uiConfigAny?.defaultCreatedBy,
       });
       const resolvedCreatedBy =
         uiConfig.default_created_by ??
-        uiConfig.DefaultCreatedBy ??
-        uiConfig.defaultCreatedBy ??
+        uiConfigAny?.DefaultCreatedBy ??
+        uiConfigAny?.defaultCreatedBy ??
         '';
       debugDefaultCreatedBy = resolvedCreatedBy;
       debugLoadError = '';

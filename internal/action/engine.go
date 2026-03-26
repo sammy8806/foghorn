@@ -4,11 +4,17 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"runtime"
 	"text/template"
 
 	"foghorn/internal/config"
 	"foghorn/internal/model"
 )
+
+type commandSpec struct {
+	name string
+	args []string
+}
 
 // Engine matches alerts against configured actions and executes them.
 type Engine struct {
@@ -54,7 +60,6 @@ func (e *Engine) Execute(action config.ActionConfig, alert model.Alert) (string,
 		}
 		return text, copyToClipboard(text)
 
-
 	default:
 		return "", fmt.Errorf("unknown action type %q", action.Action.Type)
 	}
@@ -76,12 +81,12 @@ func renderTemplate(tmpl string, alert model.Alert) (string, error) {
 	}
 
 	data := map[string]interface{}{
-		"Alert":       alert,
-		"Labels":      alert.Labels,
-		"Annotations": alert.Annotations,
-		"Name":        alert.Name,
-		"Source":      alert.Source,
-		"Severity":    alert.Severity,
+		"Alert":        alert,
+		"Labels":       alert.Labels,
+		"Annotations":  alert.Annotations,
+		"Name":         alert.Name,
+		"Source":       alert.Source,
+		"Severity":     alert.Severity,
 		"GeneratorURL": alert.GeneratorURL,
 	}
 
@@ -94,7 +99,11 @@ func renderTemplate(tmpl string, alert model.Alert) (string, error) {
 
 // These are variables so tests can override them without spawning real processes.
 var openURL = func(url string) error {
-	return exec.Command("open", url).Start()
+	spec, err := browserOpenCommand(runtime.GOOS, url)
+	if err != nil {
+		return err
+	}
+	return exec.Command(spec.name, spec.args...).Start()
 }
 
 var runShell = func(cmd string, _ bool) error {
@@ -102,7 +111,60 @@ var runShell = func(cmd string, _ bool) error {
 }
 
 var copyToClipboard = func(text string) error {
-	pbcopy := exec.Command("pbcopy")
-	pbcopy.Stdin = bytes.NewBufferString(text)
-	return pbcopy.Run()
+	spec, err := clipboardCommand(runtime.GOOS, exec.LookPath)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(spec.name, spec.args...)
+	cmd.Stdin = bytes.NewBufferString(text)
+	return cmd.Run()
+}
+
+func browserOpenCommand(goos, url string) (commandSpec, error) {
+	switch goos {
+	case "darwin":
+		return commandSpec{name: "open", args: []string{url}}, nil
+	case "linux":
+		return commandSpec{name: "xdg-open", args: []string{url}}, nil
+	case "windows":
+		return commandSpec{name: "rundll32", args: []string{"url.dll,FileProtocolHandler", url}}, nil
+	default:
+		return commandSpec{}, fmt.Errorf("opening URLs is not supported on %s", goos)
+	}
+}
+
+func clipboardCommand(goos string, lookPath func(string) (string, error)) (commandSpec, error) {
+	candidates := clipboardCommandCandidates(goos)
+	for _, candidate := range candidates {
+		if _, err := lookPath(candidate.name); err == nil {
+			return candidate, nil
+		}
+	}
+
+	if len(candidates) == 0 {
+		return commandSpec{}, fmt.Errorf("clipboard actions are not supported on %s", goos)
+	}
+
+	names := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		names = append(names, candidate.name)
+	}
+	return commandSpec{}, fmt.Errorf("no clipboard command found on %s (tried: %v)", goos, names)
+}
+
+func clipboardCommandCandidates(goos string) []commandSpec {
+	switch goos {
+	case "darwin":
+		return []commandSpec{{name: "pbcopy"}}
+	case "linux":
+		return []commandSpec{
+			{name: "wl-copy"},
+			{name: "xclip", args: []string{"-selection", "clipboard"}},
+			{name: "xsel", args: []string{"--clipboard", "--input"}},
+		}
+	case "windows":
+		return []commandSpec{{name: "clip"}}
+	default:
+		return nil
+	}
 }

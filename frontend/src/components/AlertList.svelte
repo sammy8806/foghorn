@@ -28,7 +28,7 @@
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
   import { GetUIConfig, LayoutPopup } from '../../wailsjs/go/main/App';
-  import { EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
+  import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
 
@@ -149,9 +149,10 @@
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
-    const [uiConfig, screens] = await Promise.all([
+    const [uiConfig, screens, environment] = await Promise.all([
       GetUIConfig(),
       ScreenGetAll(),
+      Environment(),
     ]);
 
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
@@ -166,7 +167,11 @@
     const desiredHeight = measureDesiredPopupHeight();
     const height = clamp(desiredHeight, minPopupHeight, maxHeight);
 
-    await LayoutPopup(width, height, popupHorizontalMargin, popupTopMargin, popupBottomMargin);
+    const horizontalArg = environment.platform === 'darwin'
+      ? popupHorizontalMargin
+      : Math.max(0, screen.width - width - popupHorizontalMargin);
+
+    await LayoutPopup(width, height, horizontalArg, popupTopMargin, popupBottomMargin);
   }
 
   function measureDesiredPopupHeight(): number {

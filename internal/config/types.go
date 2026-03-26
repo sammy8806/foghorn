@@ -45,30 +45,45 @@ type SortCriterion struct {
 // NormalizedDisplayConfig is what the frontend receives — sort_by is always a
 // resolved []SortCriterion regardless of how it was written in the config file.
 type NormalizedDisplayConfig struct {
-	VisibleLabels       []string        `json:"visible_labels"`
-	VisibleAnnotations  []string        `json:"visible_annotations"`
-	SubtitleAnnotations []string        `json:"subtitle_annotations"`
-	GroupBy             []string        `json:"group_by"`
-	SortBy              []SortCriterion `json:"sort_by"`
+	VisibleLabels          []string            `json:"visible_labels"`
+	VisibleAnnotations     []string            `json:"visible_annotations"`
+	SubtitleAnnotations    []string            `json:"subtitle_annotations"`
+	GroupBy                []string            `json:"group_by"`
+	GroupByOverrideKeyMode string              `json:"group_by_override_key_mode"`
+	GroupByOverrides       map[string][]string `json:"group_by_overrides"`
+	SortBy                 []SortCriterion     `json:"sort_by"`
 }
 
 type DisplayConfig struct {
-	VisibleLabels       []string    `yaml:"visible_labels" json:"visible_labels"`
-	VisibleAnnotations  []string    `yaml:"visible_annotations" json:"visible_annotations"`
-	SubtitleAnnotations []string    `yaml:"subtitle_annotations" json:"subtitle_annotations"`
-	GroupBy             []string    `yaml:"group_by" json:"group_by"`
-	SortBy              interface{} `yaml:"sort_by" json:"-"`
+	VisibleLabels          []string            `yaml:"visible_labels" json:"visible_labels"`
+	VisibleAnnotations     []string            `yaml:"visible_annotations" json:"visible_annotations"`
+	SubtitleAnnotations    []string            `yaml:"subtitle_annotations" json:"subtitle_annotations"`
+	GroupBy                []string            `yaml:"group_by" json:"group_by"`
+	GroupByOverrideKeyMode string              `yaml:"group_by_override_key_mode" json:"group_by_override_key_mode"`
+	GroupByOverrides       map[string][]string `yaml:"group_by_overrides" json:"group_by_overrides"`
+	SortBy                 interface{}         `yaml:"sort_by" json:"-"`
 }
 
 // Normalize converts the raw DisplayConfig into a NormalizedDisplayConfig
 // suitable for sending to the frontend.
 func (d *DisplayConfig) Normalize() NormalizedDisplayConfig {
 	return NormalizedDisplayConfig{
-		VisibleLabels:       d.VisibleLabels,
-		VisibleAnnotations:  d.VisibleAnnotations,
-		SubtitleAnnotations: d.SubtitleAnnotations,
-		GroupBy:             d.GroupBy,
-		SortBy:              d.ParsedSortBy(),
+		VisibleLabels:          d.VisibleLabels,
+		VisibleAnnotations:     d.VisibleAnnotations,
+		SubtitleAnnotations:    d.SubtitleAnnotations,
+		GroupBy:                d.GroupBy,
+		GroupByOverrideKeyMode: d.OverrideKeyMode(),
+		GroupByOverrides:       d.GroupByOverrides,
+		SortBy:                 d.ParsedSortBy(),
+	}
+}
+
+func (d *DisplayConfig) OverrideKeyMode() string {
+	switch strings.ToLower(strings.TrimSpace(d.GroupByOverrideKeyMode)) {
+	case "raw":
+		return "raw"
+	default:
+		return "display"
 	}
 }
 

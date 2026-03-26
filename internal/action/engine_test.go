@@ -1,6 +1,8 @@
 package action
 
 import (
+	"errors"
+	"reflect"
 	"testing"
 
 	"foghorn/internal/config"
@@ -55,8 +57,8 @@ func TestActionsForAlert_Match(t *testing.T) {
 func TestActionsForAlert_NoMatch(t *testing.T) {
 	actions := []config.ActionConfig{
 		{
-			Name:  "CriticalOnly",
-			Match: map[string]string{"severity": "critical"},
+			Name:   "CriticalOnly",
+			Match:  map[string]string{"severity": "critical"},
 			Action: config.ActionDef{Type: "url", Template: "http://example.com"},
 		},
 	}
@@ -126,5 +128,61 @@ func TestExecute_ClipboardAction(t *testing.T) {
 	}
 	if copied != "HighMem on test" {
 		t.Errorf("expected clipboard 'HighMem on test', got %q", copied)
+	}
+}
+
+func TestBrowserOpenCommand(t *testing.T) {
+	tests := []struct {
+		goos string
+		want commandSpec
+	}{
+		{goos: "darwin", want: commandSpec{name: "open", args: []string{"https://example.com"}}},
+		{goos: "linux", want: commandSpec{name: "xdg-open", args: []string{"https://example.com"}}},
+		{goos: "windows", want: commandSpec{name: "rundll32", args: []string{"url.dll,FileProtocolHandler", "https://example.com"}}},
+	}
+
+	for _, tt := range tests {
+		got, err := browserOpenCommand(tt.goos, "https://example.com")
+		if err != nil {
+			t.Fatalf("browserOpenCommand(%q) error: %v", tt.goos, err)
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Fatalf("browserOpenCommand(%q) = %#v, want %#v", tt.goos, got, tt.want)
+		}
+	}
+}
+
+func TestClipboardCommand_LinuxFallbacks(t *testing.T) {
+	lookups := map[string]error{
+		"wl-copy": errors.New("missing"),
+		"xclip":   nil,
+		"xsel":    nil,
+	}
+
+	got, err := clipboardCommand("linux", func(name string) (string, error) {
+		if err, ok := lookups[name]; ok {
+			if err != nil {
+				return "", err
+			}
+			return "/usr/bin/" + name, nil
+		}
+		return "", errors.New("missing")
+	})
+	if err != nil {
+		t.Fatalf("clipboardCommand(linux) error: %v", err)
+	}
+
+	want := commandSpec{name: "xclip", args: []string{"-selection", "clipboard"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("clipboardCommand(linux) = %#v, want %#v", got, want)
+	}
+}
+
+func TestClipboardCommand_Unsupported(t *testing.T) {
+	_, err := clipboardCommand("plan9", func(string) (string, error) {
+		return "", errors.New("missing")
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported platform")
 	}
 }
