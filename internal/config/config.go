@@ -87,8 +87,11 @@ func validate(cfg *Config) error {
 		if src.Type == "" {
 			return fmt.Errorf("source[%d] %q: type is required", i, src.Name)
 		}
-		if src.URL == "" {
+		if src.URL == "" && !strings.EqualFold(src.Type, "betterstack") {
 			return fmt.Errorf("source[%d] %q: url is required", i, src.Name)
+		}
+		if src.URL == "" && strings.EqualFold(src.Type, "betterstack") {
+			cfg.Sources[i].URL = "https://uptime.betterstack.com"
 		}
 		if src.PollInterval == 0 {
 			cfg.Sources[i].PollInterval = 30_000_000_000 // 30s default

@@ -2,6 +2,7 @@ package poll
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -58,6 +59,8 @@ func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, ch chan<
 		p = provider.NewAlertmanager(src)
 	case "grafana":
 		p = provider.NewGrafana(src)
+	case "betterstack":
+		p = provider.NewBetterStack(src)
 	case "prometheus":
 		p = provider.NewPrometheus(src)
 	default:
@@ -106,7 +109,22 @@ func (e *Engine) poll(ctx context.Context, source string, p Provider, ch chan<- 
 	}
 
 	diff := e.store.Update(source, alerts)
-	e.store.RecordPollSuccess(source)
+	if onCallProvider, ok := p.(provider.OnCallProvider); ok {
+		onCall, err := onCallProvider.FetchOnCall(ctx)
+		if err != nil {
+			log.Printf("error fetching on-call from %s: %v", source, err)
+			e.store.ClearOnCall(source)
+			e.store.RecordPollError(source, fmt.Errorf("on-call lookup failed: %w", err))
+		} else if onCall == nil {
+			e.store.ClearOnCall(source)
+			e.store.RecordPollSuccess(source)
+		} else {
+			e.store.UpdateOnCall(source, *onCall)
+			e.store.RecordPollSuccess(source)
+		}
+	} else {
+		e.store.RecordPollSuccess(source)
+	}
 
 	select {
 	case ch <- DiffEvent{Source: source, Diff: diff}:

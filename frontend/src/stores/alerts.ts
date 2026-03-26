@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { GetAlerts, GetDisplayConfig, GetSeverityConfig, GetSeverityCounts, GetSourcesHealth } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourcesHealth } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
@@ -164,10 +164,25 @@ export interface SourceHealth {
   consecFails: number;
 }
 
+export interface OnCallUser {
+  name: string;
+  email: string;
+}
+
+export interface OnCallStatus {
+  source: string;
+  scheduleID: string;
+  scheduleName: string;
+  teamName?: string;
+  users: OnCallUser[];
+  lastUpdated: string;
+}
+
 export const verbose = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
 export const sourcesHealth = writable<SourceHealth[]>([]);
+export const onCallStatus = writable<OnCallStatus[]>([]);
 // Set of "source:id" keys that have appeared since the user last acknowledged them.
 export const newAlertKeys = writable<Set<string>>(new Set());
 // Set of "source:id" keys that are briefly kept visible after resolution.
@@ -187,26 +202,40 @@ function healthBySource(entries: SourceHealth[]): Map<string, SourceHealth> {
   return new Map(entries.map(entry => [entry.source, entry]));
 }
 
+function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceHealth[]): void {
+  const previous = healthBySource(previousEntries);
+  for (const entry of nextEntries) {
+    if (entry.ok) continue;
+    const prior = previous.get(entry.source);
+    const changed = !prior || prior.ok || prior.lastError !== entry.lastError || prior.consecFails !== entry.consecFails;
+    if (!changed) continue;
+    console.error(`[provider:${entry.source}] ${entry.lastError || 'poll failed'} (consecutive failures: ${entry.consecFails})`);
+  }
+}
+
 export async function refreshAlerts(): Promise<void> {
   try {
     if (!isWails()) {
       // No backend — show empty state instead of hanging/crashing.
       alerts.set([]);
       severityCounts.set(emptySeverityCounts());
+      onCallStatus.set([]);
       error.set('Dev mode: no Wails backend connected');
       return;
     }
-    const [alertList, counts, health] = await Promise.all([
+    const [alertList, counts, health, onCall] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
       GetSourcesHealth(),
+      GetOnCallStatus(),
     ]);
     const incoming = alertList || [];
     const currentHealth = health || [];
 
     // Track newly appeared alerts until the user acknowledges them.
     const prev = get(alerts);
-    const prevHealth = healthBySource(get(sourcesHealth));
+    const previousHealthEntries = get(sourcesHealth);
+    const prevHealth = healthBySource(previousHealthEntries);
     const nextHealth = healthBySource(currentHealth);
     const incomingKeys = new Set(incoming.map(a => a.source + ':' + a.id));
     const prevKeys = new Set(prev.map(a => a.source + ':' + a.id));
@@ -242,6 +271,8 @@ export async function refreshAlerts(): Promise<void> {
     alerts.set(mergeVisibleAlerts(incoming));
     severityCounts.set(counts || emptySeverityCounts());
     sourcesHealth.set(currentHealth);
+    logHealthFailures(previousHealthEntries, currentHealth);
+    onCallStatus.set(onCall || []);
     error.set(null);
   } catch (e) {
     error.set(String(e));

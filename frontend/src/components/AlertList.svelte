@@ -7,6 +7,7 @@
     displayConfig,
     verbose,
     sourcesHealth,
+    onCallStatus,
     newAlertKeys,
     resolvedAlertKeys,
     acknowledgeAllAlerts,
@@ -158,17 +159,39 @@
       : 'macOS has not granted notification permission to Foghorn yet.';
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
-    : $sourcesHealth.map(h =>
-        `${h.source}: ${h.ok ? 'OK' : h.lastError || 'failing'}${h.consecFails > 0 ? ` (${h.consecFails} consecutive failures)` : ''}`
-      ).join('\n');
+    : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
   $: latestPoll = $sourcesHealth.reduce((latest, h) => {
     const t = new Date(h.lastPoll);
     return t > latest ? t : latest;
   }, new Date(0));
+  $: onCallSummary = $onCallStatus.map(status => {
+    const names = status.users.map(user => user.name || user.email).filter(Boolean).join(', ') || 'nobody assigned';
+    return $onCallStatus.length === 1 ? names : `${status.source}: ${names}`;
+  }).join(' | ');
+  $: onCallTitle = $onCallStatus.map(status => {
+    const schedule = status.scheduleName || status.scheduleID;
+    const team = status.teamName ? ` (${status.teamName})` : '';
+    const names = status.users.map(user => user.email ? `${user.name} <${user.email}>` : user.name).join(', ') || 'nobody assigned';
+    return `${status.source} · ${schedule}${team}: ${names}`;
+  }).join('\n');
 
   function formatTime(d: Date): string {
     if (d.getTime() === 0) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function formatHealthLine(health: {
+    source: string;
+    ok: boolean;
+    lastPoll: string;
+    lastError?: string;
+    consecFails: number;
+  }): string {
+    const status = health.ok ? 'OK' : 'Failing';
+    const lastPoll = health.lastPoll ? formatTime(new Date(health.lastPoll)) : 'never';
+    const error = health.ok ? '' : `; error: ${health.lastError || 'unknown error'}`;
+    const failures = health.consecFails > 0 ? `; consecutive failures: ${health.consecFails}` : '';
+    return `${health.source}: ${status}; last poll: ${lastPoll}${error}${failures}`;
   }
 
   function currentSortLabel(): string {
@@ -297,113 +320,123 @@
     </label>
   </div>
 
-  <!-- Status bar -->
-  <div class="status-bar">
-    <div class="status-left">
-      {#if $loading}
-        <span class="status-loading">Loading…</span>
-      {:else if $error}
-        <span class="status-error">Error: {$error}</span>
-      {:else}
-        <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
-        {#if newVisibleCount > 0}
-          <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
-            {newVisibleCount} new
-          </span>
-          <button
-            class="status-link-btn"
-            on:click={acknowledgeAllAlerts}
-            title="Mark all new alerts as seen"
-          >
-            Unmark all
-          </button>
-        {/if}
-        {#if resolvedVisibleCount > 0}
-          <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">
-            {resolvedVisibleCount} resolved
-          </span>
-          <button
-            class="status-link-btn status-link-btn-resolved"
-            on:click={acknowledgeAllResolvedAlerts}
-            title="Mark all resolved alerts as seen"
-          >
-            Mark resolved seen
-          </button>
-        {/if}
-        <div class="sort-toggle-wrap">
-          <button
-            class="sort-toggle"
-            class:active={groupMenuOpen}
-            on:click|stopPropagation={() => {
-              groupMenuOpen = !groupMenuOpen;
-              sortMenuOpen = false;
-            }}
-            title="Change alert grouping"
-          >
-            Group: {currentGroupLabel()} ▾
-          </button>
-          {#if groupMenuOpen}
-            <div class="sort-menu">
-              {#each GROUP_PRESET_OPTIONS as option}
-                <button
-                  class="sort-option"
-                  class:selected={$activeGroupMode === option.mode}
-                  on:click|stopPropagation={() => setGroupMode(option.mode)}
-                >
-                  <span>{option.label}</span>
-                  {#if $activeGroupMode === option.mode}
-                    <span class="sort-check">✓</span>
-                  {/if}
-                </button>
-              {/each}
-            </div>
+  <!-- Status bars -->
+  <div class="status-stack">
+    <div class="status-bar">
+      <div class="status-left">
+        {#if $loading}
+          <span class="status-loading">Loading…</span>
+        {:else if $error}
+          <span class="status-error">Error: {$error}</span>
+        {:else}
+          <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+          {#if newVisibleCount > 0}
+            <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
+              {newVisibleCount} new
+            </span>
+            <button
+              class="status-link-btn"
+              on:click={acknowledgeAllAlerts}
+              title="Mark all new alerts as seen"
+            >
+              Unmark all
+            </button>
           {/if}
-        </div>
-        <div class="sort-toggle-wrap">
-          <button
-            class="sort-toggle"
-            class:active={sortMenuOpen}
-            on:click|stopPropagation={() => {
-              sortMenuOpen = !sortMenuOpen;
-              groupMenuOpen = false;
-            }}
-            title="Change alert sort order"
-          >
-            Sort: {currentSortLabel()} ▾
-          </button>
-          {#if sortMenuOpen}
-            <div class="sort-menu">
-              {#each SORT_PRESET_OPTIONS as option}
-                <button
-                  class="sort-option"
-                  class:selected={$activeSortMode === option.mode}
-                  on:click|stopPropagation={() => setSortMode(option.mode)}
-                >
-                  <span>{option.label}</span>
-                  {#if $activeSortMode === option.mode}
-                    <span class="sort-check">✓</span>
-                  {/if}
-                </button>
-              {/each}
-            </div>
+          {#if resolvedVisibleCount > 0}
+            <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">
+              {resolvedVisibleCount} resolved
+            </span>
+            <button
+              class="status-link-btn status-link-btn-resolved"
+              on:click={acknowledgeAllResolvedAlerts}
+              title="Mark all resolved alerts as seen"
+            >
+              Mark resolved seen
+            </button>
           {/if}
+          <div class="sort-toggle-wrap">
+            <button
+              class="sort-toggle"
+              class:active={groupMenuOpen}
+              on:click|stopPropagation={() => {
+                groupMenuOpen = !groupMenuOpen;
+                sortMenuOpen = false;
+              }}
+              title="Change alert grouping"
+            >
+              Group: {currentGroupLabel()} ▾
+            </button>
+            {#if groupMenuOpen}
+              <div class="sort-menu">
+                {#each GROUP_PRESET_OPTIONS as option}
+                  <button
+                    class="sort-option"
+                    class:selected={$activeGroupMode === option.mode}
+                    on:click|stopPropagation={() => setGroupMode(option.mode)}
+                  >
+                    <span>{option.label}</span>
+                    {#if $activeGroupMode === option.mode}
+                      <span class="sort-check">✓</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          <div class="sort-toggle-wrap">
+            <button
+              class="sort-toggle"
+              class:active={sortMenuOpen}
+              on:click|stopPropagation={() => {
+                sortMenuOpen = !sortMenuOpen;
+                groupMenuOpen = false;
+              }}
+              title="Change alert sort order"
+            >
+              Sort: {currentSortLabel()} ▾
+            </button>
+            {#if sortMenuOpen}
+              <div class="sort-menu">
+                {#each SORT_PRESET_OPTIONS as option}
+                  <button
+                    class="sort-option"
+                    class:selected={$activeSortMode === option.mode}
+                    on:click|stopPropagation={() => setSortMode(option.mode)}
+                  >
+                    <span>{option.label}</span>
+                    {#if $activeSortMode === option.mode}
+                      <span class="sort-check">✓</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
+        {/if}
+      </div>
+      <div class="status-right" title={refreshing ? 'Refreshing…' : healthTitle}>
+        <span class="refresh-status"
+          class:refresh-ok={allSourcesOK && !refreshing}
+          class:refresh-fail={anySourceFailing && !refreshing}
+          class:refresh-pending={noHealthYet || refreshing}
+        >●</span>
+        {#if !noHealthYet}
+          <span class="refresh-time">{formatTime(latestPoll)}</span>
+        {/if}
+        <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
+          <span class="refresh-icon" class:spinning={refreshing}>↻</span>
+        </button>
+      </div>
+    </div>
+    {#if $onCallStatus.length > 0}
+      <div class="status-bar status-bar-secondary">
+        <div class="status-left">
+          <span class="status-oncall-label">On call</span>
+          <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
         </div>
-        {#if $verbose}<span class="status-verbose">VERBOSE</span>{/if}
-      {/if}
-    </div>
-    <div class="status-right">
-      <span class="refresh-status"
-        class:refresh-ok={allSourcesOK && !refreshing}
-        class:refresh-fail={anySourceFailing && !refreshing}
-        class:refresh-pending={noHealthYet || refreshing}
-        title={refreshing ? 'Refreshing…' : healthTitle}>●</span>
-      {#if !noHealthYet}
-        <span class="refresh-time">{formatTime(latestPoll)}</span>
-      {/if}
-      <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title="Refresh alerts">
-        <span class="refresh-icon" class:spinning={refreshing}>↻</span>
-      </button>
-    </div>
+      </div>
+    {/if}
   </div>
 
   <!-- Alert content -->
@@ -531,6 +564,12 @@
     cursor: pointer;
   }
 
+  .status-stack {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
   .status-bar {
     display: flex;
     align-items: center;
@@ -541,6 +580,12 @@
     background: #0a1120;
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
+  }
+  .status-bar-secondary {
+    padding-top: 3px;
+    padding-bottom: 3px;
+    background: #0d1627;
+    border-top: 1px solid rgba(51, 65, 85, 0.35);
   }
   .status-left { display: flex; align-items: center; gap: 6px; position: relative; }
   .status-right { display: flex; align-items: center; gap: 6px; }
@@ -575,6 +620,31 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
+  }
+  .status-resolved {
+    font-size: 10px;
+    font-weight: 700;
+    color: #dbeafe;
+    background: #1d4ed8;
+    border-radius: 999px;
+    padding: 2px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow: 0 0 14px rgba(59, 130, 246, 0.2);
+  }
+  .status-oncall-label {
+    color: #7dd3fc;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .status-oncall {
+    color: #cbd5e1;
+    max-width: 640px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .status-link-btn {

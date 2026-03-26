@@ -73,6 +73,20 @@ export namespace config {
 	        this.Token = source["Token"];
 	    }
 	}
+	export class BetterStackConfig {
+	    OnCallSchedule: string;
+	    TeamName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BetterStackConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.OnCallSchedule = source["OnCallSchedule"];
+	        this.TeamName = source["TeamName"];
+	    }
+	}
 	export class UIConfig {
 	    theme: string;
 	    popup_width: number;
@@ -303,6 +317,7 @@ export namespace config {
 	    PollInterval: number;
 	    Filters: string[];
 	    SeverityLabel: string;
+	    BetterStack: BetterStackConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new SourceConfig(source);
@@ -317,6 +332,7 @@ export namespace config {
 	        this.PollInterval = source["PollInterval"];
 	        this.Filters = source["Filters"];
 	        this.SeverityLabel = source["SeverityLabel"];
+	        this.BetterStack = this.convertValues(source["BetterStack"], BetterStackConfig);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -601,6 +617,62 @@ export namespace model {
 		    return a;
 		}
 	}
+	export class OnCallUser {
+	    name: string;
+	    email: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OnCallUser(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.email = source["email"];
+	    }
+	}
+	export class OnCallStatus {
+	    source: string;
+	    scheduleID: string;
+	    scheduleName: string;
+	    teamName?: string;
+	    users: OnCallUser[];
+	    // Go type: time
+	    lastUpdated: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new OnCallStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.scheduleID = source["scheduleID"];
+	        this.scheduleName = source["scheduleName"];
+	        this.teamName = source["teamName"];
+	        this.users = this.convertValues(source["users"], OnCallUser);
+	        this.lastUpdated = this.convertValues(source["lastUpdated"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class SourceHealth {
 	    source: string;
 	    ok: boolean;

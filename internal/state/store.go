@@ -16,6 +16,8 @@ type Store struct {
 	bySource map[string]map[string]model.Alert
 	// health tracks the last poll result per source
 	health map[string]model.SourceHealth
+	// onCalls tracks current on-call users per source when the provider supports it.
+	onCalls map[string]model.OnCallStatus
 	// severityScheme normalizes raw provider severities into configured canonical values.
 	severityScheme config.SeverityScheme
 }
@@ -25,6 +27,7 @@ func New() *Store {
 	return &Store{
 		bySource:       make(map[string]map[string]model.Alert),
 		health:         make(map[string]model.SourceHealth),
+		onCalls:        make(map[string]model.OnCallStatus),
 		severityScheme: normalized.Scheme(),
 	}
 }
@@ -145,6 +148,31 @@ func (s *Store) SourcesHealth() []model.SourceHealth {
 	return out
 }
 
+func (s *Store) UpdateOnCall(source string, status model.OnCallStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status.Source = source
+	status.LastUpdated = time.Now()
+	s.onCalls[source] = status
+}
+
+func (s *Store) ClearOnCall(source string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.onCalls, source)
+}
+
+func (s *Store) OnCalls() []model.OnCallStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]model.OnCallStatus, 0, len(s.onCalls))
+	for _, status := range s.onCalls {
+		out = append(out, status)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Source < out[j].Source })
+	return out
+}
+
 // SyncSources removes state for sources that are no longer configured.
 func (s *Store) SyncSources(sources []string) {
 	s.mu.Lock()
@@ -164,6 +192,12 @@ func (s *Store) SyncSources(sources []string) {
 	for source := range s.health {
 		if _, ok := keep[source]; !ok {
 			delete(s.health, source)
+		}
+	}
+
+	for source := range s.onCalls {
+		if _, ok := keep[source]; !ok {
+			delete(s.onCalls, source)
 		}
 	}
 }

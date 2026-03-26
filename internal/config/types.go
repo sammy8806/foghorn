@@ -23,13 +23,19 @@ type Config struct {
 }
 
 type SourceConfig struct {
-	Name          string        `yaml:"name"`
-	Type          string        `yaml:"type"`
-	URL           string        `yaml:"url"`
-	Auth          AuthConfig    `yaml:"auth"`
-	PollInterval  time.Duration `yaml:"poll_interval"`
-	Filters       []string      `yaml:"filters"`
-	SeverityLabel string        `yaml:"severity_label"`
+	Name          string            `yaml:"name"`
+	Type          string            `yaml:"type"`
+	URL           string            `yaml:"url"`
+	Auth          AuthConfig        `yaml:"auth"`
+	PollInterval  time.Duration     `yaml:"poll_interval"`
+	Filters       []string          `yaml:"filters"`
+	SeverityLabel string            `yaml:"severity_label"`
+	BetterStack   BetterStackConfig `yaml:"betterstack"`
+}
+
+type BetterStackConfig struct {
+	OnCallSchedule string `yaml:"on_call_schedule"`
+	TeamName       string `yaml:"team_name"`
 }
 
 type AuthConfig struct {

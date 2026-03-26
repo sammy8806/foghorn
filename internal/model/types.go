@@ -63,6 +63,20 @@ type SourceHealth struct {
 	ConsecFails int       `json:"consecFails"`
 }
 
+type OnCallUser struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type OnCallStatus struct {
+	Source       string       `json:"source"`
+	ScheduleID   string       `json:"scheduleID"`
+	ScheduleName string       `json:"scheduleName"`
+	TeamName     string       `json:"teamName,omitempty"`
+	Users        []OnCallUser `json:"users"`
+	LastUpdated  time.Time    `json:"lastUpdated"`
+}
+
 // Diff represents changes between two poll cycles.
 type Diff struct {
 	New      []Alert `json:"new"`

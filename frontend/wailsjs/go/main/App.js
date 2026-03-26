@@ -26,6 +26,10 @@ export function GetNotificationPermissionStatus() {
   return window['go']['main']['App']['GetNotificationPermissionStatus']();
 }
 
+export function GetOnCallStatus() {
+  return window['go']['main']['App']['GetOnCallStatus']();
+}
+
 export function GetSeverityConfig() {
   return window['go']['main']['App']['GetSeverityConfig']();
 }

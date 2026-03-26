@@ -4,6 +4,8 @@
 
 Foghorn is a desktop app built with Wails v2, Go, and Svelte.
 
+It can poll Alertmanager, Grafana Alerting, Prometheus, and Better Stack incident sources. Better Stack sources can also show the current on-call person in the app status bar when `betterstack.on_call_schedule` is configured.
+
 ## Install Wails
 
 Wails requires Go and npm/node to be installed first.

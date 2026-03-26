@@ -181,6 +181,8 @@ func buildProviders(sources []config.SourceConfig) map[string]provider.Provider 
 			providers[src.Name] = provider.NewAlertmanager(src)
 		case "grafana":
 			providers[src.Name] = provider.NewGrafana(src)
+		case "betterstack":
+			providers[src.Name] = provider.NewBetterStack(src)
 		case "prometheus":
 			providers[src.Name] = provider.NewPrometheus(src)
 		default:

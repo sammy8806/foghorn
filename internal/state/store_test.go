@@ -158,3 +158,27 @@ func TestMultiSourceIsolation(t *testing.T) {
 		t.Fatalf("expected 1 remaining alert from src2, got %d", len(all))
 	}
 }
+
+func TestOnCallLifecycle(t *testing.T) {
+	s := New()
+	s.UpdateOnCall("src1", model.OnCallStatus{
+		ScheduleID:   "default",
+		ScheduleName: "default",
+		Users: []model.OnCallUser{
+			{Name: "Alice Example", Email: "alice@example.com"},
+		},
+	})
+
+	statuses := s.OnCalls()
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 on-call status, got %d", len(statuses))
+	}
+	if statuses[0].Users[0].Name != "Alice Example" {
+		t.Fatalf("unexpected on-call user: %#v", statuses[0].Users)
+	}
+
+	s.ClearOnCall("src1")
+	if got := len(s.OnCalls()); got != 0 {
+		t.Fatalf("expected on-call to be cleared, got %d entries", got)
+	}
+}

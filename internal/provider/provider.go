@@ -14,3 +14,8 @@ type Provider interface {
 	Unsilence(ctx context.Context, silenceID string) error
 	Health(ctx context.Context) model.ProviderHealth
 }
+
+// OnCallProvider is implemented by sources that can expose current on-call users.
+type OnCallProvider interface {
+	FetchOnCall(ctx context.Context) (*model.OnCallStatus, error)
+}

@@ -118,6 +118,10 @@ func (a *App) GetSourcesHealth() []model.SourceHealth {
 	return a.store.SourcesHealth()
 }
 
+func (a *App) GetOnCallStatus() []model.OnCallStatus {
+	return a.store.OnCalls()
+}
+
 // GetDisplayConfig returns the normalized display configuration.
 func (a *App) GetDisplayConfig() config.NormalizedDisplayConfig {
 	a.mu.RLock()

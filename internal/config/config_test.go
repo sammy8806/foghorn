@@ -158,6 +158,54 @@ ui:
 	}
 }
 
+func TestLoadConfigBetterStackDefaultsURL(t *testing.T) {
+	yaml := `
+sources:
+  - name: better
+    type: betterstack
+    auth:
+      type: bearer
+      token: secret
+    betterstack:
+      on_call_schedule: default
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Sources[0].URL != "https://uptime.betterstack.com" {
+		t.Fatalf("expected Better Stack default URL, got %q", cfg.Sources[0].URL)
+	}
+	if cfg.Sources[0].BetterStack.OnCallSchedule != "default" {
+		t.Fatalf("expected on_call_schedule default, got %q", cfg.Sources[0].BetterStack.OnCallSchedule)
+	}
+}
+
 func TestEnvVarExpansion(t *testing.T) {
 	os.Setenv("FOGHORN_TEST_USER", "testuser")
 	os.Setenv("FOGHORN_TEST_PASS", "testpass")

@@ -18,6 +18,19 @@ sources:
   #   # Optional: treat another alert label as the severity source.
   #   # Falls back to the standard `severity` label when absent.
   #   severity_label: priority
+  # - name: betterstack-production
+  #   type: betterstack
+  #   # Optional for Better Stack; defaults to https://uptime.betterstack.com.
+  #   url: https://uptime.betterstack.com
+  #   auth:
+  #     type: bearer
+  #     token: ${FOGHORN_BETTERSTACK_TOKEN}
+  #   poll_interval: 30s
+  #   betterstack:
+  #     # Use a specific schedule id or "default" to show the current on-call user.
+  #     on_call_schedule: default
+  #     # Optional when the token can access multiple teams.
+  #     team_name: Production
 
 severities:
   # Canonical severity used when an alert label does not match any configured alias.
