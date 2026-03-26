@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { Alert, DisplayConfig } from '../stores/alerts';
-  import { acknowledgeAlert, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, acknowledgeResolvedAlert, fieldNameFromRef, resolveAlertFieldDisplay, verbose } from '../stores/alerts';
   import { severityClass, severityColor, formatDuration } from '../utils/severity';
   import SilenceDialog from './SilenceDialog.svelte';
 
   export let alert: Alert;
   export let config: DisplayConfig;
   export let isNew: boolean = false;
+  export let isResolved: boolean = false;
 
   function labelName(spec: string): string {
     return fieldNameFromRef(spec);
@@ -46,9 +47,13 @@
   $: alertKey = alert.source + ':' + alert.id;
 
   function scheduleAcknowledge() {
-    if (!isNew || acknowledgeTimer) return;
+    if ((!isNew && !isResolved) || acknowledgeTimer) return;
     acknowledgeTimer = setTimeout(() => {
-      acknowledgeAlert(alertKey);
+      if (isResolved) {
+        acknowledgeResolvedAlert(alertKey);
+      } else {
+        acknowledgeAlert(alertKey);
+      }
       acknowledgeTimer = null;
     }, 600);
   }
@@ -64,6 +69,7 @@
   class="alert-card {severityClass(alert.severity)}"
   class:silenced={alert.silencedBy?.length > 0}
   class:alert-new={isNew}
+  class:alert-resolved={isResolved}
   on:pointerenter={scheduleAcknowledge}
   on:pointerleave={cancelAcknowledge}
 >
@@ -71,6 +77,9 @@
     <span class="severity-dot" style="background: {severityColor(alert.severity)}" />
     {#if isNew}
       <span class="badge badge-new" title="New alert. Hover for a moment to mark as seen.">NEW</span>
+    {/if}
+    {#if isResolved}
+      <span class="badge badge-resolved" title="Resolved alert. Hover briefly to mark as seen, or wait for it to expire.">RESOLVED</span>
     {/if}
     <span class="alert-name">{alert.name}</span>
     {#if subtitle}
@@ -144,7 +153,7 @@
         {#if alert.generatorURL}
           <a href={alert.generatorURL} target="_blank" class="generator-link">Open in Prometheus</a>
         {/if}
-        {#if !alert.silencedBy?.length}
+        {#if !alert.silencedBy?.length && !isResolved}
           <button class="btn-silence" on:click|stopPropagation={() => (silenceOpen = true)}>Silence…</button>
         {/if}
       </div>
@@ -180,9 +189,25 @@
     transform: translateX(1px);
     box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.55), 0 0 0 1px rgba(250, 204, 21, 0.4), 0 0 18px rgba(250, 204, 21, 0.18);
   }
+  .alert-resolved {
+    border-left-width: 8px;
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35), 0 0 0 1px rgba(34, 197, 94, 0.2);
+    background:
+      linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.06) 28%, rgba(15, 23, 42, 0) 60%),
+      var(--card-bg, #1e293b);
+    animation: alert-resolved-flash 1.2s ease-in-out 2;
+  }
+  .alert-resolved:hover {
+    transform: translateX(1px);
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.55), 0 0 0 1px rgba(34, 197, 94, 0.4), 0 0 18px rgba(34, 197, 94, 0.16);
+  }
   @keyframes alert-new-pulse {
     0%, 100% { box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.35), 0 0 0 1px rgba(250, 204, 21, 0.2); }
     50% { box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.65), 0 0 0 1px rgba(250, 204, 21, 0.45), 0 0 20px rgba(250, 204, 21, 0.2); }
+  }
+  @keyframes alert-resolved-flash {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35), 0 0 0 1px rgba(34, 197, 94, 0.2); }
+    50% { box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.7), 0 0 0 1px rgba(34, 197, 94, 0.45), 0 0 20px rgba(34, 197, 94, 0.18); }
   }
 
   .alert-header {
@@ -248,6 +273,12 @@
     color: #1f2937;
     letter-spacing: 0.08em;
     box-shadow: 0 0 10px rgba(250, 204, 21, 0.28);
+  }
+  .badge-resolved {
+    background: #22c55e;
+    color: #052e16;
+    letter-spacing: 0.08em;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
   .badge-silenced { background: #334155; color: #94a3b8; }
   .badge-inhibited { background: #292524; color: #a8a29e; }

@@ -170,7 +170,18 @@ export const error = writable<string | null>(null);
 export const sourcesHealth = writable<SourceHealth[]>([]);
 // Set of "source:id" keys that have appeared since the user last acknowledged them.
 export const newAlertKeys = writable<Set<string>>(new Set());
+// Set of "source:id" keys that are briefly kept visible after resolution.
+export const resolvedAlertKeys = writable<Set<string>>(new Set());
 let hasLoadedOnce = false;
+const RESOLVED_FLASH_MS = 30000;
+const transientResolvedAlerts = new Map<string, Alert>();
+const resolvedAlertTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+interface AlertsUpdatedDiff {
+  new?: Alert[];
+  resolved?: Alert[];
+  changed?: Alert[];
+}
 
 function healthBySource(entries: SourceHealth[]): Map<string, SourceHealth> {
   return new Map(entries.map(entry => [entry.source, entry]));
@@ -221,10 +232,14 @@ export async function refreshAlerts(): Promise<void> {
       }
     }
 
+    for (const key of incomingKeys) {
+      clearResolvedFlash(key);
+    }
+
     newAlertKeys.set(unseenKeys);
     hasLoadedOnce = true;
 
-    alerts.set(incoming);
+    alerts.set(mergeVisibleAlerts(incoming));
     severityCounts.set(counts || { critical: 0, warning: 0, info: 0 });
     sourcesHealth.set(currentHealth);
     error.set(null);
@@ -269,6 +284,19 @@ export function acknowledgeAllAlerts(): void {
   newAlertKeys.set(new Set());
 }
 
+export function acknowledgeResolvedAlert(alertKey: string): void {
+  clearResolvedFlash(alertKey);
+  alerts.update(current => current.filter(item => item.source + ':' + item.id !== alertKey));
+}
+
+export function acknowledgeAllResolvedAlerts(): void {
+  const keys = [...transientResolvedAlerts.keys()];
+  for (const key of keys) {
+    clearResolvedFlash(key);
+  }
+  alerts.update(current => current.filter(item => !keys.includes(item.source + ':' + item.id)));
+}
+
 // Detect whether we're running inside the Wails webview or a plain browser.
 export const isWails = (): boolean => !!(window as any).runtime || !!(window as any)['go'];
 
@@ -296,7 +324,8 @@ export function waitForBridge(): Promise<void> {
 // Subscribe to backend push events (call after waitForBridge resolves).
 export function initEventListeners(): void {
   if (!isWails()) return; // no event bridge in plain browser
-  EventsOn('alerts:updated', () => {
+  EventsOn('alerts:updated', (diff?: AlertsUpdatedDiff) => {
+    handleResolvedAlerts(diff);
     refreshAlerts();
   });
   EventsOn('config:reloaded', () => {
@@ -343,6 +372,71 @@ export const groupedAlerts = derived(
 
 function highestSeverityInGroup(group: AlertGroup): number {
   return group.alerts.reduce((highest, alert) => Math.min(highest, severityOrder(alert.severity)), severityOrder('unknown'));
+}
+
+function mergeVisibleAlerts(incoming: Alert[]): Alert[] {
+  const visible = [...incoming];
+  const incomingKeys = new Set(incoming.map(alert => alert.source + ':' + alert.id));
+
+  for (const [key, alert] of transientResolvedAlerts) {
+    if (!incomingKeys.has(key)) {
+      visible.push(alert);
+    }
+  }
+
+  return visible;
+}
+
+function handleResolvedAlerts(diff?: AlertsUpdatedDiff): void {
+  if (!diff?.resolved?.length) return;
+
+  for (const alert of diff.resolved) {
+    const key = alert.source + ':' + alert.id;
+    const resolvedAlert: Alert = {
+      ...alert,
+      state: 'resolved',
+      updatedAt: new Date().toISOString(),
+    };
+
+    transientResolvedAlerts.set(key, resolvedAlert);
+
+    newAlertKeys.update(keys => {
+      if (!keys.has(key)) return keys;
+      const next = new Set(keys);
+      next.delete(key);
+      return next;
+    });
+
+    resolvedAlertKeys.update(keys => {
+      const next = new Set(keys);
+      next.add(key);
+      return next;
+    });
+
+    const existingTimer = resolvedAlertTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+    resolvedAlertTimers.set(key, setTimeout(() => {
+      clearResolvedFlash(key);
+      alerts.update(current => current.filter(item => item.source + ':' + item.id !== key));
+    }, RESOLVED_FLASH_MS));
+  }
+}
+
+function clearResolvedFlash(key: string): void {
+  transientResolvedAlerts.delete(key);
+
+  const timer = resolvedAlertTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    resolvedAlertTimers.delete(key);
+  }
+
+  resolvedAlertKeys.update(keys => {
+    if (!keys.has(key)) return keys;
+    const next = new Set(keys);
+    next.delete(key);
+    return next;
+  });
 }
 
 // Enum orderings used for sorting

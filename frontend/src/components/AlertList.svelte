@@ -8,7 +8,9 @@
     verbose,
     sourcesHealth,
     newAlertKeys,
+    resolvedAlertKeys,
     acknowledgeAllAlerts,
+    acknowledgeAllResolvedAlerts,
     refreshAlerts,
     loadDisplayConfig,
     initEventListeners,
@@ -82,6 +84,7 @@
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
+  $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
 
   let refreshing = false;
@@ -244,6 +247,18 @@
             Unmark all
           </button>
         {/if}
+        {#if resolvedVisibleCount > 0}
+          <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">
+            {resolvedVisibleCount} resolved
+          </span>
+          <button
+            class="status-link-btn status-link-btn-resolved"
+            on:click={acknowledgeAllResolvedAlerts}
+            title="Mark all resolved alerts as seen"
+          >
+            Mark resolved seen
+          </button>
+        {/if}
         <div class="sort-toggle-wrap">
           <button
             class="sort-toggle"
@@ -332,12 +347,23 @@
       {#each $groupedAlerts as group}
         {@const visibleInGroup = group.alerts.filter(a => $filteredAlerts.find(f => f.source === a.source && f.id === a.id))}
         {#if visibleInGroup.length > 0}
-          <AlertGroup groupParts={group.parts} alerts={visibleInGroup} config={$displayConfig} newKeys={$newAlertKeys} />
+          <AlertGroup
+            groupParts={group.parts}
+            alerts={visibleInGroup}
+            config={$displayConfig}
+            newKeys={$newAlertKeys}
+            resolvedKeys={$resolvedAlertKeys}
+          />
         {/if}
       {/each}
     {:else}
       {#each sortedUngroupedAlerts as alert (alert.source + ':' + alert.id)}
-        <AlertCard {alert} config={$displayConfig} isNew={$newAlertKeys.has(alert.source + ':' + alert.id)} />
+        <AlertCard
+          {alert}
+          config={$displayConfig}
+          isNew={$newAlertKeys.has(alert.source + ':' + alert.id)}
+          isResolved={$resolvedAlertKeys.has(alert.source + ':' + alert.id)}
+        />
       {/each}
     {/if}
   </div>

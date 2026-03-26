@@ -113,7 +113,7 @@ func main() {
 							counts := store.SeverityCounts()
 							trayMgr.UpdateState(counts)
 							localNotifier.OnDiff(event.Diff)
-							wailsruntime.EventsEmit(ctx, "alerts:updated")
+							wailsruntime.EventsEmit(ctx, "alerts:updated", event.Diff)
 						}
 					}
 				}(bgCtx, diffCh, notifier)
