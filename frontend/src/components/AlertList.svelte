@@ -335,7 +335,7 @@
     </div>
   {/if}
 
-  <!-- Filter bar -->
+  <!-- Filter & view controls -->
   <div class="filter-bar">
     <input
       class="filter-input"
@@ -365,6 +365,69 @@
       <input type="checkbox" bind:checked={$verbose} />
       Verbose
     </label>
+    <div class="filter-spacer"></div>
+    <div class="sort-toggle-wrap">
+      <button
+        class="sort-toggle"
+        class:active={groupMenuOpen}
+        on:click|stopPropagation={() => {
+          groupMenuOpen = !groupMenuOpen;
+          sortMenuOpen = false;
+        }}
+        title="Change alert grouping"
+      >
+        <span class="sort-toggle-label">Group</span>
+        <span class="sort-toggle-value">{currentGroupLabel()}</span>
+        <span class="sort-toggle-caret">▾</span>
+      </button>
+      {#if groupMenuOpen}
+        <div class="sort-menu">
+          {#each GROUP_PRESET_OPTIONS as option}
+            <button
+              class="sort-option"
+              class:selected={$activeGroupMode === option.mode}
+              on:click|stopPropagation={() => setGroupMode(option.mode)}
+            >
+              <span>{option.label}</span>
+              {#if $activeGroupMode === option.mode}
+                <span class="sort-check">✓</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    <div class="sort-toggle-wrap">
+      <button
+        class="sort-toggle"
+        class:active={sortMenuOpen}
+        on:click|stopPropagation={() => {
+          sortMenuOpen = !sortMenuOpen;
+          groupMenuOpen = false;
+        }}
+        title="Change alert sort order"
+      >
+        <span class="sort-toggle-label">Sort</span>
+        <span class="sort-toggle-value">{currentSortLabel()}</span>
+        <span class="sort-toggle-caret">▾</span>
+      </button>
+      {#if sortMenuOpen}
+        <div class="sort-menu">
+          {#each SORT_PRESET_OPTIONS as option}
+            <button
+              class="sort-option"
+              class:selected={$activeSortMode === option.mode}
+              on:click|stopPropagation={() => setSortMode(option.mode)}
+            >
+              <span>{option.label}</span>
+              {#if $activeSortMode === option.mode}
+                <span class="sort-check">✓</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- Status bar -->
@@ -376,14 +439,10 @@
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
       {#if newVisibleCount > 0}
-        <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">
-          {newVisibleCount} new
-        </span>
+        <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">{newVisibleCount} new</span>
       {/if}
       {#if resolvedVisibleCount > 0}
-        <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">
-          {resolvedVisibleCount} resolved
-        </span>
+        <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">{resolvedVisibleCount} resolved</span>
       {/if}
       {#if newVisibleCount > 0}
         <button class="status-action-btn" on:click={acknowledgeAllAlerts} title="Mark all new alerts as seen">Clear new</button>
@@ -392,90 +451,24 @@
         <button class="status-action-btn" on:click={acknowledgeAllResolvedAlerts} title="Mark all resolved alerts as seen">Clear resolved</button>
       {/if}
       {#if $verbose}<span class="status-verbose">Verbose</span>{/if}
-      {#if $onCallStatus.length > 0}
-        <span class="status-separator">·</span>
-        <span class="status-oncall-label">On call</span>
-        <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
-      {/if}
 
       <div class="status-spacer"></div>
 
-      <div class="sort-toggle-wrap">
-        <button
-          class="sort-toggle"
-          class:active={groupMenuOpen}
-          on:click|stopPropagation={() => {
-            groupMenuOpen = !groupMenuOpen;
-            sortMenuOpen = false;
-          }}
-          title="Change alert grouping"
-        >
-          <span class="sort-toggle-label">Group</span>
-          <span class="sort-toggle-value">{currentGroupLabel()}</span>
-          <span class="sort-toggle-caret">▾</span>
-        </button>
-        {#if groupMenuOpen}
-          <div class="sort-menu">
-            {#each GROUP_PRESET_OPTIONS as option}
-              <button
-                class="sort-option"
-                class:selected={$activeGroupMode === option.mode}
-                on:click|stopPropagation={() => setGroupMode(option.mode)}
-              >
-                <span>{option.label}</span>
-                {#if $activeGroupMode === option.mode}
-                  <span class="sort-check">✓</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-      <div class="sort-toggle-wrap">
-        <button
-          class="sort-toggle"
-          class:active={sortMenuOpen}
-          on:click|stopPropagation={() => {
-            sortMenuOpen = !sortMenuOpen;
-            groupMenuOpen = false;
-          }}
-          title="Change alert sort order"
-        >
-          <span class="sort-toggle-label">Sort</span>
-          <span class="sort-toggle-value">{currentSortLabel()}</span>
-          <span class="sort-toggle-caret">▾</span>
-        </button>
-        {#if sortMenuOpen}
-          <div class="sort-menu">
-            {#each SORT_PRESET_OPTIONS as option}
-              <button
-                class="sort-option"
-                class:selected={$activeSortMode === option.mode}
-                on:click|stopPropagation={() => setSortMode(option.mode)}
-              >
-                <span>{option.label}</span>
-                {#if $activeSortMode === option.mode}
-                  <span class="sort-check">✓</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div class="status-right" title={refreshing ? 'Refreshing…' : healthTitle}>
-        <span class="refresh-status"
-          class:refresh-ok={allSourcesOK && !refreshing}
-          class:refresh-fail={anySourceFailing && !refreshing}
-          class:refresh-pending={noHealthYet || refreshing}
-        >●</span>
-        {#if !noHealthYet}
-          <span class="refresh-time">{formatTime(latestPoll)}</span>
-        {/if}
-        <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
-          <span class="refresh-icon" class:spinning={refreshing}>↻</span>
-        </button>
-      </div>
+      {#if $onCallStatus.length > 0}
+        <span class="status-oncall-label">On call</span>
+        <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
+      {/if}
+      <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
+        class:refresh-ok={allSourcesOK && !refreshing}
+        class:refresh-fail={anySourceFailing && !refreshing}
+        class:refresh-pending={noHealthYet || refreshing}
+      >●</span>
+      {#if !noHealthYet}
+        <span class="refresh-time">{formatTime(latestPoll)}</span>
+      {/if}
+      <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
+        <span class="refresh-icon" class:spinning={refreshing}>↻</span>
+      </button>
     {/if}
   </div>
 
@@ -581,8 +574,13 @@
     flex-shrink: 0;
   }
 
-  .filter-input {
+  .filter-spacer {
     flex: 1;
+  }
+
+  .filter-input {
+    flex: 0 1 160px;
+    min-width: 100px;
     background: #1e293b;
     border: 1px solid #334155;
     border-radius: 4px;
@@ -618,16 +616,6 @@
   }
   .status-spacer {
     flex: 1;
-  }
-  .status-separator {
-    color: #334155;
-    margin: 0 2px;
-  }
-  .status-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
   }
 
   .verbose-toggle {
@@ -831,12 +819,8 @@
   }
 
   @media (max-width: 640px) {
-    .status-bar {
-      gap: 8px;
-    }
-
-    .status-right {
-      align-self: flex-start;
+    .filter-bar {
+      flex-wrap: wrap;
     }
   }
 </style>
