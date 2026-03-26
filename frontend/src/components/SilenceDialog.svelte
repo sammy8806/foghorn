@@ -14,52 +14,22 @@
   let comment = '';
   let loading = false;
   let error = '';
-  let debugDefaultCreatedBy = '';
-  let debugLoadError = '';
-  let debugUIConfig = '';
-  let debugUIConfigKeys = '';
-  let debugUIConfigCtor = '';
-  let debugTrace = '';
   let initializedForOpen = false;
 
   const presets = ['30m', '1h', '2h', '4h', '8h', '24h'];
 
   async function loadDefaults() {
-    debugTrace = 'loadDefaults:start';
-    console.log('SilenceDialog loadDefaults:start', { open, alert });
     try {
       const uiConfig = await GetUIConfig();
       const uiConfigAny = uiConfig as any;
-      debugTrace = 'loadDefaults:resolved';
-      debugUIConfig = String(uiConfig);
-      debugUIConfigKeys = Object.getOwnPropertyNames(uiConfig ?? {}).join(', ');
-      debugUIConfigCtor = uiConfig?.constructor?.name ?? '';
-      console.log('SilenceDialog GetUIConfig raw', uiConfig);
-      console.log('SilenceDialog GetUIConfig keys', Object.getOwnPropertyNames(uiConfig ?? {}));
-      console.log('SilenceDialog GetUIConfig probes', {
-        default_created_by: uiConfig?.default_created_by,
-        DefaultCreatedBy: uiConfigAny?.DefaultCreatedBy,
-        defaultCreatedBy: uiConfigAny?.defaultCreatedBy,
-      });
       const resolvedCreatedBy =
         uiConfig.default_created_by ??
         uiConfigAny?.DefaultCreatedBy ??
         uiConfigAny?.defaultCreatedBy ??
         '';
-      debugDefaultCreatedBy = resolvedCreatedBy;
-      debugLoadError = '';
       createdBy = resolvedCreatedBy.trim();
-      debugTrace = `loadDefaults:assigned:${createdBy || '<empty>'}`;
-      console.log('SilenceDialog loadDefaults:assigned', { resolvedCreatedBy, createdBy });
     } catch {
-      debugDefaultCreatedBy = '';
-      debugLoadError = 'GetUIConfig failed';
-      debugUIConfig = '';
-      debugUIConfigKeys = '';
-      debugUIConfigCtor = '';
       createdBy = '';
-      debugTrace = 'loadDefaults:catch';
-      console.log('SilenceDialog loadDefaults:catch');
     }
   }
 
@@ -79,7 +49,6 @@
   }
 
   function close() {
-    console.log('SilenceDialog close');
     dispatch('close');
   }
 
@@ -90,16 +59,9 @@
 
   $: if (open && !initializedForOpen) {
     initializedForOpen = true;
-    debugTrace = 'dialog:opened';
-    console.log('SilenceDialog reactive open transition', { open, initializedForOpen, alert });
     duration = '2h';
     comment = '';
     error = '';
-    debugDefaultCreatedBy = '';
-    debugLoadError = '';
-    debugUIConfig = '';
-    debugUIConfigKeys = '';
-    debugUIConfigCtor = '';
     createdBy = '';
     void loadDefaults();
   }
@@ -107,8 +69,6 @@
   $: if (!open) {
     initializedForOpen = false;
   }
-
-  $: console.log('SilenceDialog state', { open, initializedForOpen, createdBy, debugTrace });
 </script>
 
 {#if open && alert}
@@ -161,14 +121,6 @@
             bind:value={createdBy}
             placeholder="Username"
           />
-          <span class="debug-value">debug default_created_by: "{debugDefaultCreatedBy}"</span>
-          <span class="debug-value">debug uiConfig: {debugUIConfig}</span>
-          <span class="debug-value">debug uiConfig ctor: {debugUIConfigCtor}</span>
-          <span class="debug-value">debug uiConfig keys: {debugUIConfigKeys}</span>
-          <span class="debug-value">debug trace: {debugTrace}</span>
-          {#if debugLoadError}
-            <span class="debug-error">{debugLoadError}</span>
-          {/if}
         </label>
 
         <label class="field">
@@ -271,16 +223,6 @@
     margin-bottom: 14px;
     font-size: 12px;
     color: #94a3b8;
-  }
-
-  .debug-value {
-    color: #64748b;
-    font-size: 11px;
-  }
-
-  .debug-error {
-    color: #f59e0b;
-    font-size: 11px;
   }
 
   .duration-row {
