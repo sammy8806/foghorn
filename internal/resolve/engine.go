@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"text/template"
@@ -16,6 +17,7 @@ import (
 )
 
 const defaultTimeout = 2 * time.Second
+const defaultFailureCacheTTL = 5 * time.Second
 
 var timeNow = time.Now
 
@@ -36,6 +38,7 @@ type resolver struct {
 
 type cacheEntry struct {
 	value     string
+	err       error
 	expiresAt time.Time
 }
 
@@ -160,8 +163,15 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 		args = append(args, rendered)
 	}
 
+	envKeys := make([]string, 0, len(item.env))
+	for key := range item.env {
+		envKeys = append(envKeys, key)
+	}
+	sort.Strings(envKeys)
+
 	env := make([]string, 0, len(item.env))
-	for key, value := range item.env {
+	for _, key := range envKeys {
+		value := item.env[key]
 		rendered, err := render(value, data)
 		if err != nil {
 			return "", err
@@ -173,7 +183,7 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 	if cached, ok := e.cache.Load(cacheKey); ok {
 		entry := cached.(cacheEntry)
 		if entry.expiresAt.IsZero() || timeNow().Before(entry.expiresAt) {
-			return entry.value, nil
+			return entry.value, entry.err
 		}
 		e.cache.Delete(cacheKey)
 	}
@@ -190,6 +200,10 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 	output, err := cmd.Output()
 	if err != nil {
 		log.Printf("resolver: execution failed name=%q field=%q value=%q err=%v", item.name, item.field, raw, err)
+		e.cache.Store(cacheKey, cacheEntry{
+			err:       err,
+			expiresAt: timeNow().Add(defaultFailureCacheTTL),
+		})
 		return "", err
 	}
 
