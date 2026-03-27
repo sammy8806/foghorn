@@ -50,6 +50,7 @@
 
   $: alertKey = alert.source + ':' + alert.id;
   $: supportsSilence = !!$sourceCapabilities[alert.source]?.supportsSilence;
+  $: primaryLinkLabel = alert.sourceType === 'betterstack' ? 'Open Incident' : 'Open Reference';
 
   function scheduleAcknowledge() {
     if ((!isNew && !isResolved) || acknowledgeTimer) return;
@@ -173,7 +174,7 @@
 
       <div class="alert-actions">
         {#if alert.generatorURL}
-          <a href={alert.generatorURL} target="_blank" class="generator-link">Open Reference</a>
+          <a href={alert.generatorURL} target="_blank" rel="noreferrer" class="generator-link">{primaryLinkLabel}</a>
         {/if}
         {#if $verbose}
           <button

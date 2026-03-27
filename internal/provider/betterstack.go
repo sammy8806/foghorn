@@ -232,7 +232,7 @@ func (i bsIncident) toAlert(source string) model.Alert {
 	if strings.TrimSpace(i.Attributes.ResolvedBy) != "" {
 		annotations["resolved_by"] = i.Attributes.ResolvedBy
 	}
-	if link := firstNonEmpty(i.Attributes.OriginURL, i.Attributes.ResponseURL, i.Attributes.URL, i.Attributes.ScreenshotURL); link != "" {
+	if link := firstNonEmpty(i.Attributes.URL, i.Attributes.OriginURL, i.Attributes.ResponseURL, i.Attributes.ScreenshotURL); link != "" {
 		annotations["link"] = link
 	}
 	for key, values := range i.Attributes.Metadata {
@@ -258,7 +258,7 @@ func (i bsIncident) toAlert(source string) model.Alert {
 		Annotations:  annotations,
 		StartsAt:     startsAt,
 		UpdatedAt:    updatedAt,
-		GeneratorURL: firstNonEmpty(i.Attributes.OriginURL, i.Attributes.ResponseURL, i.Attributes.URL),
+		GeneratorURL: firstNonEmpty(i.Attributes.URL, i.Attributes.OriginURL, i.Attributes.ResponseURL),
 	}
 }
 

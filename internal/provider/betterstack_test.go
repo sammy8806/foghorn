@@ -86,6 +86,12 @@ func TestBetterStackFetch(t *testing.T) {
 	if alert.Annotations["summary"] != "Status 404" {
 		t.Fatalf("expected summary annotation, got %#v", alert.Annotations)
 	}
+	if alert.Annotations["link"] != "https://uptime.betterstack.com/" {
+		t.Fatalf("expected incident link annotation, got %#v", alert.Annotations)
+	}
+	if alert.GeneratorURL != "https://uptime.betterstack.com/" {
+		t.Fatalf("expected generator URL to prefer incident page, got %q", alert.GeneratorURL)
+	}
 }
 
 func TestBetterStackFetchOnCall(t *testing.T) {
