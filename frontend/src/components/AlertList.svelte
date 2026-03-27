@@ -688,11 +688,16 @@
   .filter-input::placeholder { color: #64748b; }
 
   .status-bar {
+    --status-item-height: 20px;
     display: flex;
     align-items: center;
+    align-content: center;
     gap: 6px;
     padding: 4px 10px;
+    min-height: 33px;
+    box-sizing: border-box;
     font-size: 11px;
+    line-height: 1.119;
     color: #475569;
     background: #0d1117;
     border-bottom: 1px solid #1e293b;
@@ -735,47 +740,74 @@
   .status-error { color: #ef4444; }
   .status-loading { color: #94a3b8; }
   .status-count {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    box-sizing: border-box;
     color: #cbd5e1;
     font-weight: 600;
     white-space: nowrap;
   }
   .status-verbose {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    box-sizing: border-box;
     font-size: 10px;
+    line-height: 1.1;
     font-weight: 600;
     color: #fbbf24;
     background: rgba(245, 158, 11, 0.14);
     border: 1px solid rgba(245, 158, 11, 0.28);
     border-radius: 999px;
-    padding: 2px 7px;
+    padding: 0 7px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     white-space: nowrap;
   }
   .status-new {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    box-sizing: border-box;
     font-size: 10px;
+    line-height: 1.1;
     font-weight: 700;
     color: #111827;
     background: #facc15;
     border-radius: 999px;
-    padding: 2px 8px;
+    padding: 0 8px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
     white-space: nowrap;
   }
   .status-resolved {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    box-sizing: border-box;
     font-size: 10px;
+    line-height: 1.1;
     font-weight: 700;
     color: #dbeafe;
     background: #1d4ed8;
     border-radius: 999px;
-    padding: 2px 8px;
+    padding: 0 8px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     box-shadow: 0 0 14px rgba(59, 130, 246, 0.2);
     white-space: nowrap;
   }
   .status-oncall-label {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
     color: #7dd3fc;
     font-size: 10px;
     font-weight: 600;
@@ -784,6 +816,10 @@
     white-space: nowrap;
   }
   .status-oncall {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
     color: #94a3b8;
     max-width: 200px;
     overflow: hidden;
@@ -792,14 +828,22 @@
   }
 
   .status-action-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: rgba(30, 41, 59, 0.88);
     border: 1px solid #334155;
     border-radius: 999px;
     color: #cbd5e1;
     cursor: pointer;
     font-size: 11px;
+    line-height: 1.1;
     font-weight: 600;
-    padding: 3px 9px;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    box-sizing: border-box;
+    padding: 0 9px;
     white-space: nowrap;
   }
   .status-action-btn:hover {
@@ -900,18 +944,38 @@
     font-weight: 700;
   }
 
-  .refresh-status { font-size: 9px; }
+  .refresh-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    font-size: 9px;
+  }
   .refresh-ok { color: #22c55e; }
   .refresh-fail { color: #ef4444; }
   .refresh-pending { color: #f59e0b; }
-  .refresh-time { color: #94a3b8; font-size: 10px; }
+  .refresh-time {
+    display: inline-flex;
+    align-items: center;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
+    color: #94a3b8;
+    font-size: 10px;
+  }
 
   .refresh-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
     color: #94a3b8;
     font-size: 14px;
     line-height: 1;
+    height: var(--status-item-height);
+    min-height: var(--status-item-height);
     padding: 0 2px;
     cursor: pointer;
   }
