@@ -41,8 +41,6 @@
   const popupBottomMargin = 16;
   const minPopupHeight = 220;
   const popupHeightBuffer = 25;
-  let mounted = false;
-  let layoutQueued = false;
   let notificationPermissionStatus = '';
   let notificationSettingsError = '';
   let environmentPlatform = '';
@@ -64,7 +62,6 @@
     let disposePopupOpening = () => {};
     let disposeConfigReloaded = () => {};
     let disposed = false;
-    mounted = true;
 
     const syncUIConfig = async () => {
       if (!isWails()) return;
@@ -107,7 +104,6 @@
 
     return () => {
       disposed = true;
-      mounted = false;
       disposeConfigReloaded();
       disposePopupOpening();
     };
@@ -202,39 +198,6 @@
     const names = status.users.map(user => user.email ? `${user.name} <${user.email}>` : user.name).join(', ') || 'nobody assigned';
     return `${status.source} · ${schedule}${team}: ${names}`;
   }).join('\n');
-  $: popupLayoutSignature = [
-    showNotificationInfoCard ? '1' : '0',
-    notificationSettingsError,
-    $loading ? '1' : '0',
-    $error ?? '',
-    totalCount,
-    newVisibleCount,
-    resolvedVisibleCount,
-    hasGroups ? '1' : '0',
-    $filteredAlerts.length,
-    $verbose ? '1' : '0',
-    $onCallStatus.length,
-    onCallSummary,
-    $activeGroupBy.join('|'),
-  ].join('::');
-  $: if (mounted && isWails() && popupLayoutSignature) {
-    void scheduleLayoutPopup();
-  }
-
-  function scheduleLayoutPopup(): Promise<void> {
-    if (layoutQueued) {
-      return Promise.resolve();
-    }
-    layoutQueued = true;
-
-    return new Promise(resolve => {
-      requestAnimationFrame(async () => {
-        layoutQueued = false;
-        await layoutPopup();
-        resolve();
-      });
-    });
-  }
 
   function formatTime(d: Date): string {
     if (d.getTime() === 0) return '';
