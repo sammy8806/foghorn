@@ -132,13 +132,34 @@
         {@const annotationName = fieldNameFromRef(key)}
         {@const annotationDisplay = resolveAlertFieldDisplay(alert, key.startsWith('annotation:') ? key : `annotation:${key}`)}
         {#if annotationDisplay?.text}
-          <p class="annotation"><strong>{annotationName}:</strong>
-            {#if annotationDisplay.text.match(/^https?:\/\//)}
-              <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
-            {:else}
-              <span class:annotation-multiline={annotationName === 'comments'}>{annotationDisplay.text}</span>
-            {/if}
-          </p>
+          {#if annotationName === 'comments'}
+            <div class="comments-section">
+              <strong class="comments-label">comments:</strong>
+              {#each annotationDisplay.text.split('\n\n') as commentBlock}
+                {@const lines = commentBlock.split('\n')}
+                {@const headerMatch = lines[0]?.match(/^(.+?)\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/)}
+                <div class="comment-card">
+                  {#if headerMatch}
+                    <div class="comment-header">
+                      <span class="comment-author">{headerMatch[1]}</span>
+                      <span class="comment-time">{new Date(headerMatch[2]).toLocaleString()}</span>
+                    </div>
+                    <div class="comment-body">{lines.slice(1).join('\n')}</div>
+                  {:else}
+                    <div class="comment-body">{commentBlock}</div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="annotation"><strong>{annotationName}:</strong>
+              {#if annotationDisplay.text.match(/^https?:\/\//)}
+                <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
+              {:else}
+                <span>{annotationDisplay.text}</span>
+              {/if}
+            </p>
+          {/if}
         {/if}
       {/each}
 
@@ -350,8 +371,51 @@
     color: #cbd5e1;
     margin: 2px 0;
   }
-  .annotation-multiline {
+  .comments-section {
+    margin: 4px 0;
+  }
+  .comments-label {
+    font-size: 11px;
+    color: #cbd5e1;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .comment-card {
+    background: rgba(0, 0, 0, 0.25);
+    border-left: 2px solid #334155;
+    border-radius: 2px;
+    padding: 5px 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+  }
+  .comment-card:last-child {
+    margin-bottom: 0;
+  }
+  .comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+    gap: 8px;
+  }
+  .comment-author {
+    color: #60a5fa;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .comment-time {
+    color: #64748b;
+    font-size: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .comment-body {
+    color: #cbd5e1;
     white-space: pre-wrap;
+    line-height: 1.4;
   }
 
   .label-chips {
