@@ -80,7 +80,12 @@ func (b *BetterStack) Fetch(ctx context.Context) ([]model.Alert, error) {
 
 	alerts := make([]model.Alert, 0, len(incidents))
 	for _, incident := range incidents {
-		alerts = append(alerts, incident.toAlert(b.cfg.Name))
+		comments, err := b.fetchIncidentComments(ctx, incident.ID)
+		if err != nil {
+			b.recordError(err)
+			return nil, fmt.Errorf("fetching comments for incident %s from %s: %w", incident.ID, b.cfg.Name, err)
+		}
+		alerts = append(alerts, incident.toAlert(b.cfg, comments))
 	}
 
 	b.mu.Lock()
@@ -92,6 +97,36 @@ func (b *BetterStack) Fetch(ctx context.Context) ([]model.Alert, error) {
 	b.mu.Unlock()
 
 	return alerts, nil
+}
+
+func (b *BetterStack) fetchIncidentComments(ctx context.Context, incidentID string) ([]bsIncidentComment, error) {
+	incidentID = strings.TrimSpace(incidentID)
+	if incidentID == "" {
+		return nil, nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.endpoint("/api/v2/incidents/"+url.PathEscape(incidentID)+"/comments"), nil)
+	if err != nil {
+		return nil, err
+	}
+	b.applyAuth(req)
+
+	resp, err := b.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var envelope bsIncidentCommentListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Data, nil
 }
 
 func (b *BetterStack) FetchOnCall(ctx context.Context) (*model.OnCallStatus, error) {
@@ -199,7 +234,20 @@ type bsIncidentMetadataItem struct {
 	Value string `json:"value"`
 }
 
-func (i bsIncident) toAlert(source string) model.Alert {
+type bsIncidentCommentListResponse struct {
+	Data []bsIncidentComment `json:"data"`
+}
+
+type bsIncidentComment struct {
+	ID         string `json:"id"`
+	Attributes struct {
+		Content   string `json:"content"`
+		UserEmail string `json:"user_email"`
+		CreatedAt string `json:"created_at"`
+	} `json:"attributes"`
+}
+
+func (i bsIncident) toAlert(cfg config.SourceConfig, comments []bsIncidentComment) model.Alert {
 	startsAt := parseRFC3339(i.Attributes.StartedAt)
 	updatedAt := startsAt
 	if acknowledged := parseRFC3339(i.Attributes.AcknowledgedAt); !acknowledged.IsZero() {
@@ -210,7 +258,7 @@ func (i bsIncident) toAlert(source string) model.Alert {
 	}
 
 	labels := map[string]string{
-		"alertname": source + "/" + i.Attributes.Name,
+		"alertname": cfg.Name + "/" + i.Attributes.Name,
 		"team":      i.Attributes.TeamName,
 		"status":    i.Attributes.Status,
 	}
@@ -235,6 +283,9 @@ func (i bsIncident) toAlert(source string) model.Alert {
 	if link := firstNonEmpty(i.Attributes.URL, i.Attributes.OriginURL, i.Attributes.ResponseURL, i.Attributes.ScreenshotURL); link != "" {
 		annotations["link"] = link
 	}
+	if formatted := formatBetterStackComments(comments); formatted != "" {
+		annotations["comments"] = formatted
+	}
 	for key, values := range i.Attributes.Metadata {
 		if len(values) == 0 || strings.TrimSpace(values[0].Value) == "" {
 			continue
@@ -249,7 +300,7 @@ func (i bsIncident) toAlert(source string) model.Alert {
 
 	return model.Alert{
 		ID:           i.ID,
-		Source:       source,
+		Source:       cfg.Name,
 		SourceType:   "betterstack",
 		Name:         name,
 		Severity:     betterStackSeverity(i.Attributes.CriticalAlert, i.Attributes.Metadata),
@@ -258,8 +309,48 @@ func (i bsIncident) toAlert(source string) model.Alert {
 		Annotations:  annotations,
 		StartsAt:     startsAt,
 		UpdatedAt:    updatedAt,
-		GeneratorURL: firstNonEmpty(i.Attributes.URL, i.Attributes.OriginURL, i.Attributes.ResponseURL),
+		GeneratorURL: betterStackIncidentURL(cfg, i),
 	}
+}
+
+func formatBetterStackComments(comments []bsIncidentComment) string {
+	parts := make([]string, 0, len(comments))
+	for _, comment := range comments {
+		content := strings.TrimSpace(comment.Attributes.Content)
+		if content == "" {
+			continue
+		}
+
+		headerParts := make([]string, 0, 2)
+		if email := strings.TrimSpace(comment.Attributes.UserEmail); email != "" {
+			headerParts = append(headerParts, email)
+		}
+		if createdAt := parseRFC3339(comment.Attributes.CreatedAt); !createdAt.IsZero() {
+			headerParts = append(headerParts, createdAt.Format(time.RFC3339))
+		}
+
+		if len(headerParts) > 0 {
+			parts = append(parts, strings.Join(headerParts, " - ")+"\n"+content)
+			continue
+		}
+		parts = append(parts, content)
+	}
+
+	return strings.Join(parts, "\n\n")
+}
+
+func betterStackIncidentURL(cfg config.SourceConfig, incident bsIncident) string {
+	if teamID := strings.TrimSpace(cfg.BetterStack.TeamID); teamID != "" && strings.TrimSpace(incident.ID) != "" {
+		base, err := url.Parse(strings.TrimSpace(cfg.URL))
+		if err == nil && base.Scheme != "" && base.Host != "" {
+			base.Path = fmt.Sprintf("/team/%s/incidents/%s", teamID, strings.TrimSpace(incident.ID))
+			base.RawQuery = ""
+			base.Fragment = ""
+			return base.String()
+		}
+	}
+
+	return firstNonEmpty(incident.Attributes.URL, incident.Attributes.OriginURL, incident.Attributes.ResponseURL)
 }
 
 func metadataSeverity(metadata map[string][]bsIncidentMetadataItem) string {

@@ -12,47 +12,63 @@ import (
 
 func TestBetterStackFetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v3/incidents" {
-			http.NotFound(w, r)
-			return
-		}
-		if got := r.URL.Query().Get("resolved"); got != "false" {
-			t.Fatalf("expected resolved=false query, got %q", got)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": []map[string]any{
-				{
-					"id":   "25",
-					"type": "incident",
-					"attributes": map[string]any{
-						"name":                 "uptime homepage",
-						"cause":                "Status 404",
-						"started_at":           "2020-03-09T17:37:56Z",
-						"acknowledged_at":      nil,
-						"resolved_at":          nil,
-						"status":               "Started",
-						"team_name":            "Production",
-						"url":                  "https://uptime.betterstack.com/",
-						"response_url":         "https://example.com/runbook",
-						"origin_url":           "https://example.com/check",
-						"critical_alert":       true,
-						"escalation_policy_id": 12345,
-						"metadata": map[string]any{
-							"Response code": []map[string]any{
-								{"type": "String", "value": "404"},
+		switch r.URL.Path {
+		case "/api/v3/incidents":
+			if got := r.URL.Query().Get("resolved"); got != "false" {
+				t.Fatalf("expected resolved=false query, got %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"id":   "25",
+						"type": "incident",
+						"attributes": map[string]any{
+							"name":                 "uptime homepage",
+							"cause":                "Status 404",
+							"started_at":           "2020-03-09T17:37:56Z",
+							"acknowledged_at":      nil,
+							"resolved_at":          nil,
+							"status":               "Started",
+							"team_name":            "Production",
+							"url":                  "https://uptime.betterstack.com/",
+							"response_url":         "https://example.com/runbook",
+							"origin_url":           "https://example.com/check",
+							"critical_alert":       true,
+							"escalation_policy_id": 12345,
+							"metadata": map[string]any{
+								"Response code": []map[string]any{
+									{"type": "String", "value": "404"},
+								},
+							},
+						},
+						"relationships": map[string]any{
+							"monitor": map[string]any{
+								"data": map[string]any{"id": "2", "type": "monitor"},
 							},
 						},
 					},
-					"relationships": map[string]any{
-						"monitor": map[string]any{
-							"data": map[string]any{"id": "2", "type": "monitor"},
+				},
+				"pagination": map[string]any{"next": ""},
+			})
+		case "/api/v2/incidents/25/comments":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"id":   "123",
+						"type": "incident_comment",
+						"attributes": map[string]any{
+							"content":    "Investigating issue",
+							"user_email": "test@example.com",
+							"created_at": "2025-06-03T12:10:28.357Z",
 						},
 					},
 				},
-			},
-			"pagination": map[string]any{"next": ""},
-		})
+			})
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	defer server.Close()
 
@@ -61,6 +77,9 @@ func TestBetterStackFetch(t *testing.T) {
 		Type: "betterstack",
 		URL:  server.URL,
 		Auth: config.AuthConfig{Type: "bearer", Token: "secret"},
+		BetterStack: config.BetterStackConfig{
+			TeamID: "t135105",
+		},
 	})
 
 	alerts, err := p.Fetch(context.Background())
@@ -86,11 +105,67 @@ func TestBetterStackFetch(t *testing.T) {
 	if alert.Annotations["summary"] != "Status 404" {
 		t.Fatalf("expected summary annotation, got %#v", alert.Annotations)
 	}
+	if alert.Annotations["comments"] != "test@example.com - 2025-06-03T12:10:28Z\nInvestigating issue" {
+		t.Fatalf("expected comments annotation, got %#v", alert.Annotations)
+	}
 	if alert.Annotations["link"] != "https://uptime.betterstack.com/" {
 		t.Fatalf("expected incident link annotation, got %#v", alert.Annotations)
 	}
-	if alert.GeneratorURL != "https://uptime.betterstack.com/" {
-		t.Fatalf("expected generator URL to prefer incident page, got %q", alert.GeneratorURL)
+	if alert.GeneratorURL != server.URL+"/team/t135105/incidents/25" {
+		t.Fatalf("expected generator URL to prefer team incident page, got %q", alert.GeneratorURL)
+	}
+}
+
+func TestBetterStackFetchFallsBackToIncidentURLWithoutTeamID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/incidents":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{
+						"id":   "25",
+						"type": "incident",
+						"attributes": map[string]any{
+							"name":       "uptime homepage",
+							"cause":      "Status 404",
+							"started_at": "2020-03-09T17:37:56Z",
+							"status":     "Started",
+							"team_name":  "Production",
+							"url":        "https://uptime.betterstack.com/",
+						},
+					},
+				},
+				"pagination": map[string]any{"next": ""},
+			})
+		case "/api/v2/incidents/25/comments":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+			return
+		}
+	}))
+	defer server.Close()
+
+	p := NewBetterStack(config.SourceConfig{
+		Name: "better",
+		Type: "betterstack",
+		URL:  server.URL,
+		Auth: config.AuthConfig{Type: "bearer", Token: "secret"},
+	})
+
+	alerts, err := p.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch() error: %v", err)
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(alerts))
+	}
+	if alerts[0].GeneratorURL != "https://uptime.betterstack.com/" {
+		t.Fatalf("expected generator URL to fall back to incident URL, got %q", alerts[0].GeneratorURL)
 	}
 }
 

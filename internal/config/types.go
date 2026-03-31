@@ -36,6 +36,7 @@ type SourceConfig struct {
 type BetterStackConfig struct {
 	OnCallSchedule string `yaml:"on_call_schedule"`
 	TeamName       string `yaml:"team_name"`
+	TeamID         string `yaml:"team_id"`
 }
 
 type AuthConfig struct {

@@ -23,6 +23,13 @@
   $: visibleAnnotations = $verbose
     ? Object.keys(alert.annotations || {})
     : (config.visible_annotations || []);
+  $: betterStackVisibleAnnotations = (() => {
+    const names = [...visibleAnnotations];
+    if (alert.sourceType === 'betterstack' && alert.annotations?.comments && !names.includes('comments')) {
+      names.push('comments');
+    }
+    return names;
+  })();
   $: matchedBadges = (config.badges || []).filter(rule => alertMatchesBadgeRule(alert, rule));
 
   // Auto-pick a subtitle from configured annotations, falling back to distinguishing labels
@@ -121,7 +128,7 @@
 
   {#if expanded}
     <div class="alert-body">
-      {#each visibleAnnotations as key}
+      {#each betterStackVisibleAnnotations as key}
         {@const annotationName = fieldNameFromRef(key)}
         {@const annotationDisplay = resolveAlertFieldDisplay(alert, key.startsWith('annotation:') ? key : `annotation:${key}`)}
         {#if annotationDisplay?.text}
@@ -129,7 +136,7 @@
             {#if annotationDisplay.text.match(/^https?:\/\//)}
               <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
             {:else}
-              {annotationDisplay.text}
+              <span class:annotation-multiline={annotationName === 'comments'}>{annotationDisplay.text}</span>
             {/if}
           </p>
         {/if}
@@ -342,6 +349,9 @@
     font-size: 11px;
     color: #cbd5e1;
     margin: 2px 0;
+  }
+  .annotation-multiline {
+    white-space: pre-wrap;
   }
 
   .label-chips {

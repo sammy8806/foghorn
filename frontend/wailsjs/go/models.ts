@@ -96,6 +96,7 @@ export namespace config {
 	export class BetterStackConfig {
 	    OnCallSchedule: string;
 	    TeamName: string;
+	    TeamID: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new BetterStackConfig(source);
@@ -105,6 +106,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.OnCallSchedule = source["OnCallSchedule"];
 	        this.TeamName = source["TeamName"];
+	        this.TeamID = source["TeamID"];
 	    }
 	}
 	export class UIConfig {

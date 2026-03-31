@@ -31,6 +31,9 @@ sources:
   #     on_call_schedule: default
   #     # Optional when the token can access multiple teams.
   #     team_name: Production
+  #     # Optional: used to build direct incident links like
+  #     # https://uptime.betterstack.com/team/<team_id>/incidents/<incident_id>
+  #     team_id: t135105
 
 severities:
   # Canonical severity used when an alert label does not match any configured alias.
