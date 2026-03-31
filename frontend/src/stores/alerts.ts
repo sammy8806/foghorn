@@ -3,6 +3,14 @@ import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSev
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
+export interface SilenceInfo {
+  id: string;
+  createdBy: string;
+  comment: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 export interface Alert {
   id: string;
   source: string;
@@ -19,6 +27,7 @@ export interface Alert {
   updatedAt: string;
   generatorURL: string;
   silencedBy: string[];
+  silences?: SilenceInfo[];
   inhibitedBy: string[];
   receivers: string[];
 }

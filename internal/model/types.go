@@ -2,6 +2,15 @@ package model
 
 import "time"
 
+// SilenceInfo holds details about an active silence.
+type SilenceInfo struct {
+	ID        string    `json:"id"`
+	CreatedBy string    `json:"createdBy"`
+	Comment   string    `json:"comment"`
+	StartsAt  time.Time `json:"startsAt"`
+	EndsAt    time.Time `json:"endsAt"`
+}
+
 // Alert is the unified alert type all providers normalize to.
 type Alert struct {
 	ID                  string            `json:"id"`
@@ -19,6 +28,7 @@ type Alert struct {
 	UpdatedAt           time.Time         `json:"updatedAt"`
 	GeneratorURL        string            `json:"generatorURL"`
 	SilencedBy          []string          `json:"silencedBy"`
+	Silences            []SilenceInfo     `json:"silences,omitempty"`
 	InhibitedBy         []string          `json:"inhibitedBy"`
 	Receivers           []string          `json:"receivers"`
 }

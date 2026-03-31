@@ -172,6 +172,47 @@ func (a *alertmanagerAPI) Unsilence(ctx context.Context, silenceID string) error
 	return nil
 }
 
+func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", a.endpoint("/silences"), nil)
+	if err != nil {
+		return nil, err
+	}
+	a.applyAuth(req)
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching silences from %s: %w", a.cfg.Name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%s %s silences returned HTTP %d: %s", a.kind, a.cfg.Name, resp.StatusCode, string(body))
+	}
+
+	var raw []amSilence
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decoding silences from %s: %w", a.cfg.Name, err)
+	}
+
+	var silences []model.SilenceInfo
+	for _, s := range raw {
+		if s.Status.State != "active" {
+			continue
+		}
+		startsAt, _ := time.Parse(time.RFC3339, s.StartsAt)
+		endsAt, _ := time.Parse(time.RFC3339, s.EndsAt)
+		silences = append(silences, model.SilenceInfo{
+			ID:        s.ID,
+			CreatedBy: s.CreatedBy,
+			Comment:   s.Comment,
+			StartsAt:  startsAt,
+			EndsAt:    endsAt,
+		})
+	}
+	return silences, nil
+}
+
 func (a *alertmanagerAPI) endpoint(path string) string {
 	return strings.TrimRight(a.cfg.URL, "/") + a.apiV2 + path
 }
@@ -211,6 +252,19 @@ type amAlertStatus struct {
 
 type amReceiver struct {
 	Name string `json:"name"`
+}
+
+type amSilence struct {
+	ID        string          `json:"id"`
+	CreatedBy string          `json:"createdBy"`
+	Comment   string          `json:"comment"`
+	StartsAt  string          `json:"startsAt"`
+	EndsAt    string          `json:"endsAt"`
+	Status    amSilenceStatus `json:"status"`
+}
+
+type amSilenceStatus struct {
+	State string `json:"state"`
 }
 
 type amSilenceRequest struct {

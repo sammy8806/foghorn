@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Alert, DisplayConfig } from '../stores/alerts';
+  import type { Alert, DisplayConfig, SilenceInfo } from '../stores/alerts';
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import { TestNotificationForAlert } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
@@ -48,6 +48,33 @@
     }
     return parts.join(', ');
   })();
+
+  function formatTimeRemaining(endsAt: string): string {
+    const end = new Date(endsAt);
+    const now = new Date();
+    const diffMs = end.getTime() - now.getTime();
+    if (diffMs <= 0) return 'expired';
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ${mins % 60}m`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h`;
+  }
+
+  function silenceTooltip(silences: SilenceInfo[]): string {
+    return silences.map(s => {
+      const expires = formatTimeRemaining(s.endsAt);
+      const line = `Silenced by ${s.createdBy}`;
+      return s.comment ? `${line}: ${s.comment} (expires in ${expires})` : `${line} (expires in ${expires})`;
+    }).join('\n');
+  }
+
+  $: silenceBadgeTitle = (alert.silences?.length)
+    ? silenceTooltip(alert.silences)
+    : alert.silencedBy?.length > 0
+      ? `Silence IDs: ${alert.silencedBy.join(', ')}`
+      : '';
 
   let expanded = false;
   let silenceOpen = false;
@@ -113,7 +140,7 @@
       <span class="alert-subtitle" title={subtitle}>{subtitle}</span>
     {/if}
     {#if alert.silencedBy?.length > 0}
-      <span class="badge badge-silenced">silenced</span>
+      <span class="badge badge-silenced" title={silenceBadgeTitle}>silenced</span>
     {/if}
     {#if alert.inhibitedBy?.length > 0}
       <span class="badge badge-inhibited">inhibited</span>
@@ -162,6 +189,22 @@
           {/if}
         {/if}
       {/each}
+
+      {#if alert.silences?.length}
+        <div class="silence-details">
+          {#each alert.silences as s}
+            <div class="silence-card">
+              <div class="silence-header">
+                <span class="silence-author">{s.createdBy}</span>
+                <span class="silence-expiry">expires in {formatTimeRemaining(s.endsAt)}</span>
+              </div>
+              {#if s.comment}
+                <div class="silence-comment">{s.comment}</div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <div class="label-chips">
         {#each visibleLabels as spec}
@@ -414,6 +457,43 @@
   }
   .comment-body {
     color: #cbd5e1;
+    white-space: pre-wrap;
+    line-height: 1.4;
+  }
+
+  .silence-details {
+    margin: 4px 0;
+  }
+  .silence-card {
+    background: rgba(245, 158, 11, 0.08);
+    border-left: 2px solid #f59e0b;
+    border-radius: 2px;
+    padding: 5px 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+  }
+  .silence-card:last-child {
+    margin-bottom: 0;
+  }
+  .silence-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .silence-author {
+    color: #f59e0b;
+    font-weight: 600;
+  }
+  .silence-expiry {
+    color: #64748b;
+    font-size: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .silence-comment {
+    color: #cbd5e1;
+    margin-top: 3px;
     white-space: pre-wrap;
     line-height: 1.4;
   }

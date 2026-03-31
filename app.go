@@ -158,6 +158,31 @@ func (a *App) RefreshAlerts() error {
 			continue
 		}
 
+		// Enrich alerts with silence details if the provider supports it.
+		if sp, ok := p.(provider.SilenceProvider); ok {
+			silences, err := sp.FetchSilences(ctx)
+			if err == nil {
+				silenceMap := make(map[string]model.SilenceInfo, len(silences))
+				for _, s := range silences {
+					silenceMap[s.ID] = s
+				}
+				for i, alert := range alerts {
+					if len(alert.SilencedBy) == 0 {
+						continue
+					}
+					var matched []model.SilenceInfo
+					for _, sid := range alert.SilencedBy {
+						if info, ok := silenceMap[sid]; ok {
+							matched = append(matched, info)
+						}
+					}
+					if len(matched) > 0 {
+						alerts[i].Silences = matched
+					}
+				}
+			}
+		}
+
 		a.store.Update(source, alerts)
 		if onCallProvider, ok := p.(provider.OnCallProvider); ok {
 			onCall, err := onCallProvider.FetchOnCall(ctx)

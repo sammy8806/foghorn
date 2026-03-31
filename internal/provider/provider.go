@@ -16,6 +16,11 @@ type Provider interface {
 	Health(ctx context.Context) model.ProviderHealth
 }
 
+// SilenceProvider is implemented by sources that can fetch silence details.
+type SilenceProvider interface {
+	FetchSilences(ctx context.Context) ([]model.SilenceInfo, error)
+}
+
 // OnCallProvider is implemented by sources that can expose current on-call users.
 type OnCallProvider interface {
 	FetchOnCall(ctx context.Context) (*model.OnCallStatus, error)

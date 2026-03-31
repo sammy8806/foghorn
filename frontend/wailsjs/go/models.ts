@@ -584,6 +584,46 @@ export namespace config {
 
 export namespace model {
 	
+	export class SilenceInfo {
+	    id: string;
+	    createdBy: string;
+	    comment: string;
+	    // Go type: time
+	    startsAt: any;
+	    // Go type: time
+	    endsAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new SilenceInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.createdBy = source["createdBy"];
+	        this.comment = source["comment"];
+	        this.startsAt = this.convertValues(source["startsAt"], null);
+	        this.endsAt = this.convertValues(source["endsAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Alert {
 	    id: string;
 	    source: string;
@@ -602,6 +642,7 @@ export namespace model {
 	    updatedAt: any;
 	    generatorURL: string;
 	    silencedBy: string[];
+	    silences?: SilenceInfo[];
 	    inhibitedBy: string[];
 	    receivers: string[];
 	
@@ -626,6 +667,7 @@ export namespace model {
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	        this.generatorURL = source["generatorURL"];
 	        this.silencedBy = source["silencedBy"];
+	        this.silences = this.convertValues(source["silences"], SilenceInfo);
 	        this.inhibitedBy = source["inhibitedBy"];
 	        this.receivers = source["receivers"];
 	    }
@@ -737,6 +779,7 @@ export namespace model {
 		    return a;
 		}
 	}
+	
 	
 	export class SourceHealth {
 	    source: string;

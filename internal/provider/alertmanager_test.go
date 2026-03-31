@@ -128,6 +128,79 @@ func TestAlertmanagerSilence(t *testing.T) {
 	}
 }
 
+func TestAlertmanagerFetchSilences(t *testing.T) {
+	silences := []map[string]interface{}{
+		{
+			"id":        "sil-001",
+			"createdBy": "steve",
+			"comment":   "noisy during maintenance",
+			"startsAt":  "2026-03-31T10:00:00Z",
+			"endsAt":    "2026-03-31T14:00:00Z",
+			"status":    map[string]string{"state": "active"},
+		},
+		{
+			"id":        "sil-002",
+			"createdBy": "alice",
+			"comment":   "investigating root cause",
+			"startsAt":  "2026-03-31T08:00:00Z",
+			"endsAt":    "2026-03-31T10:00:00Z",
+			"status":    map[string]string{"state": "expired"},
+		},
+		{
+			"id":        "sil-003",
+			"createdBy": "bob",
+			"comment":   "",
+			"startsAt":  "2026-03-31T12:00:00Z",
+			"endsAt":    "2026-03-31T16:00:00Z",
+			"status":    map[string]string{"state": "active"},
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/silences" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(silences)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := config.SourceConfig{
+		Name: "test-am",
+		Type: "alertmanager",
+		URL:  server.URL,
+	}
+
+	am := NewAlertmanager(cfg)
+	result, err := am.FetchSilences(context.Background())
+	if err != nil {
+		t.Fatalf("FetchSilences() error: %v", err)
+	}
+
+	// Should only return active silences (sil-001 and sil-003), not expired (sil-002)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 active silences, got %d", len(result))
+	}
+
+	if result[0].ID != "sil-001" {
+		t.Errorf("expected first silence ID 'sil-001', got %q", result[0].ID)
+	}
+	if result[0].CreatedBy != "steve" {
+		t.Errorf("expected createdBy 'steve', got %q", result[0].CreatedBy)
+	}
+	if result[0].Comment != "noisy during maintenance" {
+		t.Errorf("expected comment 'noisy during maintenance', got %q", result[0].Comment)
+	}
+
+	if result[1].ID != "sil-003" {
+		t.Errorf("expected second silence ID 'sil-003', got %q", result[1].ID)
+	}
+	if result[1].CreatedBy != "bob" {
+		t.Errorf("expected createdBy 'bob', got %q", result[1].CreatedBy)
+	}
+}
+
 func TestAlertmanagerBasicAuth(t *testing.T) {
 	var receivedAuth string
 
