@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth, RefreshAlerts } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
@@ -246,6 +246,7 @@ export async function refreshAlerts(): Promise<void> {
       error.set('Dev mode: no Wails backend connected');
       return;
     }
+    await RefreshAlerts();
     const [alertList, counts, health, onCall] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),

@@ -137,6 +137,48 @@ func (a *App) GetOnCallStatus() []model.OnCallStatus {
 	return a.store.OnCalls()
 }
 
+// RefreshAlerts forces an immediate fetch from every configured provider.
+func (a *App) RefreshAlerts() error {
+	a.mu.RLock()
+	ctx := a.ctx
+	providers := make(map[string]provider.Provider, len(a.providers))
+	for source, p := range a.providers {
+		providers[source] = p
+	}
+	a.mu.RUnlock()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	for source, p := range providers {
+		alerts, err := p.Fetch(ctx)
+		if err != nil {
+			a.store.RecordPollError(source, err)
+			continue
+		}
+
+		a.store.Update(source, alerts)
+		if onCallProvider, ok := p.(provider.OnCallProvider); ok {
+			onCall, err := onCallProvider.FetchOnCall(ctx)
+			if err != nil {
+				a.store.ClearOnCall(source)
+				a.store.RecordPollError(source, fmt.Errorf("on-call lookup failed: %w", err))
+				continue
+			}
+			if onCall == nil {
+				a.store.ClearOnCall(source)
+			} else {
+				a.store.UpdateOnCall(source, *onCall)
+			}
+		}
+
+		a.store.RecordPollSuccess(source)
+	}
+
+	return nil
+}
+
 // GetDisplayConfig returns the normalized display configuration.
 func (a *App) GetDisplayConfig() config.NormalizedDisplayConfig {
 	a.mu.RLock()

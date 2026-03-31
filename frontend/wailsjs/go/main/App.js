@@ -58,6 +58,10 @@ export function OpenNotificationSettings() {
   return window['go']['main']['App']['OpenNotificationSettings']();
 }
 
+export function RefreshAlerts() {
+  return window['go']['main']['App']['RefreshAlerts']();
+}
+
 export function ResolveDiff(arg1) {
   return window['go']['main']['App']['ResolveDiff'](arg1);
 }

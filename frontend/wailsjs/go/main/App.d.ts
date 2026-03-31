@@ -32,6 +32,8 @@ export function LayoutPopup(arg1:number,arg2:number,arg3:number,arg4:number,arg5
 
 export function OpenNotificationSettings():Promise<void>;
 
+export function RefreshAlerts():Promise<void>;
+
 export function ResolveDiff(arg1:model.Diff):Promise<model.Diff>;
 
 export function SetProviders(arg1:Record<string, provider.Provider>):Promise<void>;
