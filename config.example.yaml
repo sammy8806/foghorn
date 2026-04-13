@@ -198,3 +198,6 @@ ui:
   show_resolved: false
   show_silenced: true
   default_created_by: ${USER}
+  # Optional image shown when there are no active alerts. Accepts a URL or
+  # a local file path (absolute, or relative to the config directory).
+  # idle_image: https://i.imgflip.com/2/1ihzfe.jpg

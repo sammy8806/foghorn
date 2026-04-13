@@ -35,6 +35,7 @@
   import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
+  import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
   const popupHorizontalMargin = 8;
   const popupTopMargin = 0;
@@ -45,6 +46,7 @@
   let notificationSettingsError = '';
   let environmentPlatform = '';
   let environmentBuildType = '';
+  let idleImage = defaultIdleImage;
 
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
@@ -70,6 +72,7 @@
         ...current,
         showSilenced: uiConfig.show_silenced ?? current.showSilenced,
       }));
+      idleImage = uiConfig.idle_image || defaultIdleImage;
     };
 
     const init = async () => {
@@ -533,7 +536,10 @@
       <div class="empty-state">Loading alerts…</div>
     {:else if totalCount === 0}
       <div class="empty-state">
-        {$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}
+        {#if idleImage && !($filteredAlerts.length === 0 && $filter.text)}
+          <img class="idle-image" src={idleImage} alt="No active alerts" />
+        {/if}
+        <p>{$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}</p>
       </div>
     {:else if hasGroups}
       {#each $groupedAlerts as group}
@@ -960,6 +966,23 @@
     color: #475569;
     padding: 40px 20px;
     font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .empty-state p {
+    margin: 0;
+  }
+
+  .idle-image {
+    max-width: 320px;
+    max-height: 280px;
+    border-radius: 8px;
+    opacity: 0.85;
+    user-select: none;
+    -webkit-user-drag: none;
   }
 
   @media (max-width: 640px) {

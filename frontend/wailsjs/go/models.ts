@@ -116,6 +116,7 @@ export namespace config {
 	    show_resolved: boolean;
 	    show_silenced: boolean;
 	    default_created_by: string;
+	    idle_image: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UIConfig(source);
@@ -129,6 +130,7 @@ export namespace config {
 	        this.show_resolved = source["show_resolved"];
 	        this.show_silenced = source["show_silenced"];
 	        this.default_created_by = source["default_created_by"];
+	        this.idle_image = source["idle_image"];
 	    }
 	}
 	export class ResolverConfig {

@@ -288,4 +288,5 @@ type UIConfig struct {
 	ShowResolved     bool   `yaml:"show_resolved" json:"show_resolved"`
 	ShowSilenced     bool   `yaml:"show_silenced" json:"show_silenced"`
 	DefaultCreatedBy string `yaml:"default_created_by" json:"default_created_by"`
+	IdleImage        string `yaml:"idle_image" json:"idle_image"`
 }
