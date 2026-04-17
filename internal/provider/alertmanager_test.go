@@ -201,6 +201,135 @@ func TestAlertmanagerFetchSilences(t *testing.T) {
 	}
 }
 
+func TestAlertmanagerSilenceForwardsID(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/silences" && r.Method == "POST" {
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"silenceID": "silence-xyz"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := config.SourceConfig{Name: "test-am", Type: "alertmanager", URL: server.URL}
+	am := NewAlertmanager(cfg)
+	req := model.SilenceRequest{
+		ID: "existing-id",
+		Matchers: []model.Matcher{
+			{Name: "alertname", Value: "X", IsRegex: false, IsEqual: true},
+		},
+		StartsAt:  time.Now(),
+		EndsAt:    time.Now().Add(time.Hour),
+		CreatedBy: "foghorn",
+		Comment:   "update test",
+	}
+
+	if _, err := am.Silence(context.Background(), req); err != nil {
+		t.Fatalf("Silence() error: %v", err)
+	}
+	if got, _ := receivedBody["id"].(string); got != "existing-id" {
+		t.Errorf("expected id 'existing-id' in body, got %q (body=%v)", got, receivedBody)
+	}
+}
+
+func TestAlertmanagerSilenceOmitsEmptyID(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/silences" && r.Method == "POST" {
+			json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"silenceID": "new-silence"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := config.SourceConfig{Name: "test-am", Type: "alertmanager", URL: server.URL}
+	am := NewAlertmanager(cfg)
+	req := model.SilenceRequest{
+		Matchers: []model.Matcher{
+			{Name: "alertname", Value: "X", IsRegex: false, IsEqual: true},
+		},
+		StartsAt:  time.Now(),
+		EndsAt:    time.Now().Add(time.Hour),
+		CreatedBy: "foghorn",
+		Comment:   "create test",
+	}
+
+	if _, err := am.Silence(context.Background(), req); err != nil {
+		t.Fatalf("Silence() error: %v", err)
+	}
+	if _, present := receivedBody["id"]; present {
+		t.Errorf("expected no id field when creating, got body=%v", receivedBody)
+	}
+}
+
+func TestAlertmanagerFetchSilencesParsesMatchers(t *testing.T) {
+	silences := []map[string]interface{}{
+		{
+			"id":        "sil-m",
+			"createdBy": "alice",
+			"comment":   "mixed matchers",
+			"startsAt":  "2026-03-31T10:00:00Z",
+			"endsAt":    "2026-03-31T14:00:00Z",
+			"status":    map[string]string{"state": "active"},
+			"matchers": []map[string]interface{}{
+				{"name": "a", "value": "1", "isRegex": false, "isEqual": true},
+				{"name": "b", "value": ".*", "isRegex": true, "isEqual": true},
+				{"name": "c", "value": "2", "isRegex": false, "isEqual": false},
+				{"name": "d", "value": "x", "isRegex": true, "isEqual": false},
+			},
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/silences" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(silences)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	cfg := config.SourceConfig{Name: "test-am", Type: "alertmanager", URL: server.URL}
+	am := NewAlertmanager(cfg)
+	result, err := am.FetchSilences(context.Background())
+	if err != nil {
+		t.Fatalf("FetchSilences() error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 silence, got %d", len(result))
+	}
+	got := result[0].Matchers
+	if len(got) != 4 {
+		t.Fatalf("expected 4 matchers, got %d (%v)", len(got), got)
+	}
+	checks := []struct {
+		idx     int
+		name    string
+		value   string
+		isRegex bool
+		isEqual bool
+	}{
+		{0, "a", "1", false, true},
+		{1, "b", ".*", true, true},
+		{2, "c", "2", false, false},
+		{3, "d", "x", true, false},
+	}
+	for _, c := range checks {
+		m := got[c.idx]
+		if m.Name != c.name || m.Value != c.value || m.IsRegex != c.isRegex || m.IsEqual != c.isEqual {
+			t.Errorf("matcher %d = %+v, want {%s %s %v %v}", c.idx, m, c.name, c.value, c.isRegex, c.isEqual)
+		}
+	}
+}
+
 func TestAlertmanagerBasicAuth(t *testing.T) {
 	var receivedAuth string
 

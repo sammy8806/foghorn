@@ -10,7 +10,7 @@ import (
 	"foghorn/internal/provider"
 )
 
-// Manager handles silence creation and deletion across providers.
+// Manager handles silence creation, update, and deletion across providers.
 type Manager struct {
 	providers map[string]provider.Provider
 }
@@ -19,64 +19,55 @@ func New(providers map[string]provider.Provider) *Manager {
 	return &Manager{providers: providers}
 }
 
-// SilenceAlert creates a silence for a specific alert on its source provider.
+// CreateSilence creates a new silence with the explicit matchers supplied by the caller.
 // duration is expressed as a duration string, e.g. "2h", "30m".
-func (m *Manager) SilenceAlert(ctx context.Context, alert model.Alert, duration string, createdBy string, comment string, defaultCreatedBy string) (string, error) {
-	p, ok := m.providers[alert.Source]
-	if !ok {
-		return "", fmt.Errorf("no provider registered for source %q", alert.Source)
-	}
-
-	dur, err := time.ParseDuration(duration)
+func (m *Manager) CreateSilence(
+	ctx context.Context,
+	source string,
+	matchers []model.Matcher,
+	duration, createdBy, comment, defaultCreatedBy string,
+) (string, error) {
+	p, dur, err := m.resolve(source, duration)
 	if err != nil {
-		return "", fmt.Errorf("invalid duration %q: %w", duration, err)
+		return "", err
 	}
-
-	// Build matchers from alert labels, using alertname + key identity labels
-	matchers := matchersFromAlert(alert)
-
+	now := time.Now()
 	req := model.SilenceRequest{
 		Matchers:  matchers,
-		StartsAt:  time.Now(),
-		EndsAt:    time.Now().Add(dur),
+		StartsAt:  now,
+		EndsAt:    now.Add(dur),
 		CreatedBy: resolveCreatedBy(createdBy, defaultCreatedBy),
 		Comment:   comment,
 	}
-
 	return p.Silence(ctx, req)
 }
 
-// SilenceByLabels creates a silence matching specific label key=value pairs.
-func (m *Manager) SilenceByLabels(ctx context.Context, source string, labels map[string]string, duration string, comment string) (string, error) {
-	p, ok := m.providers[source]
-	if !ok {
-		return "", fmt.Errorf("no provider registered for source %q", source)
+// UpdateSilence replaces an existing silence in place. The silence keeps its ID;
+// startsAt is reset to now and endsAt is now+duration.
+func (m *Manager) UpdateSilence(
+	ctx context.Context,
+	source, silenceID string,
+	matchers []model.Matcher,
+	duration, createdBy, comment, defaultCreatedBy string,
+) error {
+	if strings.TrimSpace(silenceID) == "" {
+		return fmt.Errorf("silence id is required for update")
 	}
-
-	dur, err := time.ParseDuration(duration)
+	p, dur, err := m.resolve(source, duration)
 	if err != nil {
-		return "", fmt.Errorf("invalid duration %q: %w", duration, err)
+		return err
 	}
-
-	matchers := make([]model.Matcher, 0, len(labels))
-	for k, v := range labels {
-		matchers = append(matchers, model.Matcher{
-			Name:    k,
-			Value:   v,
-			IsRegex: false,
-			IsEqual: true,
-		})
-	}
-
+	now := time.Now()
 	req := model.SilenceRequest{
+		ID:        silenceID,
 		Matchers:  matchers,
-		StartsAt:  time.Now(),
-		EndsAt:    time.Now().Add(dur),
-		CreatedBy: resolveCreatedBy("", ""),
+		StartsAt:  now,
+		EndsAt:    now.Add(dur),
+		CreatedBy: resolveCreatedBy(createdBy, defaultCreatedBy),
 		Comment:   comment,
 	}
-
-	return p.Silence(ctx, req)
+	_, err = p.Silence(ctx, req)
+	return err
 }
 
 // Unsilence expires a silence by ID on the named source.
@@ -88,18 +79,16 @@ func (m *Manager) Unsilence(ctx context.Context, source, silenceID string) error
 	return p.Unsilence(ctx, silenceID)
 }
 
-func matchersFromAlert(alert model.Alert) []model.Matcher {
-	// Use alertname + all labels as exact matchers
-	matchers := make([]model.Matcher, 0, len(alert.Labels))
-	for k, v := range alert.Labels {
-		matchers = append(matchers, model.Matcher{
-			Name:    k,
-			Value:   v,
-			IsRegex: false,
-			IsEqual: true,
-		})
+func (m *Manager) resolve(source, duration string) (provider.Provider, time.Duration, error) {
+	p, ok := m.providers[source]
+	if !ok {
+		return nil, 0, fmt.Errorf("no provider registered for source %q", source)
 	}
-	return matchers
+	dur, err := time.ParseDuration(duration)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid duration %q: %w", duration, err)
+	}
+	return p, dur, nil
 }
 
 func resolveCreatedBy(createdBy, fallback string) string {

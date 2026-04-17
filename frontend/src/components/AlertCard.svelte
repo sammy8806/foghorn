@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { Alert, DisplayConfig, SilenceInfo } from '../stores/alerts';
-  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
-  import { TestNotificationForAlert } from '../../wailsjs/go/main/App';
+  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
+  import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
-  import SilenceDialog from './SilenceDialog.svelte';
+  import SilenceEditor from './SilenceEditor.svelte';
 
   export let alert: Alert;
   export let config: DisplayConfig;
@@ -78,9 +78,58 @@
 
   let expanded = false;
   let silenceOpen = false;
+  let silenceMode: 'create' | 'edit' = 'create';
+  let editingSilence: SilenceInfo | null = null;
+  let expireConfirmId: string | null = null;
+  let expireError: Record<string, string> = {};
+  let expiring: Record<string, boolean> = {};
   let testingNotification = false;
   let testNotificationStatus = '';
   let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function openSilenceCreate() {
+    silenceMode = 'create';
+    editingSilence = null;
+    silenceOpen = true;
+  }
+
+  function openSilenceEdit(s: SilenceInfo) {
+    silenceMode = 'edit';
+    editingSilence = s;
+    silenceOpen = true;
+  }
+
+  function closeSilenceEditor() {
+    silenceOpen = false;
+    editingSilence = null;
+  }
+
+  function onSilenced() {
+    void refreshAlerts();
+  }
+
+  function askExpire(s: SilenceInfo) {
+    expireConfirmId = s.id;
+    expireError = { ...expireError, [s.id]: '' };
+  }
+
+  function cancelExpire() {
+    expireConfirmId = null;
+  }
+
+  async function confirmExpireSilence(s: SilenceInfo) {
+    expiring = { ...expiring, [s.id]: true };
+    expireError = { ...expireError, [s.id]: '' };
+    try {
+      await Unsilence(alert.source, s.id);
+      expireConfirmId = null;
+      void refreshAlerts();
+    } catch (e) {
+      expireError = { ...expireError, [s.id]: String(e) };
+    } finally {
+      expiring = { ...expiring, [s.id]: false };
+    }
+  }
 
   $: alertKey = alert.source + ':' + alert.id;
   $: supportsSilence = !!$sourceCapabilities[alert.source]?.supportsSilence;
@@ -197,9 +246,24 @@
               <div class="silence-header">
                 <span class="silence-author">{s.createdBy}</span>
                 <span class="silence-expiry">expires in {formatTimeRemaining(s.endsAt)}</span>
+                <div class="silence-actions">
+                  {#if expireConfirmId === s.id}
+                    <span class="expire-confirm-label">Expire?</span>
+                    <button class="btn-link-expire" on:click|stopPropagation={() => confirmExpireSilence(s)} disabled={!!expiring[s.id]}>
+                      {expiring[s.id] ? 'Expiring…' : 'Expire'}
+                    </button>
+                    <button class="btn-link-edit" on:click|stopPropagation={cancelExpire} disabled={!!expiring[s.id]}>Cancel</button>
+                  {:else}
+                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(s)}>Edit</button>
+                    <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}>Expire now</button>
+                  {/if}
+                </div>
               </div>
               {#if s.comment}
                 <div class="silence-comment">{s.comment}</div>
+              {/if}
+              {#if expireError[s.id]}
+                <div class="silence-error">{expireError[s.id]}</div>
               {/if}
             </div>
           {/each}
@@ -261,14 +325,21 @@
           {/if}
         {/if}
         {#if supportsSilence && !alert.silencedBy?.length && !isResolved}
-          <button class="btn-silence" on:click|stopPropagation={() => (silenceOpen = true)}>Silence…</button>
+          <button class="btn-silence" on:click|stopPropagation={openSilenceCreate}>Silence…</button>
         {/if}
       </div>
     </div>
   {/if}
 </div>
 
-<SilenceDialog {alert} open={silenceOpen} on:close={() => (silenceOpen = false)} />
+<SilenceEditor
+  {alert}
+  silence={editingSilence}
+  mode={silenceMode}
+  open={silenceOpen}
+  on:close={closeSilenceEditor}
+  on:silenced={onSilenced}
+/>
 
 <style>
   .alert-card {
@@ -496,6 +567,37 @@
     margin-top: 3px;
     white-space: pre-wrap;
     line-height: 1.4;
+  }
+
+  .silence-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: auto;
+  }
+  .btn-link-edit,
+  .btn-link-expire {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .btn-link-edit { color: #60a5fa; }
+  .btn-link-edit:hover:not(:disabled) { background: rgba(96, 165, 250, 0.15); }
+  .btn-link-expire { color: #f87171; }
+  .btn-link-expire:hover:not(:disabled) { background: rgba(248, 113, 113, 0.15); }
+  .btn-link-edit:disabled, .btn-link-expire:disabled { opacity: 0.5; cursor: default; }
+  .expire-confirm-label {
+    color: #f87171;
+    font-size: 10px;
+    margin-right: 2px;
+  }
+  .silence-error {
+    color: #f87171;
+    font-size: 10px;
+    margin-top: 2px;
   }
 
   .label-chips {

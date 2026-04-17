@@ -106,6 +106,7 @@ func (a *alertmanagerAPI) Fetch(ctx context.Context) ([]model.Alert, error) {
 
 func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest) (string, error) {
 	body := amSilenceRequest{
+		ID:        req.ID,
 		Matchers:  make([]amMatcher, len(req.Matchers)),
 		StartsAt:  req.StartsAt.Format(time.RFC3339),
 		EndsAt:    req.EndsAt.Format(time.RFC3339),
@@ -202,12 +203,22 @@ func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInf
 		}
 		startsAt, _ := time.Parse(time.RFC3339, s.StartsAt)
 		endsAt, _ := time.Parse(time.RFC3339, s.EndsAt)
+		matchers := make([]model.Matcher, 0, len(s.Matchers))
+		for _, m := range s.Matchers {
+			matchers = append(matchers, model.Matcher{
+				Name:    m.Name,
+				Value:   m.Value,
+				IsRegex: m.IsRegex,
+				IsEqual: m.IsEqual,
+			})
+		}
 		silences = append(silences, model.SilenceInfo{
 			ID:        s.ID,
 			CreatedBy: s.CreatedBy,
 			Comment:   s.Comment,
 			StartsAt:  startsAt,
 			EndsAt:    endsAt,
+			Matchers:  matchers,
 		})
 	}
 	return silences, nil
@@ -260,6 +271,7 @@ type amSilence struct {
 	Comment   string          `json:"comment"`
 	StartsAt  string          `json:"startsAt"`
 	EndsAt    string          `json:"endsAt"`
+	Matchers  []amMatcher     `json:"matchers"`
 	Status    amSilenceStatus `json:"status"`
 }
 
@@ -268,6 +280,7 @@ type amSilenceStatus struct {
 }
 
 type amSilenceRequest struct {
+	ID        string      `json:"id,omitempty"`
 	Matchers  []amMatcher `json:"matchers"`
 	StartsAt  string      `json:"startsAt"`
 	EndsAt    string      `json:"endsAt"`

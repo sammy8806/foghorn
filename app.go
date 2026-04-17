@@ -249,8 +249,33 @@ func (a *App) OpenNotificationSettings() error {
 	return notify.OpenNotificationSettings()
 }
 
-// SilenceAlert creates a silence for an alert via its source provider.
-func (a *App) SilenceAlert(alertID, source, duration, createdBy, comment string) error {
+// CreateSilence creates a silence with the caller-supplied matchers on the named source.
+func (a *App) CreateSilence(
+	source string,
+	matchers []model.Matcher,
+	duration, createdBy, comment string,
+) (string, error) {
+	a.mu.RLock()
+	silenceMgr := a.silenceMgr
+	ctx := a.ctx
+	defaultCreatedBy := config.ResolveCreatedByDefault(a.cfg.UI.DefaultCreatedBy)
+	a.mu.RUnlock()
+
+	if silenceMgr == nil {
+		return "", fmt.Errorf("silence manager not initialized")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return silenceMgr.CreateSilence(ctx, source, matchers, duration, createdBy, comment, defaultCreatedBy)
+}
+
+// UpdateSilence replaces an existing silence in place on the named source.
+func (a *App) UpdateSilence(
+	source, silenceID string,
+	matchers []model.Matcher,
+	duration, createdBy, comment string,
+) error {
 	a.mu.RLock()
 	silenceMgr := a.silenceMgr
 	ctx := a.ctx
@@ -260,14 +285,10 @@ func (a *App) SilenceAlert(alertID, source, duration, createdBy, comment string)
 	if silenceMgr == nil {
 		return fmt.Errorf("silence manager not initialized")
 	}
-	alerts := a.store.All()
-	for _, alert := range alerts {
-		if alert.ID == alertID && alert.Source == source {
-			_, err := silenceMgr.SilenceAlert(ctx, alert, duration, createdBy, comment, defaultCreatedBy)
-			return err
-		}
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return fmt.Errorf("alert %s/%s not found", source, alertID)
+	return silenceMgr.UpdateSilence(ctx, source, silenceID, matchers, duration, createdBy, comment, defaultCreatedBy)
 }
 
 // Unsilence expires a silence by ID.

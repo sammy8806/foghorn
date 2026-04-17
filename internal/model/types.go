@@ -9,6 +9,7 @@ type SilenceInfo struct {
 	Comment   string    `json:"comment"`
 	StartsAt  time.Time `json:"startsAt"`
 	EndsAt    time.Time `json:"endsAt"`
+	Matchers  []Matcher `json:"matchers"`
 }
 
 // Alert is the unified alert type all providers normalize to.
@@ -38,8 +39,10 @@ func (a Alert) Key() string {
 	return a.Source + ":" + a.ID
 }
 
-// SilenceRequest represents a request to silence alerts.
+// SilenceRequest represents a request to create or update a silence.
+// When ID is empty, providers create a new silence; when set, they update in place.
 type SilenceRequest struct {
+	ID        string    `json:"id,omitempty"`
 	Matchers  []Matcher `json:"matchers"`
 	StartsAt  time.Time `json:"startsAt"`
 	EndsAt    time.Time `json:"endsAt"`

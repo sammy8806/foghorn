@@ -586,6 +586,24 @@ export namespace config {
 
 export namespace model {
 	
+	export class Matcher {
+	    name: string;
+	    value: string;
+	    isRegex: boolean;
+	    isEqual: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Matcher(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.isRegex = source["isRegex"];
+	        this.isEqual = source["isEqual"];
+	    }
+	}
 	export class SilenceInfo {
 	    id: string;
 	    createdBy: string;
@@ -594,6 +612,7 @@ export namespace model {
 	    startsAt: any;
 	    // Go type: time
 	    endsAt: any;
+	    matchers: Matcher[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SilenceInfo(source);
@@ -606,6 +625,7 @@ export namespace model {
 	        this.comment = source["comment"];
 	        this.startsAt = this.convertValues(source["startsAt"], null);
 	        this.endsAt = this.convertValues(source["endsAt"], null);
+	        this.matchers = this.convertValues(source["matchers"], Matcher);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -726,6 +746,7 @@ export namespace model {
 		    return a;
 		}
 	}
+	
 	export class OnCallUser {
 	    name: string;
 	    email: string;

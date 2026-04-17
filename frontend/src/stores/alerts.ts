@@ -3,12 +3,20 @@ import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSev
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
+export interface Matcher {
+  name: string;
+  value: string;
+  isRegex: boolean;
+  isEqual: boolean;
+}
+
 export interface SilenceInfo {
   id: string;
   createdBy: string;
   comment: string;
   startsAt: string;
   endsAt: string;
+  matchers?: Matcher[];
 }
 
 export interface Alert {
@@ -783,4 +791,29 @@ export function criteriaEqual(a: SortCriterion[], b: SortCriterion[]): boolean {
 export function stringArrayEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((value, index) => value === b[index]);
+}
+
+// Label suggestion helpers — derive unique label names and values from the
+// currently-loaded alerts scoped to a given source. Used by the matcher editor
+// to power autocomplete without needing a dedicated backend endpoint.
+export function labelNamesForSource(source: string): string[] {
+  const names = new Set<string>();
+  for (const alert of get(alerts)) {
+    if (alert.source !== source) continue;
+    for (const name of Object.keys(alert.labels || {})) {
+      names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+export function labelValuesForSource(source: string, name: string): string[] {
+  if (!name) return [];
+  const values = new Set<string>();
+  for (const alert of get(alerts)) {
+    if (alert.source !== source) continue;
+    const value = alert.labels?.[name];
+    if (value !== undefined && value !== '') values.add(value);
+  }
+  return [...values].sort();
 }
