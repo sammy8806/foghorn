@@ -417,7 +417,7 @@
       class="filter-pill"
       class:filter-pill-active={$filter.showAll}
       on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title="Show all alerts (bypass filters)"
+      title="Show all alerts (bypass filters, except text search)"
     >Show all</button>
 
     <button

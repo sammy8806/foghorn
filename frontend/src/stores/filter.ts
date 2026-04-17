@@ -23,11 +23,8 @@ export const filteredAlerts = derived([alerts, filter], ([$alerts, $filter]) => 
 });
 
 function matchesFilter(alert: Alert, f: FilterState): boolean {
-  if (f.showAll) return true;
-  if (f.severity !== 'all' && alert.severity !== f.severity) return false;
-  if (f.source !== 'all' && alert.source !== f.source) return false;
-  if (!f.showSilenced && alert.silencedBy?.length > 0) return false;
-
+  // Text search always applies, even when showAll is active, so users can
+  // search within silenced/otherwise-hidden alerts.
   if (f.text) {
     const q = f.text.toLowerCase();
     const haystack = [
@@ -38,6 +35,11 @@ function matchesFilter(alert: Alert, f: FilterState): boolean {
     ].join(' ').toLowerCase();
     if (!haystack.includes(q)) return false;
   }
+
+  if (f.showAll) return true;
+  if (f.severity !== 'all' && alert.severity !== f.severity) return false;
+  if (f.source !== 'all' && alert.source !== f.source) return false;
+  if (!f.showSilenced && alert.silencedBy?.length > 0) return false;
 
   return true;
 }
