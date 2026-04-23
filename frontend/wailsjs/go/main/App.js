@@ -66,8 +66,8 @@ export function RefreshAlerts() {
   return window['go']['main']['App']['RefreshAlerts']();
 }
 
-export function ResolveDiff(arg1) {
-  return window['go']['main']['App']['ResolveDiff'](arg1);
+export function ResolveDiff(arg1, arg2) {
+  return window['go']['main']['App']['ResolveDiff'](arg1, arg2);
 }
 
 export function SetProviders(arg1) {

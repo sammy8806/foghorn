@@ -86,19 +86,19 @@ func New(cfgs []config.ResolverConfig) *Engine {
 	return engine
 }
 
-func (e *Engine) ResolveAlerts(alerts []model.Alert) []model.Alert {
+func (e *Engine) ResolveAlerts(ctx context.Context, alerts []model.Alert) []model.Alert {
 	if e == nil || len(e.resolvers) == 0 || len(alerts) == 0 {
 		return alerts
 	}
 
 	resolved := make([]model.Alert, len(alerts))
 	for i, alert := range alerts {
-		resolved[i] = e.ResolveAlert(alert)
+		resolved[i] = e.ResolveAlert(ctx, alert)
 	}
 	return resolved
 }
 
-func (e *Engine) ResolveAlert(alert model.Alert) model.Alert {
+func (e *Engine) ResolveAlert(ctx context.Context, alert model.Alert) model.Alert {
 	if e == nil || len(e.resolvers) == 0 {
 		return alert
 	}
@@ -110,7 +110,7 @@ func (e *Engine) ResolveAlert(alert model.Alert) model.Alert {
 			continue
 		}
 
-		value, err := e.resolveValue(item, alert, raw)
+		value, err := e.resolveValue(ctx, item, alert, raw)
 		if err != nil || value == "" || value == raw {
 			continue
 		}
@@ -137,7 +137,7 @@ func (e *Engine) ResolveAlert(alert model.Alert) model.Alert {
 	return out
 }
 
-func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (string, error) {
+func (e *Engine) resolveValue(ctx context.Context, item resolver, alert model.Alert, raw string) (string, error) {
 	kind, name := config.ResolveFieldRef(item.field)
 	data := templateData{
 		Ref:         item.field,
@@ -188,10 +188,10 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 		e.cache.Delete(cacheKey)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), item.timeout)
+	tctx, cancel := context.WithTimeout(ctx, item.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := exec.CommandContext(tctx, command, args...)
 	if len(env) > 0 {
 		cmd.Env = append(cmd.Environ(), env...)
 	}

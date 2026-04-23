@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +28,7 @@ func TestResolveAlertLabelCommand(t *testing.T) {
 		Labels: map[string]string{"cluster": "saas-cs-0b"},
 	}
 
-	resolved := engine.ResolveAlert(alert)
+	resolved := engine.ResolveAlert(context.Background(), alert)
 	if got := resolved.ResolvedLabels["cluster"]; got != "saas-cs-0b-resolved" {
 		t.Fatalf("expected resolved cluster label, got %q", got)
 	}
@@ -52,7 +53,7 @@ func TestResolveAlertFieldCommand(t *testing.T) {
 		Labels: map[string]string{"cluster": "saas-cs-0b"},
 	}
 
-	resolved := engine.ResolveAlert(alert)
+	resolved := engine.ResolveAlert(context.Background(), alert)
 	if got := resolved.ResolvedFields["source"]; got != "prod-am/saas-cs-0b" {
 		t.Fatalf("expected resolved source field, got %q", got)
 	}
@@ -78,8 +79,8 @@ func TestResolveAlertUsesCache(t *testing.T) {
 		Labels: map[string]string{"cluster": "saas-cs-0b"},
 	}
 
-	first := engine.ResolveAlert(alert)
-	second := engine.ResolveAlert(alert)
+	first := engine.ResolveAlert(context.Background(), alert)
+	second := engine.ResolveAlert(context.Background(), alert)
 
 	if got := first.ResolvedLabels["cluster"]; got != "customer-1" {
 		t.Fatalf("expected first resolved value customer-1, got %q", got)
@@ -115,11 +116,11 @@ func TestResolveAlertCacheTTLExpires(t *testing.T) {
 		Labels: map[string]string{"cluster": "saas-cs-0b"},
 	}
 
-	first := engine.ResolveAlert(alert)
+	first := engine.ResolveAlert(context.Background(), alert)
 	current = current.Add(30 * time.Second)
-	second := engine.ResolveAlert(alert)
+	second := engine.ResolveAlert(context.Background(), alert)
 	current = current.Add(61 * time.Second)
-	third := engine.ResolveAlert(alert)
+	third := engine.ResolveAlert(context.Background(), alert)
 
 	if got := first.ResolvedLabels["cluster"]; got != "customer-1" {
 		t.Fatalf("expected first resolved value customer-1, got %q", got)
@@ -170,10 +171,10 @@ func TestResolveAlertCachesFailuresBriefly(t *testing.T) {
 		Labels: map[string]string{"cluster": "saas-cs-0b"},
 	}
 
-	first := engine.ResolveAlert(alert)
-	second := engine.ResolveAlert(alert)
+	first := engine.ResolveAlert(context.Background(), alert)
+	second := engine.ResolveAlert(context.Background(), alert)
 	current = current.Add(defaultFailureCacheTTL + time.Second)
-	third := engine.ResolveAlert(alert)
+	third := engine.ResolveAlert(context.Background(), alert)
 
 	if len(first.ResolvedLabels) != 0 {
 		t.Fatalf("expected no resolved labels on first failure, got %#v", first.ResolvedLabels)
@@ -223,7 +224,7 @@ func TestResolveAlertUsesCacheWithEnv(t *testing.T) {
 	}
 
 	for i := 0; i < 25; i++ {
-		resolved := engine.ResolveAlert(alert)
+		resolved := engine.ResolveAlert(context.Background(), alert)
 		if got := resolved.ResolvedLabels["cluster"]; got != "left/right/saas-cs-0b" {
 			t.Fatalf("expected cached env-backed value, got %q", got)
 		}

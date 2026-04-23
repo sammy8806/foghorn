@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -46,6 +48,19 @@ func main() {
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
 
+	quitHandler := func() {
+		if quitting.Swap(true) {
+			return // already quitting
+		}
+		log.Printf("app: shutdown initiated")
+		if app.cancel != nil {
+			app.cancel()
+		}
+		if app.ctx != nil {
+			wailsruntime.Quit(app.ctx)
+		}
+	}
+
 	trayMgr := tray.NewManager(
 		func() {
 			if app.ctx == nil {
@@ -61,16 +76,17 @@ func main() {
 				wailsruntime.EventsEmit(app.ctx, "popup:opening")
 			}
 		},
-		func() {
-			quitting.Store(true)
-			if app.cancel != nil {
-				app.cancel()
-			}
-			if app.ctx != nil {
-				wailsruntime.Quit(app.ctx)
-			}
-		},
+		quitHandler,
 	)
+
+	// OS Signal handler for clean shutdown on Ctrl+C (SIGINT) or SIGTERM
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		log.Printf("app: received signal %v, shutting down...", sig)
+		quitHandler()
+	}()
 
 	if err := wails.Run(&options.App{
 		Title:             "Foghorn",
@@ -120,7 +136,7 @@ func main() {
 							counts := store.SeverityCounts()
 							trayMgr.UpdateState(counts)
 							localNotifier.OnDiff(event.Diff)
-							wailsruntime.EventsEmit(ctx, "alerts:updated", app.ResolveDiff(event.Diff))
+							wailsruntime.EventsEmit(ctx, "alerts:updated", app.ResolveDiff(localCtx, event.Diff))
 						}
 					}
 				}(bgCtx, diffCh, notifier)

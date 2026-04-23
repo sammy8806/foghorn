@@ -76,14 +76,19 @@ func (a *App) UpdateConfig(cfg *config.Config) {
 // GetAlerts returns all current alerts.
 func (a *App) GetAlerts() []model.Alert {
 	a.mu.RLock()
+	ctx := a.ctx
 	resolveEng := a.resolveEng
 	a.mu.RUnlock()
 
-	return resolveEng.ResolveAlerts(a.store.All())
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return resolveEng.ResolveAlerts(ctx, a.store.All())
 }
 
 // ResolveDiff applies display resolvers to diff payloads before they are sent to the UI.
-func (a *App) ResolveDiff(diff model.Diff) model.Diff {
+func (a *App) ResolveDiff(ctx context.Context, diff model.Diff) model.Diff {
 	a.mu.RLock()
 	resolveEng := a.resolveEng
 	a.mu.RUnlock()
@@ -92,9 +97,9 @@ func (a *App) ResolveDiff(diff model.Diff) model.Diff {
 		return diff
 	}
 
-	diff.New = resolveEng.ResolveAlerts(diff.New)
-	diff.Resolved = resolveEng.ResolveAlerts(diff.Resolved)
-	diff.Changed = resolveEng.ResolveAlerts(diff.Changed)
+	diff.New = resolveEng.ResolveAlerts(ctx, diff.New)
+	diff.Resolved = resolveEng.ResolveAlerts(ctx, diff.Resolved)
+	diff.Changed = resolveEng.ResolveAlerts(ctx, diff.Changed)
 	return diff
 }
 
