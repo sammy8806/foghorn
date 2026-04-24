@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -48,6 +49,8 @@ func main() {
 	var stopRuntime context.CancelFunc
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
+	startHidden := tray.StartHiddenByDefault()
+	windowVisible.Store(!startHidden)
 
 	// requestQuit marks the app as quitting and asks Wails to terminate. It is
 	// used by both the tray "Quit" menu item and the SIGINT/SIGTERM handler.
@@ -108,10 +111,13 @@ func main() {
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       tray.StartHiddenByDefault(),
+		StartHidden:       startHidden,
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+		},
+		Windows: &windows.Options{
+			WebviewUserDataPath: webviewUserDataPath(),
 		},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
@@ -206,6 +212,18 @@ func configPath() string {
 		dir = filepath.Join(home, ".config")
 	}
 	return filepath.Join(dir, "foghorn", "config.yaml")
+}
+
+func webviewUserDataPath() string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir, err = os.UserConfigDir()
+		if err != nil {
+			home, _ := os.UserHomeDir()
+			dir = filepath.Join(home, ".cache")
+		}
+	}
+	return filepath.Join(dir, "foghorn", "webview2")
 }
 
 func buildProviders(sources []config.SourceConfig) map[string]provider.Provider {

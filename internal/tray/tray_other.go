@@ -1,4 +1,4 @@
-//go:build !darwin && (!linux || !linux_tray)
+//go:build !darwin && !windows && (!linux || !linux_tray)
 
 package tray
 
@@ -15,7 +15,7 @@ func StartHiddenByDefault() bool {
 }
 
 func newPlatformTray(_ *Manager) platformTray {
-	log.Println("tray: native tray is only implemented on macOS")
+	log.Println("tray: native tray is only implemented on macOS, Windows, and Linux builds tagged linux_tray")
 	return &noopTray{}
 }
 
