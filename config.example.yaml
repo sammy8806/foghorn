@@ -1,9 +1,9 @@
 # Foghorn configuration file.
-# Place this file at: ~/.config/foghorn/config.yaml
 #
-# Quick setup:
-#   mkdir -p ~/.config/foghorn
-#   cp config.example.yaml ~/.config/foghorn/config.yaml
+# Place this file at the platform-appropriate location:
+#   macOS:   ~/Library/Application Support/foghorn/config.yaml
+#   Linux:   ~/.config/foghorn/config.yaml  (or $XDG_CONFIG_HOME/foghorn/config.yaml)
+#   Windows: %APPDATA%\foghorn\config.yaml
 #
 # ${ENV_VAR} references are expanded at load time, so secrets can stay
 # in your shell environment or a secrets manager instead of this file.

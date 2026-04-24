@@ -30,6 +30,7 @@ var assets embed.FS
 
 func main() {
 	cfgPath := configPath()
+	config.MigrateLegacyPath(cfgPath)
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -193,8 +194,12 @@ func main() {
 }
 
 func configPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "foghorn", "config.yaml")
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".config")
+	}
+	return filepath.Join(dir, "foghorn", "config.yaml")
 }
 
 func buildProviders(sources []config.SourceConfig) map[string]provider.Provider {
