@@ -117,8 +117,7 @@ func main() {
 						case <-localCtx.Done():
 							return
 						case event := <-localDiffCh:
-							counts := store.SeverityCounts()
-							trayMgr.UpdateState(counts)
+							trayMgr.UpdateState(store.SeverityBreakdown())
 							localNotifier.OnDiff(event.Diff)
 							wailsruntime.EventsEmit(ctx, "alerts:updated", app.ResolveDiff(event.Diff))
 						}

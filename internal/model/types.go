@@ -103,3 +103,10 @@ type Diff struct {
 
 // SeverityCounts tracks alert counts per severity level.
 type SeverityCounts map[string]int
+
+// SeverityBreakdown splits alert counts per severity into active (non-silenced)
+// and silenced buckets. An alert is silenced when len(Alert.SilencedBy) > 0.
+type SeverityBreakdown struct {
+	Active   SeverityCounts `json:"active"`
+	Silenced SeverityCounts `json:"silenced"`
+}

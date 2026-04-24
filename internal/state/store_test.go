@@ -20,6 +20,15 @@ func makeAlert(id, source, name, severity, state string) model.Alert {
 	}
 }
 
+func makeSilencedAlert(id, source, name, severity, state string, silencedBy ...string) model.Alert {
+	a := makeAlert(id, source, name, severity, state)
+	if len(silencedBy) == 0 {
+		silencedBy = []string{"silence-" + id}
+	}
+	a.SilencedBy = silencedBy
+	return a
+}
+
 func TestNewAlerts(t *testing.T) {
 	s := New()
 	alerts := []model.Alert{
@@ -120,6 +129,69 @@ func TestSeverityCountsWithAliases(t *testing.T) {
 	}
 	if counts["unknown"] != 1 {
 		t.Errorf("expected 1 unknown, got %d", counts["unknown"])
+	}
+}
+
+func TestSeverityBreakdownSplitsSilenced(t *testing.T) {
+	s := New()
+	s.Update("src1", []model.Alert{
+		makeAlert("a1", "src1", "Active1", "critical", "active"),
+		makeAlert("a2", "src1", "Active2", "warning", "active"),
+		makeSilencedAlert("a3", "src1", "Silenced1", "critical", "active"),
+		makeSilencedAlert("a4", "src1", "Silenced2", "warning", "active"),
+		makeSilencedAlert("a5", "src1", "Silenced3", "warning", "active"),
+	})
+
+	b := s.SeverityBreakdown()
+
+	if b.Active["critical"] != 1 {
+		t.Errorf("expected 1 active critical, got %d", b.Active["critical"])
+	}
+	if b.Active["warning"] != 1 {
+		t.Errorf("expected 1 active warning, got %d", b.Active["warning"])
+	}
+	if b.Silenced["critical"] != 1 {
+		t.Errorf("expected 1 silenced critical, got %d", b.Silenced["critical"])
+	}
+	if b.Silenced["warning"] != 2 {
+		t.Errorf("expected 2 silenced warning, got %d", b.Silenced["warning"])
+	}
+}
+
+func TestSeverityBreakdownEmptyStore(t *testing.T) {
+	s := New()
+
+	b := s.SeverityBreakdown()
+
+	if b.Active == nil || b.Silenced == nil {
+		t.Fatalf("expected non-nil count maps, got Active=%v Silenced=%v", b.Active, b.Silenced)
+	}
+	for sev, n := range b.Active {
+		if n != 0 {
+			t.Errorf("expected zero Active[%s], got %d", sev, n)
+		}
+	}
+	for sev, n := range b.Silenced {
+		if n != 0 {
+			t.Errorf("expected zero Silenced[%s], got %d", sev, n)
+		}
+	}
+}
+
+func TestSeverityBreakdownIgnoresEmptySilencedBy(t *testing.T) {
+	s := New()
+	// An alert with an empty but non-nil SilencedBy slice is NOT silenced.
+	alert := makeAlert("a1", "src1", "NotSilenced", "critical", "active")
+	alert.SilencedBy = []string{}
+	s.Update("src1", []model.Alert{alert})
+
+	b := s.SeverityBreakdown()
+
+	if b.Active["critical"] != 1 {
+		t.Errorf("expected 1 active critical, got %d", b.Active["critical"])
+	}
+	if b.Silenced["critical"] != 0 {
+		t.Errorf("expected 0 silenced critical, got %d", b.Silenced["critical"])
 	}
 }
 
