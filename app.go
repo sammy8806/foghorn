@@ -82,8 +82,8 @@ func (a *App) GetAlerts() []model.Alert {
 	return resolveEng.ResolveAlerts(a.store.All())
 }
 
-// ResolveDiff applies display resolvers to diff payloads before they are sent to the UI.
-func (a *App) ResolveDiff(diff model.Diff) model.Diff {
+// resolveDiff applies display resolvers to diff payloads before they are sent to the UI.
+func (a *App) resolveDiff(_ context.Context, diff model.Diff) model.Diff {
 	a.mu.RLock()
 	resolveEng := a.resolveEng
 	a.mu.RUnlock()
