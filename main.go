@@ -92,10 +92,16 @@ func main() {
 	// here we ensure a Ctrl+C actually terminates the process.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
-		<-sigCh
-		signal.Stop(sigCh)
-		requestQuit()
+		for signalCount := 1; ; signalCount++ {
+			<-sigCh
+			if signalCount == 1 {
+				requestQuit()
+				continue
+			}
+			os.Exit(1)
+		}
 	}()
 
 	if err := wails.Run(&options.App{
