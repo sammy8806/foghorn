@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"image"
 	_ "image/png"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -59,6 +60,7 @@ var (
 	procDefWindowProc         = user32.NewProc("DefWindowProcW")
 	procDestroyMenu           = user32.NewProc("DestroyMenu")
 	procDestroyWindow         = user32.NewProc("DestroyWindow")
+	procDestroyIcon           = user32.NewProc("DestroyIcon")
 	procDispatchMessage       = user32.NewProc("DispatchMessageW")
 	procGetCursorPos          = user32.NewProc("GetCursorPos")
 	procGetMessage            = user32.NewProc("GetMessageW")
@@ -130,6 +132,7 @@ type windowsTray struct {
 	ready          bool
 	disposed       bool
 	icon           []byte
+	iconHash       string
 	tooltip        string
 	instance       windows.Handle
 	window         windows.Handle
@@ -181,6 +184,8 @@ func (w *windowsTray) run() {
 
 	currentWindowsTray = w
 	if err := w.init(); err != nil {
+		log.Printf("tray: Windows tray initialization failed: %v", err)
+		w.cleanup()
 		return
 	}
 	defer w.cleanup()
@@ -301,6 +306,11 @@ func (w *windowsTray) cleanup() {
 		procShellNotifyIcon.Call(nimDelete, uintptr(unsafe.Pointer(&w.nid)))
 		w.nid.Wnd = 0
 	}
+	if w.nid.Icon != 0 {
+		destroyIcon(w.nid.Icon)
+		w.nid.Icon = 0
+		w.iconHash = ""
+	}
 	if w.menu != 0 {
 		procDestroyMenu.Call(uintptr(w.menu))
 		w.menu = 0
@@ -316,16 +326,26 @@ func (w *windowsTray) cleanup() {
 }
 
 func (w *windowsTray) updateNotifyIconLocked(action uintptr) error {
+	var oldIcon windows.Handle
+	var newIcon windows.Handle
+	oldIconHash := w.iconHash
+	newIconHash := oldIconHash
+
 	if len(w.icon) > 0 {
-		iconPath, err := iconBytesToFilePath(w.icon)
-		if err != nil {
-			return err
+		newIconHash = hashIconBytes(w.icon)
+		if w.nid.Icon == 0 || newIconHash != w.iconHash {
+			iconPath, err := iconBytesToFilePath(w.icon)
+			if err != nil {
+				return err
+			}
+			icon, err := loadIcon(iconPath)
+			if err != nil {
+				return err
+			}
+			oldIcon = w.nid.Icon
+			newIcon = icon
+			w.nid.Icon = newIcon
 		}
-		icon, err := loadIcon(iconPath)
-		if err != nil {
-			return err
-		}
-		w.nid.Icon = icon
 		w.nid.Flags |= nifIcon
 	}
 
@@ -341,7 +361,18 @@ func (w *windowsTray) updateNotifyIconLocked(action uintptr) error {
 
 	w.nid.Size = uint32(unsafe.Sizeof(w.nid))
 	if res, _, err := procShellNotifyIcon.Call(action, uintptr(unsafe.Pointer(&w.nid))); res == 0 {
+		if newIcon != 0 {
+			destroyIcon(newIcon)
+			w.nid.Icon = oldIcon
+			w.iconHash = oldIconHash
+		}
 		return err
+	}
+	if newIcon != 0 {
+		w.iconHash = newIconHash
+		if oldIcon != 0 {
+			destroyIcon(oldIcon)
+		}
 	}
 	return nil
 }
@@ -433,6 +464,15 @@ func loadIcon(path string) (windows.Handle, error) {
 		return 0, err
 	}
 	return windows.Handle(res), nil
+}
+
+func destroyIcon(icon windows.Handle) {
+	procDestroyIcon.Call(uintptr(icon))
+}
+
+func hashIconBytes(icon []byte) string {
+	hash := md5.Sum(icon)
+	return hex.EncodeToString(hash[:])
 }
 
 func iconBytesToFilePath(icon []byte) (string, error) {
