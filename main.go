@@ -48,6 +48,8 @@ func main() {
 	var stopRuntime context.CancelFunc
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
+	startHidden := tray.StartHiddenByDefault()
+	windowVisible.Store(!startHidden)
 
 	// requestQuit marks the app as quitting and asks Wails to terminate. It is
 	// used by both the tray "Quit" menu item and the SIGINT/SIGTERM handler.
@@ -102,7 +104,7 @@ func main() {
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       tray.StartHiddenByDefault(),
+		StartHidden:       startHidden,
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

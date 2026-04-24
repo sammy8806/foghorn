@@ -69,7 +69,13 @@ If `dnf` prompts about an unrelated third-party repository GPG key during prereq
 
 ### Windows
 
-Windows is theoretically supported via the standard `wails build`, but is not regularly tested. Issues and patches welcome.
+```powershell
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+$env:Path = (go env GOPATH) + ";$env:Path"
+wails build
+```
+
+Windows builds include the native system tray. Closing the window hides it; use the tray menu to show or hide the window, or to quit Foghorn.
 
 ## Configuration
 
