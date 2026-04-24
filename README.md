@@ -73,7 +73,14 @@ Windows is theoretically supported via the standard `wails build`, but is not re
 
 ## Configuration
 
-Foghorn reads YAML configuration. A fully annotated example lives in [`config.example.yaml`](config.example.yaml) — copy it and edit to your environment. A minimal source configuration looks like:
+Foghorn reads YAML configuration from `~/.config/foghorn/config.yaml`. A fully annotated example lives in [`config.example.yaml`](config.example.yaml) — copy it there and edit to your environment:
+
+```bash
+mkdir -p ~/.config/foghorn
+cp config.example.yaml ~/.config/foghorn/config.yaml
+```
+
+A minimal source configuration looks like:
 
 ```yaml
 sources:
