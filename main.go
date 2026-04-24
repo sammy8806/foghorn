@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -108,6 +109,9 @@ func main() {
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+		},
+		Windows: &windows.Options{
+			WebviewUserDataPath: webviewUserDataPath(),
 		},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
@@ -202,6 +206,18 @@ func configPath() string {
 		dir = filepath.Join(home, ".config")
 	}
 	return filepath.Join(dir, "foghorn", "config.yaml")
+}
+
+func webviewUserDataPath() string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir, err = os.UserConfigDir()
+		if err != nil {
+			home, _ := os.UserHomeDir()
+			dir = filepath.Join(home, ".cache")
+		}
+	}
+	return filepath.Join(dir, "foghorn", "webview2")
 }
 
 func buildProviders(sources []config.SourceConfig) map[string]provider.Provider {

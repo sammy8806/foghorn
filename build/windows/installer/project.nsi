@@ -100,7 +100,8 @@ SectionEnd
 Section "uninstall"
     !insertmacro wails.setShellContext
 
-    RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
+    RMDir /r "$LocalAppData\foghorn\webview2" # Remove the WebView2 DataPath
+    RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the legacy Wails default WebView2 DataPath
 
     RMDir /r $INSTDIR
 
