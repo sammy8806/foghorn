@@ -28,7 +28,13 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// version is overridden at build time via -ldflags "-X main.version=<version>".
+// Defaults to "dev" for plain `go run` / `wails dev` / unconfigured local builds.
+var version = "dev"
+
 func main() {
+	log.Printf("foghorn %s starting", version)
+
 	cfgPath := configPath()
 	config.MigrateLegacyPath(cfgPath)
 	cfg, err := config.Load(cfgPath)
