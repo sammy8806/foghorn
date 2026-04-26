@@ -43,7 +43,7 @@ func TestResolveDiffResolvesFrontendPayloads(t *testing.T) {
 		},
 	}, state.New())
 
-	diff := app.ResolveDiff(model.Diff{
+	diff := app.resolveDiff(context.Background(), model.Diff{
 		Resolved: []model.Alert{
 			{
 				ID:     "a1",

@@ -36,8 +36,6 @@ export function OpenNotificationSettings():Promise<void>;
 
 export function RefreshAlerts():Promise<void>;
 
-export function ResolveDiff(arg1:model.Diff):Promise<model.Diff>;
-
 export function SetProviders(arg1:Record<string, provider.Provider>):Promise<void>;
 
 export function TestNotificationForAlert(arg1:string,arg2:string):Promise<void>;

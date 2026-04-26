@@ -73,7 +73,33 @@ Windows is theoretically supported via the standard `wails build`, but is not re
 
 ## Configuration
 
-Foghorn reads YAML configuration. A fully annotated example lives in [`config.example.yaml`](config.example.yaml) — copy it and edit to your environment. A minimal source configuration looks like:
+Foghorn reads YAML configuration from a platform-specific location:
+
+| Platform | Path |
+|----------|------|
+| macOS    | `~/Library/Application Support/foghorn/config.yaml` |
+| Linux    | `~/.config/foghorn/config.yaml` (or `$XDG_CONFIG_HOME/foghorn/config.yaml`) |
+| Windows  | `%APPDATA%\foghorn\config.yaml` |
+
+A fully annotated example lives in [`config.example.yaml`](config.example.yaml) — copy it to the right location for your platform and edit to your environment:
+
+```bash
+# macOS
+mkdir -p ~/Library/Application\ Support/foghorn
+cp config.example.yaml ~/Library/Application\ Support/foghorn/config.yaml
+
+# Linux
+mkdir -p ~/.config/foghorn
+cp config.example.yaml ~/.config/foghorn/config.yaml
+```
+
+```powershell
+# Windows
+New-Item -ItemType Directory -Force "$env:APPDATA\foghorn"
+Copy-Item config.example.yaml "$env:APPDATA\foghorn\config.yaml"
+```
+
+A minimal source configuration looks like:
 
 ```yaml
 sources:

@@ -17,22 +17,23 @@ type platformTray interface {
 }
 
 type Manager struct {
-	mu       sync.RWMutex
-	onClick  OnClickFunc
-	onQuit   OnQuitFunc
-	counts   model.SeverityCounts
-	ready    bool
-	platform platformTray
-	scheme   config.SeverityScheme
+	mu        sync.RWMutex
+	onClick   OnClickFunc
+	onQuit    OnQuitFunc
+	breakdown model.SeverityBreakdown
+	ready     bool
+	platform  platformTray
+	scheme    config.SeverityScheme
 }
 
 func NewManager(onClick OnClickFunc, onQuit OnQuitFunc) *Manager {
 	normalized, _ := config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
+	scheme := normalized.Scheme()
 	return &Manager{
-		onClick: onClick,
-		onQuit:  onQuit,
-		counts:  model.SeverityCounts(normalized.Scheme().EmptyCounts()),
-		scheme:  normalized.Scheme(),
+		onClick:   onClick,
+		onQuit:    onQuit,
+		breakdown: emptyBreakdown(scheme),
+		scheme:    scheme,
 	}
 }
 
@@ -44,7 +45,7 @@ func (m *Manager) Run(onReady func()) {
 		m.platform = newPlatformTray(m)
 	}
 	if m.platform != nil {
-		_ = m.platform.update(m.iconForCounts(), m.tooltipLocked())
+		_ = m.platform.update(m.iconLocked(), m.tooltipLocked())
 	}
 	if onReady != nil {
 		onReady()
@@ -61,14 +62,16 @@ func (m *Manager) Close() {
 	}
 }
 
-func (m *Manager) UpdateState(counts model.SeverityCounts) {
+// UpdateState sets the latest severity breakdown (active vs silenced) and
+// refreshes the tray icon + tooltip accordingly.
+func (m *Manager) UpdateState(breakdown model.SeverityBreakdown) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.counts = counts
+	m.breakdown = normalizeBreakdown(breakdown, m.scheme)
 	m.ready = true
 	if m.platform != nil {
-		_ = m.platform.update(m.iconForCounts(), m.tooltipLocked())
+		_ = m.platform.update(m.iconLocked(), m.tooltipLocked())
 	}
 }
 
@@ -77,21 +80,9 @@ func (m *Manager) SetSeverityConfig(cfg config.NormalizedSeverityConfig) {
 	defer m.mu.Unlock()
 
 	m.scheme = cfg.Scheme()
-	if m.counts == nil {
-		m.counts = model.SeverityCounts(m.scheme.EmptyCounts())
-	}
-	for name := range m.counts {
-		if _, ok := m.scheme.EmptyCounts()[name]; !ok {
-			delete(m.counts, name)
-		}
-	}
-	for name := range m.scheme.EmptyCounts() {
-		if _, ok := m.counts[name]; !ok {
-			m.counts[name] = 0
-		}
-	}
+	m.breakdown = normalizeBreakdown(m.breakdown, m.scheme)
 	if m.platform != nil {
-		_ = m.platform.update(m.iconForCounts(), m.tooltipLocked())
+		_ = m.platform.update(m.iconLocked(), m.tooltipLocked())
 	}
 }
 
@@ -99,6 +90,14 @@ func (m *Manager) Tooltip() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.tooltipLocked()
+}
+
+// icon returns the current tray icon bytes. Test-only accessor in the tray
+// package; production callers receive the icon via platformTray.update.
+func (m *Manager) icon() []byte {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.iconLocked()
 }
 
 func (m *Manager) handleClick() {
@@ -118,45 +117,40 @@ func (m *Manager) tooltipLocked() string {
 		return "Foghorn - Starting up"
 	}
 
-	c := m.counts
-	total := 0
-	for _, count := range c {
-		total += count
-	}
-	if total == 0 {
-		return "Foghorn - All clear"
-	}
+	activeParts := severityParts(m.breakdown.Active, m.scheme)
+	silencedParts := severityParts(m.breakdown.Silenced, m.scheme)
 
-	parts := make([]string, 0, len(m.scheme.Levels))
-	for _, level := range m.scheme.Levels {
-		if count := c[level.Name]; count > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", count, level.Name))
-		}
+	activeFragment := joinParts(activeParts)
+	silencedFragment := joinParts(silencedParts)
+
+	switch {
+	case activeFragment == "" && silencedFragment == "":
+		return "Foghorn - All clear"
+	case activeFragment == "":
+		return fmt.Sprintf("Foghorn - All clear (%s silenced)", silencedFragment)
+	case silencedFragment == "":
+		return "Foghorn - " + activeFragment
+	default:
+		return fmt.Sprintf("Foghorn - %s (%s silenced)", activeFragment, silencedFragment)
 	}
-	if len(parts) == 0 {
-		return "Foghorn - Alerts active"
-	}
-	if len(parts) == 1 {
-		return "Foghorn - " + parts[0]
-	}
-	return "Foghorn - " + parts[0] + ", " + parts[1]
 }
 
-func (m *Manager) iconForCounts() []byte {
+// iconLocked picks the tray icon based only on the active (non-silenced)
+// severity counts. Silenced alerts never influence the icon.
+func (m *Manager) iconLocked() []byte {
 	if !m.ready {
 		return IconGrey
 	}
 
-	c := m.counts
 	total := 0
-	for _, count := range c {
+	for _, count := range m.breakdown.Active {
 		total += count
 	}
 	if total == 0 {
 		return IconGreen
 	}
 	for _, level := range m.scheme.Levels {
-		if c[level.Name] <= 0 {
+		if m.breakdown.Active[level.Name] <= 0 {
 			continue
 		}
 		switch level.Rank {
@@ -169,4 +163,58 @@ func (m *Manager) iconForCounts() []byte {
 		}
 	}
 	return IconGreen
+}
+
+// severityParts returns a list of "<count> <severity>" strings in scheme
+// order, skipping zero-count entries. Matches the tray's prior 2-part cap.
+func severityParts(counts model.SeverityCounts, scheme config.SeverityScheme) []string {
+	parts := make([]string, 0, len(scheme.Levels))
+	for _, level := range scheme.Levels {
+		if count := counts[level.Name]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", count, level.Name))
+		}
+	}
+	return parts
+}
+
+// joinParts collapses the severity parts into the comma-separated fragment
+// shown in the tooltip, preserving the pre-existing 2-part cap.
+func joinParts(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	default:
+		return parts[0] + ", " + parts[1]
+	}
+}
+
+// emptyBreakdown returns a zero-valued breakdown with all levels in the
+// given scheme initialized to 0 for both Active and Silenced.
+func emptyBreakdown(scheme config.SeverityScheme) model.SeverityBreakdown {
+	return model.SeverityBreakdown{
+		Active:   model.SeverityCounts(scheme.EmptyCounts()),
+		Silenced: model.SeverityCounts(scheme.EmptyCounts()),
+	}
+}
+
+// normalizeBreakdown aligns a breakdown with the given scheme: unknown levels
+// are pruned and missing ones are zero-filled. Nil inner maps are replaced
+// with empty ones.
+func normalizeBreakdown(b model.SeverityBreakdown, scheme config.SeverityScheme) model.SeverityBreakdown {
+	return model.SeverityBreakdown{
+		Active:   normalizeCounts(b.Active, scheme),
+		Silenced: normalizeCounts(b.Silenced, scheme),
+	}
+}
+
+func normalizeCounts(counts model.SeverityCounts, scheme config.SeverityScheme) model.SeverityCounts {
+	out := model.SeverityCounts(scheme.EmptyCounts())
+	for name, count := range counts {
+		if _, ok := out[name]; ok {
+			out[name] = count
+		}
+	}
+	return out
 }

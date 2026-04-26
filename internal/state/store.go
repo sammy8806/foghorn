@@ -111,6 +111,30 @@ func (s *Store) SeverityCounts() model.SeverityCounts {
 	return counts
 }
 
+// SeverityBreakdown returns active (non-silenced) and silenced counts per
+// severity across all sources. An alert is considered silenced when it has
+// at least one entry in SilencedBy.
+func (s *Store) SeverityBreakdown() model.SeverityBreakdown {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	breakdown := model.SeverityBreakdown{
+		Active:   model.SeverityCounts(s.severityScheme.EmptyCounts()),
+		Silenced: model.SeverityCounts(s.severityScheme.EmptyCounts()),
+	}
+	for _, alerts := range s.bySource {
+		for _, a := range alerts {
+			sev := s.severityScheme.Canonicalize(a.Severity)
+			if len(a.SilencedBy) > 0 {
+				breakdown.Silenced[sev]++
+			} else {
+				breakdown.Active[sev]++
+			}
+		}
+	}
+	return breakdown
+}
+
 // RecordPollSuccess marks a successful poll for a source.
 func (s *Store) RecordPollSuccess(source string) {
 	s.mu.Lock()

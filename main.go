@@ -6,9 +6,11 @@ import (
 	"errors"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"foghorn/internal/config"
 	"foghorn/internal/notify"
@@ -34,6 +36,7 @@ func main() {
 	log.Printf("foghorn %s starting", version)
 
 	cfgPath := configPath()
+	config.MigrateLegacyPath(cfgPath)
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -52,6 +55,23 @@ func main() {
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
 
+	// requestQuit marks the app as quitting and asks Wails to terminate. It is
+	// used by both the tray "Quit" menu item and the SIGINT/SIGTERM handler.
+	// Setting quitting=true is what allows OnBeforeClose (below) to return
+	// false, which is the only way the Darwin Wails frontend will actually
+	// call mainWindow.Quit() and exit the Cocoa run loop.
+	requestQuit := func() {
+		if !quitting.CompareAndSwap(false, true) {
+			return
+		}
+		if app.cancel != nil {
+			app.cancel()
+		}
+		if app.ctx != nil {
+			wailsruntime.Quit(app.ctx)
+		}
+	}
+
 	trayMgr := tray.NewManager(
 		func() {
 			if app.ctx == nil {
@@ -67,16 +87,28 @@ func main() {
 				wailsruntime.EventsEmit(app.ctx, "popup:opening")
 			}
 		},
-		func() {
-			quitting.Store(true)
-			if app.cancel != nil {
-				app.cancel()
-			}
-			if app.ctx != nil {
-				wailsruntime.Quit(app.ctx)
-			}
-		},
+		requestQuit,
 	)
+
+	// Handle Ctrl+C / SIGTERM when running from the CLI. Wails installs its
+	// own signal handler, but on macOS its handler calls frontend.Quit(),
+	// which defers to OnBeforeClose. OnBeforeClose returns true unless
+	// `quitting` is set, causing the window to be hidden instead of the app
+	// exiting. By registering our own handler first and flipping `quitting`
+	// here we ensure a Ctrl+C actually terminates the process.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	go func() {
+		for signalCount := 1; ; signalCount++ {
+			<-sigCh
+			if signalCount == 1 {
+				requestQuit()
+				continue
+			}
+			os.Exit(1)
+		}
+	}()
 
 	if err := wails.Run(&options.App{
 		Title:             "Foghorn",
@@ -123,10 +155,9 @@ func main() {
 						case <-localCtx.Done():
 							return
 						case event := <-localDiffCh:
-							counts := store.SeverityCounts()
-							trayMgr.UpdateState(counts)
+							trayMgr.UpdateState(store.SeverityBreakdown())
 							localNotifier.OnDiff(event.Diff)
-							wailsruntime.EventsEmit(ctx, "alerts:updated", app.ResolveDiff(event.Diff))
+							wailsruntime.EventsEmit(ctx, "alerts:updated", app.resolveDiff(localCtx, event.Diff))
 						}
 					}
 				}(bgCtx, diffCh, notifier)
@@ -175,8 +206,12 @@ func main() {
 }
 
 func configPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "foghorn", "config.yaml")
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".config")
+	}
+	return filepath.Join(dir, "foghorn", "config.yaml")
 }
 
 func buildProviders(sources []config.SourceConfig) map[string]provider.Provider {
