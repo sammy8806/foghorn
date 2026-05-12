@@ -285,6 +285,7 @@ type UIConfig struct {
 	Theme            string `yaml:"theme" json:"theme"`
 	PopupWidth       int    `yaml:"popup_width" json:"popup_width"`
 	PopupHeight      int    `yaml:"popup_height" json:"popup_height"`
+	PopupPosition    string `yaml:"popup_position" json:"popup_position"`
 	ShowResolved     bool   `yaml:"show_resolved" json:"show_resolved"`
 	ShowSilenced     bool   `yaml:"show_silenced" json:"show_silenced"`
 	DefaultCreatedBy string `yaml:"default_created_by" json:"default_created_by"`

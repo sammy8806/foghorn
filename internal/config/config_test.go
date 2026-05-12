@@ -71,6 +71,7 @@ ui:
   theme: system
   popup_width: 800
   popup_height: 600
+  popup_position: bottom_left
   show_resolved: false
   show_silenced: true
 `
@@ -99,6 +100,9 @@ ui:
 	}
 	if cfg.UI.PopupWidth != 800 {
 		t.Errorf("expected popup_width 800, got %d", cfg.UI.PopupWidth)
+	}
+	if cfg.UI.PopupPosition != "bottom_left" {
+		t.Errorf("expected popup_position bottom_left, got %q", cfg.UI.PopupPosition)
 	}
 	if cfg.Severities.Default != "info" {
 		t.Fatalf("expected severity default info, got %q", cfg.Severities.Default)

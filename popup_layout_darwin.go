@@ -8,8 +8,10 @@ package main
 
 #import <Cocoa/Cocoa.h>
 #import <dispatch/dispatch.h>
+#include <stdlib.h>
+#include <string.h>
 
-static void foghornLayoutPopupWindow(int width, int height, int rightMargin, int topMargin, int bottomMargin) {
+static void foghornLayoutPopupWindow(int width, int height, int horizontalMargin, int topMargin, int bottomMargin, char *position) {
 	dispatch_sync(dispatch_get_main_queue(), ^{
 		NSWindow *window = [NSApp mainWindow];
 		if (window == nil) {
@@ -28,10 +30,16 @@ static void foghornLayoutPopupWindow(int width, int height, int rightMargin, int
 		}
 
 		NSRect visible = [screen visibleFrame];
-		CGFloat nextWidth = MIN((CGFloat)width, MAX((CGFloat)240, visible.size.width - rightMargin));
+		BOOL alignLeft = strcmp(position, "top_left") == 0 || strcmp(position, "bottom_left") == 0;
+		BOOL alignBottom = strcmp(position, "bottom_left") == 0 || strcmp(position, "bottom_right") == 0;
+		CGFloat nextWidth = MIN((CGFloat)width, MAX((CGFloat)240, visible.size.width - horizontalMargin));
 		CGFloat nextHeight = MIN((CGFloat)height, MAX((CGFloat)200, visible.size.height - topMargin - bottomMargin));
-		CGFloat x = visible.origin.x + visible.size.width - nextWidth - rightMargin;
-		CGFloat y = visible.origin.y + visible.size.height - nextHeight - topMargin;
+		CGFloat x = alignLeft
+			? visible.origin.x + horizontalMargin
+			: visible.origin.x + visible.size.width - nextWidth - horizontalMargin;
+		CGFloat y = alignBottom
+			? visible.origin.y + bottomMargin
+			: visible.origin.y + visible.size.height - nextHeight - topMargin;
 
 		NSRect frame = [window frame];
 		frame.origin.x = x;
@@ -44,13 +52,17 @@ static void foghornLayoutPopupWindow(int width, int height, int rightMargin, int
 }
 */
 import "C"
+import "unsafe"
 
-func layoutPopupWindow(width, height, rightMargin, topMargin, bottomMargin int) {
+func layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
+	cPosition := C.CString(position)
+	defer C.free(unsafe.Pointer(cPosition))
 	C.foghornLayoutPopupWindow(
 		C.int(width),
 		C.int(height),
-		C.int(rightMargin),
+		C.int(horizontalMargin),
 		C.int(topMargin),
 		C.int(bottomMargin),
+		cPosition,
 	)
 }

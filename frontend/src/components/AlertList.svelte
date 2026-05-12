@@ -42,6 +42,7 @@
   const popupBottomMargin = 16;
   const minPopupHeight = 220;
   const popupHeightBuffer = 25;
+  type PopupPosition = 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
   let notificationPermissionStatus = '';
   let notificationSettingsError = '';
   let environmentPlatform = '';
@@ -259,11 +260,28 @@
     const desiredHeight = measureDesiredPopupHeight();
     const height = clamp(desiredHeight, minPopupHeight, maxHeight);
 
-    const horizontalArg = environment.platform === 'darwin'
+    const popupPosition = normalizePopupPosition(uiConfig.popup_position);
+    const x = popupPosition.endsWith('_left')
       ? popupHorizontalMargin
       : Math.max(0, screen.width - width - popupHorizontalMargin);
+    const y = popupPosition.startsWith('bottom_')
+      ? Math.max(0, screen.height - height - popupBottomMargin)
+      : popupTopMargin;
+    const horizontalArg = environment.platform === 'darwin' ? popupHorizontalMargin : x;
+    const verticalArg = environment.platform === 'darwin' ? popupTopMargin : y;
 
-    await LayoutPopup(width, height, horizontalArg, popupTopMargin, popupBottomMargin);
+    await LayoutPopup(width, height, horizontalArg, verticalArg, popupBottomMargin, popupPosition);
+  }
+
+  function normalizePopupPosition(position: string | undefined): PopupPosition {
+    switch (position) {
+      case 'top_left':
+      case 'bottom_right':
+      case 'bottom_left':
+        return position;
+      default:
+        return 'top_right';
+    }
   }
 
   function measureDesiredPopupHeight(): number {
