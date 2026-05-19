@@ -242,10 +242,9 @@
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
-    const [uiConfig, screens, environment] = await Promise.all([
+    const [uiConfig, screens] = await Promise.all([
       GetUIConfig(),
       ScreenGetAll(),
-      Environment(),
     ]);
 
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
@@ -261,16 +260,7 @@
     const height = clamp(desiredHeight, minPopupHeight, maxHeight);
 
     const popupPosition = normalizePopupPosition(uiConfig.popup_position);
-    const x = popupPosition.endsWith('_left')
-      ? popupHorizontalMargin
-      : Math.max(0, screen.width - width - popupHorizontalMargin);
-    const y = popupPosition.startsWith('bottom_')
-      ? Math.max(0, screen.height - height - popupBottomMargin)
-      : popupTopMargin;
-    const horizontalArg = environment.platform === 'darwin' ? popupHorizontalMargin : x;
-    const verticalArg = environment.platform === 'darwin' ? popupTopMargin : y;
-
-    await LayoutPopup(width, height, horizontalArg, verticalArg, popupBottomMargin, popupPosition);
+    await LayoutPopup(width, height, popupHorizontalMargin, popupTopMargin, popupBottomMargin, popupPosition);
   }
 
   function normalizePopupPosition(position: string | undefined): PopupPosition {
