@@ -107,7 +107,9 @@ func validate(cfg *Config) error {
 	if cfg.UI.PopupHeight == 0 {
 		cfg.UI.PopupHeight = 600
 	}
-	switch strings.ToLower(strings.TrimSpace(cfg.UI.PopupPosition)) {
+	rawPopupPosition := cfg.UI.PopupPosition
+	normalizedPopupPosition := strings.ToLower(strings.TrimSpace(rawPopupPosition))
+	switch normalizedPopupPosition {
 	case "", "top_right", "top-right":
 		cfg.UI.PopupPosition = "top_right"
 	case "top_left", "top-left":
@@ -117,7 +119,10 @@ func validate(cfg *Config) error {
 	case "bottom_left", "bottom-left":
 		cfg.UI.PopupPosition = "bottom_left"
 	default:
-		return fmt.Errorf("ui.popup_position must be one of top_right, top_left, bottom_right, bottom_left")
+		if normalizedPopupPosition != rawPopupPosition {
+			return fmt.Errorf("ui.popup_position %q (normalized: %q) must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition, normalizedPopupPosition)
+		}
+		return fmt.Errorf("ui.popup_position %q must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition)
 	}
 	if cfg.Notifications.BatchThreshold == 0 {
 		cfg.Notifications.BatchThreshold = 5
