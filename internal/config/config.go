@@ -27,6 +27,7 @@ func Default() *Config {
 			Theme:            "system",
 			PopupWidth:       800,
 			PopupHeight:      600,
+			PopupPosition:    "top_right",
 			DefaultCreatedBy: defaultCreatedBy(),
 		},
 	}
@@ -105,6 +106,23 @@ func validate(cfg *Config) error {
 	}
 	if cfg.UI.PopupHeight == 0 {
 		cfg.UI.PopupHeight = 600
+	}
+	rawPopupPosition := cfg.UI.PopupPosition
+	normalizedPopupPosition := strings.ToLower(strings.TrimSpace(rawPopupPosition))
+	switch normalizedPopupPosition {
+	case "", "top_right", "top-right":
+		cfg.UI.PopupPosition = "top_right"
+	case "top_left", "top-left":
+		cfg.UI.PopupPosition = "top_left"
+	case "bottom_right", "bottom-right":
+		cfg.UI.PopupPosition = "bottom_right"
+	case "bottom_left", "bottom-left":
+		cfg.UI.PopupPosition = "bottom_left"
+	default:
+		if normalizedPopupPosition != rawPopupPosition {
+			return fmt.Errorf("ui.popup_position %q (normalized: %q) must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition, normalizedPopupPosition)
+		}
+		return fmt.Errorf("ui.popup_position %q must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition)
 	}
 	if cfg.Notifications.BatchThreshold == 0 {
 		cfg.Notifications.BatchThreshold = 5

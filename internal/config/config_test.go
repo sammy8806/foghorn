@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -71,6 +72,7 @@ ui:
   theme: system
   popup_width: 800
   popup_height: 600
+  popup_position: bottom_left
   show_resolved: false
   show_silenced: true
 `
@@ -99,6 +101,9 @@ ui:
 	}
 	if cfg.UI.PopupWidth != 800 {
 		t.Errorf("expected popup_width 800, got %d", cfg.UI.PopupWidth)
+	}
+	if cfg.UI.PopupPosition != "bottom_left" {
+		t.Errorf("expected popup_position bottom_left, got %q", cfg.UI.PopupPosition)
 	}
 	if cfg.Severities.Default != "info" {
 		t.Fatalf("expected severity default info, got %q", cfg.Severities.Default)
@@ -279,6 +284,53 @@ ui:
 	}
 	if cfg.Sources[0].Auth.Password != "testpass" {
 		t.Errorf("expected expanded password 'testpass', got %q", cfg.Sources[0].Auth.Password)
+	}
+}
+
+func TestLoadConfigInvalidPopupPositionReportsExpandedValue(t *testing.T) {
+	t.Setenv("FOGHORN_TEST_POPUP_POSITION", " Sideways ")
+
+	yaml := `
+sources:
+  - name: test
+    type: alertmanager
+    url: http://localhost:9093
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  popup_position: ${FOGHORN_TEST_POPUP_POSITION}
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected invalid popup_position config to fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{`ui.popup_position "Sideways"`, `normalized: "sideways"`} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("expected error to contain %q, got %q", want, msg)
+		}
 	}
 }
 

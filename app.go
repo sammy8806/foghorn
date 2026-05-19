@@ -228,8 +228,8 @@ func (a *App) GetUIConfig() config.UIConfig {
 	return ui
 }
 
-func (a *App) LayoutPopup(width, height, rightMargin, topMargin, bottomMargin int) {
-	layoutPopupWindow(width, height, rightMargin, topMargin, bottomMargin)
+func (a *App) LayoutPopup(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
+	layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin, position)
 }
 
 func (a *App) TestNotificationForAlert(alertID, source string) error {

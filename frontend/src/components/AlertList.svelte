@@ -42,6 +42,7 @@
   const popupBottomMargin = 16;
   const minPopupHeight = 220;
   const popupHeightBuffer = 25;
+  type PopupPosition = 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
   let notificationPermissionStatus = '';
   let notificationSettingsError = '';
   let environmentPlatform = '';
@@ -241,10 +242,9 @@
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
-    const [uiConfig, screens, environment] = await Promise.all([
+    const [uiConfig, screens] = await Promise.all([
       GetUIConfig(),
       ScreenGetAll(),
-      Environment(),
     ]);
 
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
@@ -259,11 +259,19 @@
     const desiredHeight = measureDesiredPopupHeight();
     const height = clamp(desiredHeight, minPopupHeight, maxHeight);
 
-    const horizontalArg = environment.platform === 'darwin'
-      ? popupHorizontalMargin
-      : Math.max(0, screen.width - width - popupHorizontalMargin);
+    const popupPosition = normalizePopupPosition(uiConfig.popup_position);
+    await LayoutPopup(width, height, popupHorizontalMargin, popupTopMargin, popupBottomMargin, popupPosition);
+  }
 
-    await LayoutPopup(width, height, horizontalArg, popupTopMargin, popupBottomMargin);
+  function normalizePopupPosition(position: string | undefined): PopupPosition {
+    switch (position) {
+      case 'top_left':
+      case 'bottom_right':
+      case 'bottom_left':
+        return position;
+      default:
+        return 'top_right';
+    }
   }
 
   function measureDesiredPopupHeight(): number {
