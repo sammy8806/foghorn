@@ -74,7 +74,9 @@ func main() {
 			if windowVisible.Load() {
 				wailsruntime.WindowHide(app.ctx)
 				windowVisible.Store(false)
+				setDockIconVisible(false)
 			} else {
+				setDockIconVisible(true)
 				wailsruntime.WindowShow(app.ctx)
 				wailsruntime.WindowSetAlwaysOnTop(app.ctx, true)
 				windowVisible.Store(true)
@@ -115,6 +117,7 @@ func main() {
 		},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
+			setDockIconVisible(!tray.StartHiddenByDefault())
 
 			restartRuntime := func(nextCfg *config.Config) {
 				runtimeMu.Lock()
@@ -177,6 +180,7 @@ func main() {
 			}
 			wailsruntime.WindowHide(ctx)
 			windowVisible.Store(false)
+			setDockIconVisible(false)
 			return true
 		},
 		OnShutdown: func(ctx context.Context) {

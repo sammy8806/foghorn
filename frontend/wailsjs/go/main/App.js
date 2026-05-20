@@ -54,8 +54,8 @@ export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }
 
-export function LayoutPopup(width, height, horizontalMargin, topMargin, bottomMargin, position) {
-  return window['go']['main']['App']['LayoutPopup'](width, height, horizontalMargin, topMargin, bottomMargin, position);
+export function LayoutPopup(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function OpenNotificationSettings() {
