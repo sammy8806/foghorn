@@ -20,7 +20,11 @@
 #    Wails build tag (webkit2_41).  The resulting AppImage requires the same
 #    ABI on the target host; you cannot mix API versions.
 #
-# 3. Sandbox / SUID: WebKit's process sandbox may require a SUID helper.
+# 3. WebKit helpers: WebKitGTK spawns helper processes such as
+#    WebKitNetworkProcess at runtime.  They must be bundled alongside the
+#    shared libraries and exposed via WEBKIT_EXEC_PATH.
+#
+# 4. Sandbox / SUID: WebKit's process sandbox may require a SUID helper.
 #    If the app opens but pages are blank, run with --no-sandbox or install
 #    the appropriate webkit helper on the target system.
 #
@@ -203,6 +207,7 @@ if [[ -d "$HERE/apprun-hooks" ]]; then
 fi
 
 export LD_LIBRARY_PATH="$HERE/usr/lib:${LD_LIBRARY_PATH:-}"
+export WEBKIT_EXEC_PATH="$HERE/usr/libexec/webkit2gtk"
 exec "$HERE/usr/bin/foghorn" "$@"
 EOF
 chmod +x "$FOGHORN_APPDIR/AppRun"
@@ -222,17 +227,57 @@ find_lib() {
   return 1
 }
 
+find_webkit_helper_dir() {
+  local dirname="webkit2gtk-${WEBKIT_VER}"
+  local prefix
+  local libdir
+  prefix="$(pkg-config --variable=prefix "$WEBKIT_PC" 2>/dev/null || true)"
+  libdir="$(pkg-config --variable=libdir "$WEBKIT_PC" 2>/dev/null || true)"
+
+  for dir in \
+    "${libdir:-}/$dirname" \
+    "${prefix:-}/libexec/$dirname" \
+    "${prefix:-}/lib/$dirname" \
+    "/usr/lib/x86_64-linux-gnu/$dirname" \
+    "/usr/lib64/$dirname" \
+    "/usr/lib/$dirname" \
+    "/usr/libexec/$dirname"; do
+    if [[ -x "$dir/WebKitNetworkProcess" ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+  done
+  return 1
+}
+
 LIB_WEBKIT="$(find_lib "libwebkit2gtk-${WEBKIT_VER}.so.*" | head -n1)"
 LIB_JSCORE="$(find_lib "libjavascriptcoregtk-${WEBKIT_VER}.so.*" | head -n1)"
 LIB_AYATANA="$(find_lib 'libayatana-appindicator3.so.*' | head -n1)"
+WEBKIT_HELPER_SRC_DIR="$(find_webkit_helper_dir || true)"
 
-if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" ]]; then
+if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" || -z "$WEBKIT_HELPER_SRC_DIR" ]]; then
   echo "Could not locate one or more runtime libraries to bundle:" >&2
   echo "  libwebkit2gtk-${WEBKIT_VER}: ${LIB_WEBKIT:-MISSING}" >&2
   echo "  libjavascriptcoregtk-${WEBKIT_VER}: ${LIB_JSCORE:-MISSING}" >&2
   echo "  libayatana-appindicator3: ${LIB_AYATANA:-MISSING}" >&2
+  echo "  WebKit helper dir: ${WEBKIT_HELPER_SRC_DIR:-MISSING}" >&2
   exit 1
 fi
+
+# Bundle WebKit's runtime helper processes.  libwebkit2gtk spawns these at
+# startup, so copying only the shared objects leaves the AppImage dependent on
+# the host's /usr/lib/.../webkit2gtk-* directory.
+WEBKIT_HELPER_DST_DIR="$FOGHORN_APPDIR/usr/libexec/webkit2gtk"
+mkdir -p "$WEBKIT_HELPER_DST_DIR"
+cp -a "$WEBKIT_HELPER_SRC_DIR"/WebKit*Process "$WEBKIT_HELPER_DST_DIR"/
+
+LINUXDEPLOY_EXECUTABLE_ARGS=()
+for helper in "$WEBKIT_HELPER_DST_DIR"/WebKit*Process; do
+  if [[ -f "$helper" ]]; then
+    chmod +x "$helper"
+    LINUXDEPLOY_EXECUTABLE_ARGS+=(--executable "$helper")
+  fi
+done
 
 # ── Run linuxdeploy ───────────────────────────────────────────────────────────
 # Add CACHE_DIR to PATH so linuxdeploy can find linuxdeploy-plugin-gtk.sh.
@@ -248,6 +293,7 @@ DEPLOY_GTK_VERSION=3 \
   --library "$LIB_WEBKIT" \
   --library "$LIB_JSCORE" \
   --library "$LIB_AYATANA" \
+  "${LINUXDEPLOY_EXECUTABLE_ARGS[@]}" \
   --output appimage
 
 PRODUCED="$(find "$STAGE_DIR" -maxdepth 1 -name '*.AppImage' -print -quit)"
