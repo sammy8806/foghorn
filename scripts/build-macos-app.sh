@@ -153,7 +153,7 @@ if [[ "$SIGNING_MODE" == "developer-id" ]]; then
     exit 1
   fi
 
-  codesign --force --options runtime --timestamp \
+  codesign --force --deep --options runtime --timestamp \
     --keychain "$KEYCHAIN_PATH" \
     --sign "$IDENTITY" \
     "$APP_PATH"

@@ -37,7 +37,8 @@ BIN_DIR="$ROOT_DIR/build/bin"
 CACHE_DIR="${FOGHORN_BUILD_CACHE:-$ROOT_DIR/build/.cache}"
 LINUXDEPLOY_VERSION="1-alpha-20240109-1"
 LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_VERSION}/linuxdeploy-x86_64.AppImage"
-LINUXDEPLOY_GTK_URL="https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh"
+LINUXDEPLOY_GTK_COMMIT="3b67a1d1c1b0c8268f57f2bce40fe2d33d409cea"
+LINUXDEPLOY_GTK_URL="https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/${LINUXDEPLOY_GTK_COMMIT}/linuxdeploy-plugin-gtk.sh"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "This script is for Linux only." >&2
