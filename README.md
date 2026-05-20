@@ -20,9 +20,9 @@
 - **Optional system tray** — opt-in tray support on Linux (AppIndicator); always-on on macOS and Windows.
 - **Configurable** — YAML configuration with `${ENV_VAR}` interpolation for secrets.
 
-## Install
+## Build and install
 
-Foghorn is built with [Wails v2](https://wails.io/) (Go + Svelte). There are no prebuilt binaries yet — build from source.
+Foghorn is built with [Wails v2](https://wails.io/) (Go + Svelte). Build and release artifacts are written to `build/bin/`.
 
 ### Prerequisites
 
@@ -34,13 +34,31 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 wails doctor
 ```
 
-### macOS
+### macOS app bundle
 
 ```bash
 make build
 ```
 
 This wraps `wails build` and re-signs the `.app` bundle with the bundle identifier from `Info.plist`, which is required for macOS notifications to work reliably. The built app lands in `build/bin/`.
+
+### macOS DMG
+
+To build the app and package it as a DMG:
+
+```bash
+make dmg
+```
+
+The DMG is written to `build/bin/foghorn-<version>-universal.dmg`. It contains `foghorn.app` and an `Applications` shortcut, so users can install it with the usual drag-and-drop flow.
+
+If `build/bin/foghorn.app` already exists and you only want to create a quick local DMG without rebuilding the app:
+
+```bash
+make dmg-existing
+```
+
+That helper writes `build/dist/foghorn.dmg`.
 
 ### Linux
 
@@ -63,13 +81,35 @@ sudo dnf install libayatana-appindicator-gtk3-devel
 wails build -tags "webkit2_41 linux_tray"
 ```
 
+The Linux binary is written to `build/bin/foghorn`.
+
+To build an AppImage on Linux x86_64:
+
+```bash
+make appimage
+```
+
+The AppImage is written to `build/bin/foghorn-<version>-x86_64.AppImage`.
+
 On GNOME, tray visibility still depends on the desktop environment exposing AppIndicator or StatusNotifier items. If Foghorn is built without `linux_tray`, or tray support is unavailable at runtime, it falls back to a normal visible window so it remains usable. Even with `linux_tray` enabled, Linux starts with a visible window by default — the tray is an optional convenience, not the primary entry point.
 
 If `dnf` prompts about an unrelated third-party repository GPG key during prerequisite installation, resolve that repo configuration first or temporarily disable that repo for the install command.
 
 ### Windows
 
-Windows is theoretically supported via the standard `wails build`, but is not regularly tested. Issues and patches welcome.
+Windows is theoretically supported via the standard Wails build:
+
+```powershell
+wails build
+```
+
+The Windows executable is written to `build\bin\foghorn.exe`. Windows builds are not regularly tested.
+
+### Release builds
+
+Local release artifacts use `scripts/version.sh` for their version string. It prefers `FOGHORN_VERSION`, then `git describe --tags --always --dirty`, then `dev`.
+
+Maintainers can use the release workflow to build the macOS DMG and Linux AppImage from tags or manual dispatch.
 
 ## Configuration
 
