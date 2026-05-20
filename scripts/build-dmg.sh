@@ -5,7 +5,7 @@
 # 1. In Developer ID mode: sets up a temp keychain with the imported cert so
 #    both the .app and the DMG can be signed from the same identity.
 # 2. Delegates to build-macos-app.sh to produce + sign the universal .app.
-# 3. Wraps the .app in a DMG via `create-dmg`.
+# 3. Wraps the .app in a DMG via `hdiutil`.
 # 4. In Developer ID mode: signs + notarizes + staples the DMG.
 #
 # Final artifact (printed to stdout on success):
@@ -20,9 +20,6 @@ APP_PATH="$BIN_DIR/foghorn.app"
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required tool: $1" >&2
-    if [[ "$1" == "create-dmg" ]]; then
-      echo "Install with: npm install -g create-dmg" >&2
-    fi
     exit 1
   fi
 }
@@ -32,7 +29,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-require_tool create-dmg
+require_tool hdiutil
 
 # Resolve the version once, up front. Export it so build-macos-app.sh reuses
 # the exact same string (avoids any drift if the working tree changes between
@@ -120,23 +117,22 @@ DMG_PATH="$BIN_DIR/$DMG_NAME"
 mkdir -p "$BIN_DIR"
 rm -f "$DMG_PATH"
 
-# create-dmg writes into the current directory with its own naming. Run it in
-# a temp dir, then rename to our canonical filename.
-if [[ "$SIGNING_MODE" == "developer-id" ]]; then
-  (cd "$STAGE_DIR" && create-dmg --overwrite "$APP_PATH" "$STAGE_DIR")
-else
-  # Ad-hoc: tell create-dmg not to attempt Developer ID signing. Some versions
-  # still exit non-zero when no identity is available but emit a usable DMG,
-  # so we accept that and verify the file below.
-  (cd "$STAGE_DIR" && create-dmg --overwrite --identity=- "$APP_PATH" "$STAGE_DIR") || true
-fi
+DMG_STAGING_DIR="$STAGE_DIR/dmg"
+RW_DMG="$STAGE_DIR/foghorn-rw.dmg"
+mkdir -p "$DMG_STAGING_DIR"
+cp -R "$APP_PATH" "$DMG_STAGING_DIR/"
+ln -s /Applications "$DMG_STAGING_DIR/Applications"
 
-PRODUCED_DMG="$(find "$STAGE_DIR" -maxdepth 1 -name '*.dmg' -print -quit)"
-if [[ -z "$PRODUCED_DMG" || ! -f "$PRODUCED_DMG" ]]; then
-  echo "create-dmg did not produce a .dmg file." >&2
-  exit 1
-fi
-mv "$PRODUCED_DMG" "$DMG_PATH"
+hdiutil create \
+  -quiet \
+  -volname "Foghorn" \
+  -srcfolder "$DMG_STAGING_DIR" \
+  -fs HFS+ \
+  -fsargs "-c c=64,a=16,e=16" \
+  -format UDRW \
+  "$RW_DMG"
+
+hdiutil convert "$RW_DMG" -quiet -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH"
 
 if [[ "$SIGNING_MODE" == "developer-id" ]]; then
   require_tool xcrun
