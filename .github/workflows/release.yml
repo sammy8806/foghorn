@@ -147,6 +147,7 @@ jobs:
           files: |
             artifacts/foghorn-*-universal.dmg
             artifacts/foghorn-*-x86_64.AppImage
+          overwrite_files: true
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.name, '-') }}
