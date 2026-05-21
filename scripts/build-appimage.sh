@@ -69,6 +69,7 @@ require_tool() {
 require_tool wails
 require_tool pkg-config
 require_tool curl
+require_tool perl
 require_tool patchelf \
   "Install with: sudo dnf install patchelf  (Fedora) | sudo apt install patchelf  (Debian/Ubuntu)"
 
@@ -206,6 +207,7 @@ if [[ -d "$HERE/apprun-hooks" ]]; then
   done
 fi
 
+cd "$HERE"
 export LD_LIBRARY_PATH="$HERE/usr/lib:${LD_LIBRARY_PATH:-}"
 export WEBKIT_EXEC_PATH="$HERE/usr/libexec/webkit2gtk"
 exec "$HERE/usr/bin/foghorn" "$@"
@@ -279,6 +281,59 @@ for helper in "$WEBKIT_HELPER_DST_DIR"/WebKit*Process; do
   fi
 done
 
+find_compiled_webkit_base_paths() {
+  local lib_path="$1"
+  grep -aEo '/usr[^[:cntrl:]]*/webkit2gtk-[0-9][0-9.]*' "$lib_path" \
+    | sort -u
+}
+
+patch_webkit_helper_path() {
+  local lib_path="$1"
+  local from
+  local to="usr/bin"
+  mapfile -t compiled_paths < <(find_compiled_webkit_base_paths "$lib_path")
+
+  if (( ${#compiled_paths[@]} == 0 )); then
+    echo "Could not find compiled WebKit helper path in $(basename "$lib_path")." >&2
+    exit 1
+  fi
+
+  WEBKIT_PATHS="$(printf '%s\n' "${compiled_paths[@]}")" TO="$to" perl -0pi -e '
+    BEGIN {
+      $to = $ENV{TO};
+      @paths = grep { length($_) } split(/\n/, $ENV{WEBKIT_PATHS});
+      @paths = sort { length($b) <=> length($a) } @paths;
+      for my $from (@paths) {
+        my $replacement = $to;
+        die "Replacement helper path $to is longer than compiled path $from\n"
+          if length($to) > length($from);
+        my $remaining = length($from) - length($replacement);
+        $replacement .= "/." x int($remaining / 2);
+        $replacement .= "/" if $remaining % 2;
+        $replacements{$from} = $replacement;
+      }
+    }
+    for my $from (@paths) {
+      my $replacement = $replacements{$from};
+      s/\Q$from\E/$replacement/g;
+    }
+  ' "$lib_path"
+}
+
+copy_webkit_injected_bundle() {
+  local lib_path="$1"
+  local compiled_base
+
+  while IFS= read -r compiled_base; do
+    if [[ -d "$compiled_base/injected-bundle" ]]; then
+      mkdir -p "$FOGHORN_APPDIR/usr/bin/injected-bundle"
+      cp -a "$compiled_base/injected-bundle"/. "$FOGHORN_APPDIR/usr/bin/injected-bundle"/
+    fi
+  done < <(find_compiled_webkit_base_paths "$lib_path")
+
+  return 0
+}
+
 # ── Run linuxdeploy ───────────────────────────────────────────────────────────
 # Add CACHE_DIR to PATH so linuxdeploy can find linuxdeploy-plugin-gtk.sh.
 # When running from an extracted AppRun, plugin discovery searches PATH; the
@@ -293,18 +348,25 @@ DEPLOY_GTK_VERSION=3 \
   --library "$LIB_WEBKIT" \
   --library "$LIB_JSCORE" \
   --library "$LIB_AYATANA" \
-  "${LINUXDEPLOY_EXECUTABLE_ARGS[@]}" \
-  --output appimage
-
-PRODUCED="$(find "$STAGE_DIR" -maxdepth 1 -name '*.AppImage' -print -quit)"
-if [[ -z "$PRODUCED" || ! -f "$PRODUCED" ]]; then
-  echo "linuxdeploy did not produce an AppImage." >&2
-  exit 1
-fi
+  "${LINUXDEPLOY_EXECUTABLE_ARGS[@]}"
 
 OUT_PATH="$BIN_DIR/foghorn-${VERSION}-x86_64.AppImage"
 rm -f "$OUT_PATH"
-mv "$PRODUCED" "$OUT_PATH"
+PATCHED_LIB_WEBKIT="$FOGHORN_APPDIR/usr/lib/$(basename "$LIB_WEBKIT")"
+if [[ ! -f "$PATCHED_LIB_WEBKIT" ]]; then
+  echo "Bundled WebKit library not found after linuxdeploy: $PATCHED_LIB_WEBKIT" >&2
+  exit 1
+fi
+copy_webkit_injected_bundle "$PATCHED_LIB_WEBKIT"
+patch_webkit_helper_path "$PATCHED_LIB_WEBKIT"
+
+APPIMAGETOOL="$LINUXDEPLOY_EXTRACTED/plugins/linuxdeploy-plugin-appimage/appimagetool-prefix/usr/bin/appimagetool"
+if [[ ! -x "$APPIMAGETOOL" ]]; then
+  echo "appimagetool not found in linuxdeploy cache: $APPIMAGETOOL" >&2
+  exit 1
+fi
+
+ARCH=x86_64 "$APPIMAGETOOL" "$FOGHORN_APPDIR" "$OUT_PATH"
 chmod +x "$OUT_PATH"
 
 echo "$OUT_PATH"
