@@ -213,7 +213,9 @@ export GDK_BACKEND=x11
 export GDK_GL=disable
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-export WEBKIT_EXEC_PATH="$HERE/usr/libexec/webkit2gtk"
+if [[ -d "$HERE/usr/libexec/webkit2gtk" ]]; then
+  export WEBKIT_EXEC_PATH="$HERE/usr/libexec/webkit2gtk"
+fi
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
@@ -268,29 +270,15 @@ LIB_JSCORE="$(find_lib "libjavascriptcoregtk-${WEBKIT_VER}.so.*" | head -n1)"
 LIB_AYATANA="$(find_lib 'libayatana-appindicator3.so.*' | head -n1)"
 WEBKIT_HELPER_SRC_DIR="$(find_webkit_helper_dir || true)"
 
-if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" || -z "$WEBKIT_HELPER_SRC_DIR" ]]; then
+if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" ]]; then
   echo "Could not locate one or more runtime libraries to bundle:" >&2
   echo "  libwebkit2gtk-${WEBKIT_VER}: ${LIB_WEBKIT:-MISSING}" >&2
   echo "  libjavascriptcoregtk-${WEBKIT_VER}: ${LIB_JSCORE:-MISSING}" >&2
   echo "  libayatana-appindicator3: ${LIB_AYATANA:-MISSING}" >&2
-  echo "  WebKit helper dir: ${WEBKIT_HELPER_SRC_DIR:-MISSING}" >&2
   exit 1
 fi
 
-# Bundle WebKit's runtime helper processes.  libwebkit2gtk spawns these at
-# startup, so copying only the shared objects leaves the AppImage dependent on
-# the host's /usr/lib/.../webkit2gtk-* directory.
-WEBKIT_HELPER_DST_DIR="$FOGHORN_APPDIR/usr/libexec/webkit2gtk"
-mkdir -p "$WEBKIT_HELPER_DST_DIR"
-cp -a "$WEBKIT_HELPER_SRC_DIR"/WebKit*Process "$WEBKIT_HELPER_DST_DIR"/
-
 LINUXDEPLOY_EXECUTABLE_ARGS=()
-for helper in "$WEBKIT_HELPER_DST_DIR"/WebKit*Process; do
-  if [[ -f "$helper" ]]; then
-    chmod +x "$helper"
-    LINUXDEPLOY_EXECUTABLE_ARGS+=(--executable "$helper")
-  fi
-done
 
 find_compiled_webkit_base_paths() {
   local lib_path="$1"
@@ -355,20 +343,17 @@ PATH="$CACHE_DIR:$PATH" \
 DEPLOY_GTK_VERSION=3 \
 "$LINUXDEPLOY" \
   --appdir "$FOGHORN_APPDIR" \
-  --plugin gtk \
-  --library "$LIB_WEBKIT" \
-  --library "$LIB_JSCORE" \
   --library "$LIB_AYATANA" \
+  --exclude-library 'libwebkit2gtk-*.so*' \
+  --exclude-library 'libjavascriptcoregtk-*.so*' \
   "${LINUXDEPLOY_EXECUTABLE_ARGS[@]}"
 
 OUT_PATH="$BIN_DIR/foghorn-${VERSION}-x86_64.AppImage"
 rm -f "$OUT_PATH"
 PATCHED_LIB_WEBKIT="$FOGHORN_APPDIR/usr/lib/$(basename "$LIB_WEBKIT")"
-if [[ ! -f "$PATCHED_LIB_WEBKIT" ]]; then
-  echo "Bundled WebKit library not found after linuxdeploy: $PATCHED_LIB_WEBKIT" >&2
-  exit 1
+if [[ -f "$PATCHED_LIB_WEBKIT" ]]; then
+  copy_webkit_injected_bundle "$PATCHED_LIB_WEBKIT"
 fi
-copy_webkit_injected_bundle "$PATCHED_LIB_WEBKIT"
 
 shopt -s nullglob
 for bundled_webkit_lib in "$FOGHORN_APPDIR/usr/lib/libwebkit2gtk-${WEBKIT_VER}.so"*; do
