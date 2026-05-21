@@ -227,8 +227,7 @@ exec "$HERE/usr/bin/foghorn" "$@"
 EOF
 chmod +x "$FOGHORN_APPDIR/AppRun"
 
-# ── Locate runtime libraries to bundle explicitly ─────────────────────────────
-# The gtk plugin auto-detects GTK itself but won't pick these up on its own.
+# ── Locate runtime libraries for build-time validation ────────────────────────
 find_lib() {
   local pattern="$1"
   for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib; do
@@ -333,20 +332,11 @@ copy_webkit_injected_bundle() {
   return 0
 }
 
-# ── Run linuxdeploy ───────────────────────────────────────────────────────────
-# Add CACHE_DIR to PATH so linuxdeploy can find linuxdeploy-plugin-gtk.sh.
-# When running from an extracted AppRun, plugin discovery searches PATH; the
-# original AppImage approach found plugins in its own directory automatically.
+# ── Package AppImage ──────────────────────────────────────────────────────────
+# Do not bundle GTK/WebKitGTK. WebKitGTK spawns helper processes and relies on a
+# matching graphics/media stack; bundling Ubuntu's stack into Fedora caused EGL
+# and GStreamer ABI failures. The AppImage uses the target host's GTK/WebKitGTK.
 cd "$STAGE_DIR"
-
-PATH="$CACHE_DIR:$PATH" \
-DEPLOY_GTK_VERSION=3 \
-"$LINUXDEPLOY" \
-  --appdir "$FOGHORN_APPDIR" \
-  --library "$LIB_AYATANA" \
-  --exclude-library 'libwebkit2gtk-*.so*' \
-  --exclude-library 'libjavascriptcoregtk-*.so*' \
-  "${LINUXDEPLOY_EXECUTABLE_ARGS[@]}"
 
 OUT_PATH="$BIN_DIR/foghorn-${VERSION}-x86_64.AppImage"
 rm -f "$OUT_PATH"
