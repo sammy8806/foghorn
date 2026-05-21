@@ -369,7 +369,12 @@ if [[ ! -f "$PATCHED_LIB_WEBKIT" ]]; then
   exit 1
 fi
 copy_webkit_injected_bundle "$PATCHED_LIB_WEBKIT"
-patch_webkit_helper_path "$PATCHED_LIB_WEBKIT"
+
+shopt -s nullglob
+for bundled_webkit_lib in "$FOGHORN_APPDIR/usr/lib/libwebkit2gtk-${WEBKIT_VER}.so"*; do
+  patch_webkit_helper_path "$bundled_webkit_lib"
+done
+shopt -u nullglob
 
 APPIMAGETOOL="$LINUXDEPLOY_EXTRACTED/plugins/linuxdeploy-plugin-appimage/appimagetool-prefix/usr/bin/appimagetool"
 if [[ ! -x "$APPIMAGETOOL" ]]; then
