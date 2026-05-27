@@ -4,6 +4,7 @@
 
 extern void trayHandleClick(uintptr_t handle);
 extern void trayHandleQuit(uintptr_t handle);
+extern void trayHandleAbout(uintptr_t handle);
 
 @interface FoghornTrayTarget : NSObject
 @property(nonatomic, assign) uintptr_t handle;
@@ -21,6 +22,11 @@ extern void trayHandleQuit(uintptr_t handle);
 - (void)quitApp:(id)sender {
 	(void)sender;
 	trayHandleQuit(self.handle);
+}
+
+- (void)aboutApp:(id)sender {
+	(void)sender;
+	trayHandleAbout(self.handle);
 }
 
 - (void)statusItemClicked:(id)sender {
@@ -54,6 +60,11 @@ void *foghornTrayCreate(uintptr_t handle) {
 		NSMenuItem *toggle = [[NSMenuItem alloc] initWithTitle:@"Show or Hide Window" action:@selector(toggleWindow:) keyEquivalent:@""];
 		[toggle setTarget:target];
 		[target.menu addItem:toggle];
+		[target.menu addItem:[NSMenuItem separatorItem]];
+
+		NSMenuItem *about = [[NSMenuItem alloc] initWithTitle:@"About Foghorn" action:@selector(aboutApp:) keyEquivalent:@""];
+		[about setTarget:target];
+		[target.menu addItem:about];
 		[target.menu addItem:[NSMenuItem separatorItem]];
 
 		NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"Quit Foghorn" action:@selector(quitApp:) keyEquivalent:@""];
