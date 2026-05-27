@@ -79,6 +79,11 @@
     {@const invalidRegex = !regexValid(m)}
     {@const invalidName = !m.name.trim()}
     {@const invalidValue = !m.value}
+    {#if revealedAfterIndex !== null && i === revealedAfterIndex}
+      <div class="revealed-separator" aria-hidden="true">
+        <span>· · · more · · ·</span>
+      </div>
+    {/if}
     <div class="chip" class:invalid={invalidRegex || invalidName || invalidValue}>
       <div class="chip-field name">
         <LabelAutocomplete
@@ -189,5 +194,25 @@
   .add:hover {
     border-color: #3b82f6;
     color: #e2e8f0;
+  }
+  .revealed-separator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0;
+    user-select: none;
+  }
+  .revealed-separator::before,
+  .revealed-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #334155;
+  }
+  .revealed-separator span {
+    color: #475569;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
   }
 </style>
