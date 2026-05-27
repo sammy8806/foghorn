@@ -229,7 +229,10 @@ func (a *App) GetUIConfig() config.UIConfig {
 }
 
 func (a *App) LayoutPopup(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
-	layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin, position)
+	a.mu.RLock()
+	followCursor := a.cfg.UI.PopupFollowCursor == nil || *a.cfg.UI.PopupFollowCursor
+	a.mu.RUnlock()
+	layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin, position, followCursor)
 }
 
 func (a *App) TestNotificationForAlert(alertID, source string) error {

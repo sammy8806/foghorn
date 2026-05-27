@@ -209,6 +209,10 @@ ui:
   popup_position: top_right
   # Keep the popup window above all other windows. Defaults to true.
   always_on_top: true
+  # macOS only: open the popup on whichever monitor the tray icon was clicked
+  # on. Defaults to true. Set to false to restore the old behavior of reopening
+  # on the monitor the popup was last shown on.
+  popup_follow_cursor: true
   show_resolved: false
   show_silenced: false
   default_created_by: ${USER}

@@ -154,6 +154,9 @@ func validate(cfg *Config) error {
 	if cfg.UI.AlwaysOnTop == nil {
 		cfg.UI.AlwaysOnTop = ptrTo(true)
 	}
+	if cfg.UI.PopupFollowCursor == nil {
+		cfg.UI.PopupFollowCursor = ptrTo(true)
+	}
 	return nil
 }
 

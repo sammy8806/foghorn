@@ -11,7 +11,7 @@ package main
 #include <stdlib.h>
 #include <string.h>
 
-static void foghornLayoutPopupWindow(int width, int height, int horizontalMargin, int topMargin, int bottomMargin, char *position) {
+static void foghornLayoutPopupWindow(int width, int height, int horizontalMargin, int topMargin, int bottomMargin, char *position, int followCursor) {
 	dispatch_sync(dispatch_get_main_queue(), ^{
 		NSWindow *window = [NSApp mainWindow];
 		if (window == nil) {
@@ -21,7 +21,22 @@ static void foghornLayoutPopupWindow(int width, int height, int horizontalMargin
 			return;
 		}
 
-		NSScreen *screen = [window screen];
+		NSScreen *screen = nil;
+		if (followCursor) {
+			// The tray icon lives in the menu bar of whichever display the
+			// cursor is on at click time, so the mouse location identifies the
+			// monitor the user clicked on.
+			NSPoint mouse = [NSEvent mouseLocation];
+			for (NSScreen *candidate in [NSScreen screens]) {
+				if (NSPointInRect(mouse, [candidate frame])) {
+					screen = candidate;
+					break;
+				}
+			}
+		}
+		if (screen == nil) {
+			screen = [window screen];
+		}
 		if (screen == nil) {
 			screen = [NSScreen mainScreen];
 		}
@@ -54,9 +69,13 @@ static void foghornLayoutPopupWindow(int width, int height, int horizontalMargin
 import "C"
 import "unsafe"
 
-func layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
+func layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin int, position string, followCursor bool) {
 	cPosition := C.CString(position)
 	defer C.free(unsafe.Pointer(cPosition))
+	cFollowCursor := C.int(0)
+	if followCursor {
+		cFollowCursor = C.int(1)
+	}
 	C.foghornLayoutPopupWindow(
 		C.int(width),
 		C.int(height),
@@ -64,5 +83,6 @@ func layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin 
 		C.int(topMargin),
 		C.int(bottomMargin),
 		cPosition,
+		cFollowCursor,
 	)
 }

@@ -4,7 +4,11 @@ package main
 
 import wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
-func layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
+// followCursor is accepted for signature parity with the darwin build. On other
+// platforms the popup already targets the active screen (ScreenGetAll's
+// IsCurrent), so there is no separate "last monitor" behavior to gate.
+func layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin int, position string, followCursor bool) {
+	_ = followCursor
 	app := activeApp()
 	if app == nil || app.ctx == nil {
 		return

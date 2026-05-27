@@ -388,6 +388,26 @@ func TestSilenceEditorDefaultsWhenAbsent(t *testing.T) {
 	}
 }
 
+func TestPopupFollowCursorDefaultsTrue(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource)
+	if cfg.UI.PopupFollowCursor == nil {
+		t.Fatal("popup_follow_cursor should be resolved to a non-nil default")
+	}
+	if !*cfg.UI.PopupFollowCursor {
+		t.Fatalf("popup_follow_cursor default = %v, want true", *cfg.UI.PopupFollowCursor)
+	}
+}
+
+func TestPopupFollowCursorExplicitFalse(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  popup_follow_cursor: false
+`)
+	if cfg.UI.PopupFollowCursor == nil || *cfg.UI.PopupFollowCursor {
+		t.Fatalf("popup_follow_cursor = %v, want false", cfg.UI.PopupFollowCursor)
+	}
+}
+
 func TestSilenceEditorExplicitEmptyWhitelist(t *testing.T) {
 	cfg := writeAndLoad(t, minimalSource+`
 ui:
