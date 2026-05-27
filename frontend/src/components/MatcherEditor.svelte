@@ -4,6 +4,8 @@
 
   export let matchers: Matcher[] = [];
   export let source: string = '';
+  export let revealedAfterIndex: number | null = null;
+  export let revealedCount: number = 0;
 
   type Op = '=' | '!=' | '=~' | '!~';
   const OPS: Op[] = ['=', '!=', '=~', '!~'];
@@ -64,6 +66,11 @@
   }
   function addBlank() {
     matchers = [...matchers, { name: '', value: '', isRegex: false, isEqual: true }];
+  }
+
+  function isRevealed(i: number): boolean {
+    if (revealedAfterIndex === null) return false;
+    return i >= revealedAfterIndex && i < revealedAfterIndex + revealedCount;
   }
 </script>
 
