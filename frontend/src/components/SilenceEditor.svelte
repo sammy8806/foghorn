@@ -291,18 +291,21 @@
 
         <div class="field">
           <span class="field-label">Matchers</span>
-          <MatcherEditor bind:matchers={editorMatchers} source={alert.source} />
-          {#if hasCollapsible}
-            {#if expanded}
-              <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
-                ▾ Hide matchers
-              </button>
-            {:else}
-              <button type="button" class="matcher-toggle" on:click={expandMatchers}>
-                ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
-              </button>
-            {/if}
-          {/if}
+          <MatcherEditor bind:matchers={editorMatchers} source={alert.source}>
+            <svelte:fragment slot="actions">
+              {#if hasCollapsible}
+                {#if expanded}
+                  <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
+                    ▾ Hide matchers
+                  </button>
+                {:else}
+                  <button type="button" class="matcher-toggle" on:click={expandMatchers}>
+                    ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
+                  </button>
+                {/if}
+              {/if}
+            </svelte:fragment>
+          </MatcherEditor>
         </div>
 
         <div class="field">
@@ -421,14 +424,13 @@
   .btn-close:hover { color: #e2e8f0; }
 
   .matcher-toggle {
-    align-self: flex-start;
-    margin-top: 4px;
     background: none;
     border: none;
     color: #94a3b8;
     font-size: 11px;
     cursor: pointer;
     padding: 2px 0;
+    white-space: nowrap;
   }
   .matcher-toggle:hover {
     color: #e2e8f0;
