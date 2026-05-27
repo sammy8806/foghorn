@@ -71,6 +71,32 @@ func TestCreateSilence(t *testing.T) {
 	}
 }
 
+func TestCreateSilenceExtendedDurationUnits(t *testing.T) {
+	cases := []struct {
+		duration string
+		want     time.Duration
+	}{
+		{"3d", 3 * 24 * time.Hour},
+		{"1w", 7 * 24 * time.Hour},
+		{"1w2d3h", (7*24+2*24+3)*time.Hour},
+		{"30m", 30 * time.Minute},
+		{"2h", 2 * time.Hour},
+	}
+	for _, tc := range cases {
+		t.Run(tc.duration, func(t *testing.T) {
+			mp := &mockProvider{name: "test-am", silenceID: "s"}
+			mgr := New(map[string]provider.Provider{"test-am": mp})
+			if _, err := mgr.CreateSilence(context.Background(), "test-am", sampleMatchers(), tc.duration, "", "", ""); err != nil {
+				t.Fatalf("CreateSilence(%q) error: %v", tc.duration, err)
+			}
+			got := mp.lastReq.EndsAt.Sub(mp.lastReq.StartsAt)
+			if diff := got - tc.want; diff < -time.Second || diff > time.Second {
+				t.Errorf("duration %q: expected %v, got %v", tc.duration, tc.want, got)
+			}
+		})
+	}
+}
+
 func TestCreateSilenceUnknownSource(t *testing.T) {
 	mgr := New(map[string]provider.Provider{})
 	_, err := mgr.CreateSilence(context.Background(), "nonexistent", sampleMatchers(), "1h", "", "", "")
