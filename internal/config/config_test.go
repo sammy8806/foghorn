@@ -351,6 +351,70 @@ func TestDefaultEnablesNewAlertNotifications(t *testing.T) {
 	}
 }
 
+func writeAndLoad(t *testing.T, yamlBody string) *Config {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	return cfg
+}
+
+const minimalSource = `
+sources:
+  - name: test-am
+    type: alertmanager
+    url: http://localhost:9093
+`
+
+func TestSilenceEditorDefaultsWhenAbsent(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource)
+	se := cfg.UI.SilenceEditor
+	if se.AlwaysVisibleMatchers == nil {
+		t.Fatal("always_visible_matchers should be resolved to a non-nil default")
+	}
+	got := *se.AlwaysVisibleMatchers
+	want := []string{"alertname", "cluster", "severity", "pod"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("default whitelist = %v, want %v", got, want)
+	}
+	if se.CollapseMatchers == nil || *se.CollapseMatchers != true {
+		t.Fatalf("collapse_matchers default = %v, want true", se.CollapseMatchers)
+	}
+}
+
+func TestSilenceEditorExplicitEmptyWhitelist(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  silence_editor:
+    always_visible_matchers: []
+`)
+	se := cfg.UI.SilenceEditor
+	if se.AlwaysVisibleMatchers == nil {
+		t.Fatal("explicit empty whitelist should stay non-nil (empty), not become default")
+	}
+	if len(*se.AlwaysVisibleMatchers) != 0 {
+		t.Fatalf("explicit empty whitelist = %v, want empty", *se.AlwaysVisibleMatchers)
+	}
+}
+
+func TestSilenceEditorCollapseDisabled(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  silence_editor:
+    collapse_matchers: false
+`)
+	se := cfg.UI.SilenceEditor
+	if se.CollapseMatchers == nil || *se.CollapseMatchers != false {
+		t.Fatalf("collapse_matchers = %v, want false", se.CollapseMatchers)
+	}
+}
+
 func TestLoadConfigRejectsDuplicateSeverityAliases(t *testing.T) {
 	yaml := `
 sources:

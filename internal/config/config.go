@@ -130,6 +130,14 @@ func validate(cfg *Config) error {
 	if strings.TrimSpace(cfg.UI.DefaultCreatedBy) == "" {
 		cfg.UI.DefaultCreatedBy = defaultCreatedBy()
 	}
+	if cfg.UI.SilenceEditor.AlwaysVisibleMatchers == nil {
+		defaultMatchers := []string{"alertname", "cluster", "severity", "pod"}
+		cfg.UI.SilenceEditor.AlwaysVisibleMatchers = &defaultMatchers
+	}
+	if cfg.UI.SilenceEditor.CollapseMatchers == nil {
+		defaultCollapse := true
+		cfg.UI.SilenceEditor.CollapseMatchers = &defaultCollapse
+	}
 	return nil
 }
 
