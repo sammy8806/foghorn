@@ -14,6 +14,8 @@
   let editorMatchers: Matcher[] = [];
   let hiddenMatchers: Matcher[] = [];
   let expanded = false;
+  let revealedAfterIndex: number | null = null;
+  let revealedCount = 0;
   let alwaysVisible: string[] = ['alertname', 'cluster', 'severity', 'pod'];
   let collapseEnabled = true;
   let duration = '2h';
@@ -94,6 +96,8 @@
   }
 
   function applyCollapse(all: Matcher[]) {
+    revealedAfterIndex = null;
+    revealedCount = 0;
     if (!collapseEnabled) {
       editorMatchers = all;
       hiddenMatchers = [];
@@ -107,6 +111,8 @@
   }
 
   function expandMatchers() {
+    revealedAfterIndex = editorMatchers.length;
+    revealedCount = hiddenMatchers.length;
     editorMatchers = [...editorMatchers, ...hiddenMatchers];
     hiddenMatchers = [];
     expanded = true;
@@ -117,6 +123,8 @@
     editorMatchers = visible;
     hiddenMatchers = hidden;
     expanded = false;
+    revealedAfterIndex = null;
+    revealedCount = 0;
   }
 
   function matchersFromAlertLabels(a: Alert): Matcher[] {
