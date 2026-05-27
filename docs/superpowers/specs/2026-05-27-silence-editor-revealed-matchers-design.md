@@ -142,15 +142,17 @@ wrap each iteration and conditionally render the separator before the chip at
 
 ```css
 @keyframes revealed-fade {
-  0%   { background: #1e3a5f; border-left: 2px solid #3b82f6; }
-  70%  { background: #1e3a5f; border-left: 2px solid #3b82f6; }
-  100% { background: transparent; border-left: 2px solid transparent; }
+  0%   { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
+  70%  { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
+  100% { background: #0f172a; box-shadow: none; }
 }
 
 .chip.was-collapsed {
   animation: revealed-fade 2.5s ease-out forwards;
 }
 ```
+
+Note: `box-shadow: -2px 0 0` is used instead of `border-left` to avoid any layout shift (box-shadow does not affect the box model). The terminal background `#0f172a` matches `.chip`'s resting background.
 
 ### Edge cases
 
