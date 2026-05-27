@@ -84,7 +84,7 @@
         <span>· · · more · · ·</span>
       </div>
     {/if}
-    <div class="chip" class:invalid={invalidRegex || invalidName || invalidValue}>
+    <div class="chip" class:invalid={invalidRegex || invalidName || invalidValue} class:was-collapsed={isRevealed(i)}>
       <div class="chip-field name">
         <LabelAutocomplete
           value={m.name}
@@ -214,5 +214,14 @@
     font-size: 10px;
     letter-spacing: 0.05em;
     white-space: nowrap;
+  }
+  @keyframes revealed-fade {
+    0%   { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
+    70%  { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
+    100% { background: #0f172a; box-shadow: none; }
+  }
+
+  .chip.was-collapsed {
+    animation: revealed-fade 2.5s ease-out forwards;
   }
 </style>
