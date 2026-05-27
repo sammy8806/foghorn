@@ -210,6 +210,15 @@ ui:
   show_resolved: false
   show_silenced: false
   default_created_by: ${USER}
+  # Silence create/edit dialog. By default only a short whitelist of matchers
+  # is shown; the rest collapse behind a "Show N more matchers" toggle. Hidden
+  # matchers are still included in the silence — collapsing is purely visual.
+  silence_editor:
+    # Matcher names (exact match) that always stay visible. Defaults to
+    # [alertname, cluster, severity, pod] when omitted. Set to [] to collapse all.
+    always_visible_matchers: [alertname, cluster, severity, pod]
+    # Set to false to disable collapsing and always show every matcher.
+    collapse_matchers: true
   # Optional image shown when there are no active alerts. Accepts a URL or
   # a local file path (absolute, or relative to the config directory).
   # idle_image: https://i.imgflip.com/2/1ihzfe.jpg

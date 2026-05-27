@@ -11,7 +11,11 @@
 
   const dispatch = createEventDispatcher<{ close: void; silenced: void }>();
 
-  let matchers: Matcher[] = [];
+  let editorMatchers: Matcher[] = [];
+  let hiddenMatchers: Matcher[] = [];
+  let expanded = false;
+  let alwaysVisible: string[] = ['alertname', 'cluster', 'severity', 'pod'];
+  let collapseEnabled = true;
   let duration = '2h';
   let createdBy = '';
   let comment = '';
@@ -20,6 +24,17 @@
   let confirmExpire = false;
   let initializedForOpen = false;
 
+  // Combined source of truth: hidden matchers are always part of the silence.
+  $: allMatchers = [...editorMatchers, ...hiddenMatchers];
+  // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
+  // only while expanded and some visible matcher would collapse back out of the
+  // whitelist. The two are mutually exclusive: expanding empties hiddenMatchers.
+  $: canExpand = collapseEnabled && hiddenMatchers.length > 0;
+  $: canCollapse =
+    collapseEnabled &&
+    expanded &&
+    editorMatchers.some((m) => !alwaysVisible.includes(m.name));
+
   const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
 
@@ -27,8 +42,8 @@
     !loading &&
     !!duration &&
     !!createdBy.trim() &&
-    matchers.length > 0 &&
-    matchers.every((m) => m.name.trim() && m.value && regexValid(m));
+    allMatchers.length > 0 &&
+    allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
 
   function regexValid(m: Matcher): boolean {
     if (!m.isRegex) return true;
@@ -53,6 +68,55 @@
     } catch {
       return '';
     }
+  }
+
+  async function loadSilenceEditorConfig(): Promise<void> {
+    try {
+      const uiConfig = (await GetUIConfig()) as any;
+      const se = uiConfig?.silence_editor ?? uiConfig?.SilenceEditor ?? {};
+      const list = se?.always_visible_matchers ?? se?.AlwaysVisibleMatchers;
+      if (Array.isArray(list)) alwaysVisible = list;
+      const collapse = se?.collapse_matchers ?? se?.CollapseMatchers;
+      if (typeof collapse === 'boolean') collapseEnabled = collapse;
+    } catch {
+      // Keep defaults (dev mode / no Wails).
+    }
+  }
+
+  function splitMatchers(all: Matcher[]): { visible: Matcher[]; hidden: Matcher[] } {
+    const visible: Matcher[] = [];
+    const hidden: Matcher[] = [];
+    for (const m of all) {
+      if (alwaysVisible.includes(m.name)) visible.push(m);
+      else hidden.push(m);
+    }
+    return { visible, hidden };
+  }
+
+  function applyCollapse(all: Matcher[]) {
+    if (!collapseEnabled) {
+      editorMatchers = all;
+      hiddenMatchers = [];
+      expanded = true;
+      return;
+    }
+    const { visible, hidden } = splitMatchers(all);
+    editorMatchers = visible;
+    hiddenMatchers = hidden;
+    expanded = false;
+  }
+
+  function expandMatchers() {
+    editorMatchers = [...editorMatchers, ...hiddenMatchers];
+    hiddenMatchers = [];
+    expanded = true;
+  }
+
+  function collapseMatchers() {
+    const { visible, hidden } = splitMatchers(editorMatchers);
+    editorMatchers = visible;
+    hiddenMatchers = hidden;
+    expanded = false;
   }
 
   function matchersFromAlertLabels(a: Alert): Matcher[] {
@@ -105,15 +169,17 @@
     duration = roundDuration(currentMs + shortcutMs);
   }
 
-  function resetForOpen() {
+  async function resetForOpen() {
     error = '';
     loading = false;
     confirmExpire = false;
+    await loadSilenceEditorConfig();
+    let all: Matcher[];
     if (mode === 'edit' && silence && alert) {
-      matchers = cloneMatchers(silence.matchers);
-      if (!matchers.length) {
+      all = cloneMatchers(silence.matchers);
+      if (!all.length) {
         // Safety net: silence without matchers is unusual but don't nuke the editor.
-        matchers = matchersFromAlertLabels(alert);
+        all = matchersFromAlertLabels(alert);
       }
       const endMs = new Date(silence.endsAt).getTime() - Date.now();
       duration = roundDuration(Math.max(0, endMs));
@@ -121,7 +187,7 @@
       comment = silence.comment || '';
       createdBy = (silence.createdBy || '').trim();
     } else {
-      matchers = alert ? matchersFromAlertLabels(alert) : [];
+      all = alert ? matchersFromAlertLabels(alert) : [];
       duration = '2h';
       comment = '';
       createdBy = '';
@@ -129,11 +195,12 @@
         if (!createdBy) createdBy = v;
       });
     }
+    applyCollapse(all);
   }
 
   $: if (open && !initializedForOpen) {
     initializedForOpen = true;
-    resetForOpen();
+    void resetForOpen();
   }
 
   $: if (!open) {
@@ -154,9 +221,9 @@
     error = '';
     try {
       if (mode === 'edit' && silence) {
-        await UpdateSilence(alert.source, silence.id, matchers, duration, createdBy, comment);
+        await UpdateSilence(alert.source, silence.id, allMatchers, duration, createdBy, comment);
       } else {
-        await CreateSilence(alert.source, matchers, duration, createdBy, comment);
+        await CreateSilence(alert.source, allMatchers, duration, createdBy, comment);
       }
       dispatch('silenced');
       dispatch('close');
@@ -227,7 +294,19 @@
 
         <div class="field">
           <span class="field-label">Matchers</span>
-          <MatcherEditor bind:matchers source={alert.source} />
+          <MatcherEditor bind:matchers={editorMatchers} source={alert.source}>
+            <svelte:fragment slot="actions">
+              {#if canExpand}
+                <button type="button" class="matcher-toggle" on:click={expandMatchers}>
+                  ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
+                </button>
+              {:else if canCollapse}
+                <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
+                  ▾ Hide matchers
+                </button>
+              {/if}
+            </svelte:fragment>
+          </MatcherEditor>
         </div>
 
         <div class="field">
@@ -317,6 +396,9 @@
     border-radius: 8px;
     width: 520px;
     max-width: 92vw;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   }
   .dialog-header {
@@ -342,7 +424,25 @@
   }
   .btn-close:hover { color: #e2e8f0; }
 
-  .dialog-body { padding: 14px 18px; }
+  .matcher-toggle {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 0;
+    white-space: nowrap;
+  }
+  .matcher-toggle:hover {
+    color: #e2e8f0;
+  }
+
+  .dialog-body {
+    padding: 14px 18px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
 
   .context-strip {
     display: flex;

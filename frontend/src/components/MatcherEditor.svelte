@@ -109,7 +109,10 @@
       {/if}
     </div>
   {/each}
-  <button class="add" type="button" on:click={addBlank}>+ Add matcher</button>
+  <div class="matcher-footer">
+    <button class="add" type="button" on:click={addBlank}>+ Add matcher</button>
+    <slot name="actions" />
+  </div>
 </div>
 
 <style>
@@ -159,6 +162,12 @@
     grid-column: 1 / -1;
     color: #f87171;
     font-size: 10px;
+  }
+  .matcher-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
   .add {
     align-self: flex-start;

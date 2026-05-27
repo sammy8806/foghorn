@@ -109,6 +109,20 @@ export namespace config {
 	        this.TeamID = source["TeamID"];
 	    }
 	}
+	export class SilenceEditorConfig {
+	    always_visible_matchers?: string[];
+	    collapse_matchers?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SilenceEditorConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.always_visible_matchers = source["always_visible_matchers"];
+	        this.collapse_matchers = source["collapse_matchers"];
+	    }
+	}
 	export class UIConfig {
 	    theme: string;
 	    popup_width: number;
@@ -118,6 +132,7 @@ export namespace config {
 	    show_silenced: boolean;
 	    default_created_by: string;
 	    idle_image: string;
+	    silence_editor: SilenceEditorConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new UIConfig(source);
@@ -133,7 +148,26 @@ export namespace config {
 	        this.show_silenced = source["show_silenced"];
 	        this.default_created_by = source["default_created_by"];
 	        this.idle_image = source["idle_image"];
+	        this.silence_editor = this.convertValues(source["silence_editor"], SilenceEditorConfig);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ResolverConfig {
 	    Name: string;
@@ -573,6 +607,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 	
 	
 	
