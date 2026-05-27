@@ -228,6 +228,27 @@ func (a *App) GetUIConfig() config.UIConfig {
 	return ui
 }
 
+// AboutInfo is the static app metadata shown in the in-app About screen.
+type AboutInfo struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	RepoURL     string `json:"repoURL"`
+	Copyright   string `json:"copyright"`
+}
+
+// GetAbout returns static metadata for the About screen. Version reflects the
+// build-time `version` var (package main).
+func (a *App) GetAbout() AboutInfo {
+	return AboutInfo{
+		Name:        "Foghorn",
+		Version:     version,
+		Description: "The better open desktop alert monitor.",
+		RepoURL:     "https://github.com/sammy8806/foghorn",
+		Copyright:   "© 2026 Foghorn contributors",
+	}
+}
+
 func (a *App) LayoutPopup(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
 	a.mu.RLock()
 	followCursor := a.cfg.UI.PopupFollowCursor == nil || *a.cfg.UI.PopupFollowCursor
