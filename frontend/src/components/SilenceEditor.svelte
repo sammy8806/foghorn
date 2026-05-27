@@ -37,7 +37,7 @@
     expanded &&
     editorMatchers.some((m) => !alwaysVisible.includes(m.name));
 
-  const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h'];
+  const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h', '3d', '1w'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
 
   $: canSubmit =
@@ -141,30 +141,37 @@
     return (ms || []).map((m) => ({ ...m }));
   }
 
-  // DURATION_RE accepts 1d, 2h, 30m, 10s and any concatenation (e.g. "1d2h30m").
+  // DURATION_RE accepts 1w, 1d, 2h, 30m, 10s and any concatenation (e.g. "1w2d3h30m").
   // The regex requires at least one group present (enforced by post-match check).
-  const DURATION_RE = /^\s*(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?\s*$/i;
+  const DURATION_RE = /^\s*(?:(\d+)w)?\s*(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?\s*$/i;
 
   function parseDurationMs(s: string): number | null {
     const trimmed = (s || '').trim();
     if (!trimmed) return null;
     const match = trimmed.match(DURATION_RE);
     if (!match || match.slice(1).every((g) => !g)) return null;
-    const [, d, h, m, sec] = match;
+    const [, w, d, h, m, sec] = match;
+    const weeks = w ? parseInt(w, 10) : 0;
     const days = d ? parseInt(d, 10) : 0;
     const hours = h ? parseInt(h, 10) : 0;
     const mins = m ? parseInt(m, 10) : 0;
     const secs = sec ? parseInt(sec, 10) : 0;
-    return (((days * 24 + hours) * 60 + mins) * 60 + secs) * 1000;
+    return ((((weeks * 7 + days) * 24 + hours) * 60 + mins) * 60 + secs) * 1000;
   }
 
   function roundDuration(ms: number): string {
     if (ms <= 0) return '0s';
     // Round to the nearest minute for a clean unit string.
     const totalMins = Math.max(1, Math.round(ms / 60000));
-    const hours = Math.floor(totalMins / 60);
+    const totalHours = Math.floor(totalMins / 60);
     const minutes = totalMins % 60;
+    const totalDays = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const weeks = Math.floor(totalDays / 7);
+    const days = totalDays % 7;
     const parts: string[] = [];
+    if (weeks) parts.push(`${weeks}w`);
+    if (days) parts.push(`${days}d`);
     if (hours) parts.push(`${hours}h`);
     if (minutes) parts.push(`${minutes}m`);
     return parts.length ? parts.join('') : '1m';
