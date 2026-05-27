@@ -282,12 +282,21 @@ type ResolverConfig struct {
 }
 
 type UIConfig struct {
-	Theme            string `yaml:"theme" json:"theme"`
-	PopupWidth       int    `yaml:"popup_width" json:"popup_width"`
-	PopupHeight      int    `yaml:"popup_height" json:"popup_height"`
-	PopupPosition    string `yaml:"popup_position" json:"popup_position"`
-	ShowResolved     bool   `yaml:"show_resolved" json:"show_resolved"`
-	ShowSilenced     bool   `yaml:"show_silenced" json:"show_silenced"`
-	DefaultCreatedBy string `yaml:"default_created_by" json:"default_created_by"`
-	IdleImage        string `yaml:"idle_image" json:"idle_image"`
+	Theme            string              `yaml:"theme" json:"theme"`
+	PopupWidth       int                 `yaml:"popup_width" json:"popup_width"`
+	PopupHeight      int                 `yaml:"popup_height" json:"popup_height"`
+	PopupPosition    string              `yaml:"popup_position" json:"popup_position"`
+	ShowResolved     bool                `yaml:"show_resolved" json:"show_resolved"`
+	ShowSilenced     bool                `yaml:"show_silenced" json:"show_silenced"`
+	DefaultCreatedBy string              `yaml:"default_created_by" json:"default_created_by"`
+	IdleImage        string              `yaml:"idle_image" json:"idle_image"`
+	SilenceEditor    SilenceEditorConfig `yaml:"silence_editor" json:"silence_editor"`
+}
+
+// SilenceEditorConfig controls the silence create/edit dialog. Pointer fields
+// let validate() distinguish an absent YAML key (apply defaults) from an
+// explicitly empty value (e.g. always_visible_matchers: [] means collapse all).
+type SilenceEditorConfig struct {
+	AlwaysVisibleMatchers *[]string `yaml:"always_visible_matchers" json:"always_visible_matchers"`
+	CollapseMatchers      *bool     `yaml:"collapse_matchers" json:"collapse_matchers"`
 }
