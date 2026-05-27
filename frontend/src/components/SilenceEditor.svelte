@@ -26,11 +26,14 @@
 
   // Combined source of truth: hidden matchers are always part of the silence.
   $: allMatchers = [...editorMatchers, ...hiddenMatchers];
-  // Show the expander when collapsed (hidden present) or when expanded but some
-  // currently-shown matchers are not whitelisted (so the user can re-collapse).
-  $: hasCollapsible =
+  // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
+  // only while expanded and some visible matcher would collapse back out of the
+  // whitelist. The two are mutually exclusive: expanding empties hiddenMatchers.
+  $: canExpand = collapseEnabled && hiddenMatchers.length > 0;
+  $: canCollapse =
     collapseEnabled &&
-    (hiddenMatchers.length > 0 || editorMatchers.some((m) => !alwaysVisible.includes(m.name)));
+    expanded &&
+    editorMatchers.some((m) => !alwaysVisible.includes(m.name));
 
   const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
@@ -293,16 +296,14 @@
           <span class="field-label">Matchers</span>
           <MatcherEditor bind:matchers={editorMatchers} source={alert.source}>
             <svelte:fragment slot="actions">
-              {#if hasCollapsible}
-                {#if expanded}
-                  <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
-                    ▾ Hide matchers
-                  </button>
-                {:else}
-                  <button type="button" class="matcher-toggle" on:click={expandMatchers}>
-                    ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
-                  </button>
-                {/if}
+              {#if canExpand}
+                <button type="button" class="matcher-toggle" on:click={expandMatchers}>
+                  ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
+                </button>
+              {:else if canCollapse}
+                <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
+                  ▾ Hide matchers
+                </button>
               {/if}
             </svelte:fragment>
           </MatcherEditor>
