@@ -72,6 +72,19 @@ func main() {
 		}
 	}
 
+	// showWindow makes the popup visible and is shared by the tray toggle's
+	// "show" branch and the About menu item.
+	showWindow := func() {
+		if app.ctx == nil {
+			return
+		}
+		setDockIconVisible(true)
+		wailsruntime.WindowShow(app.ctx)
+		wailsruntime.WindowSetAlwaysOnTop(app.ctx, *cfg.UI.AlwaysOnTop)
+		windowVisible.Store(true)
+		wailsruntime.EventsEmit(app.ctx, "popup:opening")
+	}
+
 	trayMgr := tray.NewManager(
 		func() {
 			if app.ctx == nil {
@@ -82,14 +95,17 @@ func main() {
 				windowVisible.Store(false)
 				setDockIconVisible(false)
 			} else {
-				setDockIconVisible(true)
-				wailsruntime.WindowShow(app.ctx)
-				wailsruntime.WindowSetAlwaysOnTop(app.ctx, *cfg.UI.AlwaysOnTop)
-				windowVisible.Store(true)
-				wailsruntime.EventsEmit(app.ctx, "popup:opening")
+				showWindow()
 			}
 		},
 		requestQuit,
+		func() {
+			if app.ctx == nil {
+				return
+			}
+			showWindow()
+			wailsruntime.EventsEmit(app.ctx, "about:show")
+		},
 	)
 
 	// Handle Ctrl+C / SIGTERM when running from the CLI. Wails installs its

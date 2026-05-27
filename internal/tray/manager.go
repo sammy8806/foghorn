@@ -10,6 +10,7 @@ import (
 
 type OnClickFunc func()
 type OnQuitFunc func()
+type OnAboutFunc func()
 
 type platformTray interface {
 	update(icon []byte, tooltip string) error
@@ -20,18 +21,20 @@ type Manager struct {
 	mu        sync.RWMutex
 	onClick   OnClickFunc
 	onQuit    OnQuitFunc
+	onAbout   OnAboutFunc
 	breakdown model.SeverityBreakdown
 	ready     bool
 	platform  platformTray
 	scheme    config.SeverityScheme
 }
 
-func NewManager(onClick OnClickFunc, onQuit OnQuitFunc) *Manager {
+func NewManager(onClick OnClickFunc, onQuit OnQuitFunc, onAbout OnAboutFunc) *Manager {
 	normalized, _ := config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
 	scheme := normalized.Scheme()
 	return &Manager{
 		onClick:   onClick,
 		onQuit:    onQuit,
+		onAbout:   onAbout,
 		breakdown: emptyBreakdown(scheme),
 		scheme:    scheme,
 	}
@@ -109,6 +112,12 @@ func (m *Manager) handleClick() {
 func (m *Manager) handleQuit() {
 	if m.onQuit != nil {
 		go m.onQuit()
+	}
+}
+
+func (m *Manager) handleAbout() {
+	if m.onAbout != nil {
+		go m.onAbout()
 	}
 }
 

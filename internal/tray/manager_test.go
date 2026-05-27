@@ -3,12 +3,13 @@ package tray
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"foghorn/internal/model"
 )
 
 func newTestManager() *Manager {
-	return NewManager(nil, nil)
+	return NewManager(nil, nil, nil)
 }
 
 func makeBreakdown(active, silenced map[string]int) model.SeverityBreakdown {
@@ -107,5 +108,18 @@ func TestTrayIconGreyBeforeReady(t *testing.T) {
 	m := newTestManager()
 	if got := m.icon(); !bytes.Equal(got, IconGrey) {
 		t.Errorf("expected IconGrey before first UpdateState")
+	}
+}
+
+func TestHandleAboutInvokesCallback(t *testing.T) {
+	called := make(chan struct{}, 1)
+	m := NewManager(nil, nil, func() { called <- struct{}{} })
+
+	m.handleAbout()
+
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("onAbout callback was not invoked")
 	}
 }
