@@ -151,6 +151,9 @@ func validate(cfg *Config) error {
 	if cfg.UI.SilenceEditor.CollapseMatchers == nil {
 		cfg.UI.SilenceEditor.CollapseMatchers = ptrTo(true)
 	}
+	if cfg.UI.AlwaysOnTop == nil {
+		cfg.UI.AlwaysOnTop = ptrTo(true)
+	}
 	return nil
 }
 

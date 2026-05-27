@@ -207,6 +207,8 @@ ui:
   popup_height: 600
   # Popup corner: top_right, top_left, bottom_right, or bottom_left.
   popup_position: top_right
+  # Keep the popup window above all other windows. Defaults to true.
+  always_on_top: true
   show_resolved: false
   show_silenced: false
   default_created_by: ${USER}
@@ -216,7 +218,7 @@ ui:
   silence_editor:
     # Matcher names (exact match) that always stay visible. Defaults to
     # [alertname, cluster, severity, pod] when omitted. Set to [] to collapse all.
-    always_visible_matchers: [alertname, cluster, severity, pod]
+    always_visible_matchers: [alertname, cluster, severity, pod, namespace, purpose, region, job, job_name, svcname, persistentvolumeclaim, node, name]
     # Set to false to disable collapsing and always show every matcher.
     collapse_matchers: true
   # Optional image shown when there are no active alerts. Accepts a URL or

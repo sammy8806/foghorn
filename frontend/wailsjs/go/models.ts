@@ -128,6 +128,7 @@ export namespace config {
 	    popup_width: number;
 	    popup_height: number;
 	    popup_position: string;
+	    always_on_top?: boolean;
 	    show_resolved: boolean;
 	    show_silenced: boolean;
 	    default_created_by: string;
@@ -144,6 +145,7 @@ export namespace config {
 	        this.popup_width = source["popup_width"];
 	        this.popup_height = source["popup_height"];
 	        this.popup_position = source["popup_position"];
+	        this.always_on_top = source["always_on_top"];
 	        this.show_resolved = source["show_resolved"];
 	        this.show_silenced = source["show_silenced"];
 	        this.default_created_by = source["default_created_by"];
