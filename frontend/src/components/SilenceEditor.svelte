@@ -301,7 +301,7 @@
         </div>
 
         <div class="field">
-          <span class="field-label">Matchers</span>
+          <span class="field-label">Matchers ({allMatchers.length})</span>
           <MatcherEditor bind:matchers={editorMatchers} source={alert.source}>
             <svelte:fragment slot="actions">
               {#if canExpand}
