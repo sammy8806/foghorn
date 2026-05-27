@@ -29,7 +29,8 @@
   // Show the expander when collapsed (hidden present) or when expanded but some
   // currently-shown matchers are not whitelisted (so the user can re-collapse).
   $: hasCollapsible =
-    collapseEnabled && editorMatchers.some((m) => !alwaysVisible.includes(m.name));
+    collapseEnabled &&
+    (hiddenMatchers.length > 0 || editorMatchers.some((m) => !alwaysVisible.includes(m.name)));
 
   const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
