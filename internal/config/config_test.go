@@ -383,7 +383,7 @@ func TestSilenceEditorDefaultsWhenAbsent(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("default whitelist = %v, want %v", got, want)
 	}
-	if se.CollapseMatchers == nil || *se.CollapseMatchers != true {
+	if se.CollapseMatchers == nil || !(*se.CollapseMatchers) {
 		t.Fatalf("collapse_matchers default = %v, want true", se.CollapseMatchers)
 	}
 }
@@ -410,8 +410,15 @@ ui:
     collapse_matchers: false
 `)
 	se := cfg.UI.SilenceEditor
-	if se.CollapseMatchers == nil || *se.CollapseMatchers != false {
+	if se.CollapseMatchers == nil || *se.CollapseMatchers {
 		t.Fatalf("collapse_matchers = %v, want false", se.CollapseMatchers)
+	}
+}
+
+func TestDefaultPopulatesSilenceEditor(t *testing.T) {
+	cfg := Default()
+	if cfg.UI.SilenceEditor.AlwaysVisibleMatchers == nil || cfg.UI.SilenceEditor.CollapseMatchers == nil {
+		t.Fatal("Default() must populate SilenceEditor pointer fields")
 	}
 }
 

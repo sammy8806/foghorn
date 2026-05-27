@@ -13,6 +13,17 @@ import (
 
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
+// ptrTo returns a pointer to a copy of v. Using a function avoids shared
+// mutable state when the same default value is needed in multiple places.
+func ptrTo[T any](v T) *T { return &v }
+
+// defaultSilenceEditorMatchers returns a fresh slice of the default
+// always-visible matchers. A function (not a package-level var) is used so
+// that each caller gets an independent slice with no aliasing.
+func defaultSilenceEditorMatchers() []string {
+	return []string{"alertname", "cluster", "severity", "pod"}
+}
+
 // Default returns a minimal usable config with no sources.
 func Default() *Config {
 	return &Config{
@@ -29,6 +40,10 @@ func Default() *Config {
 			PopupHeight:      600,
 			PopupPosition:    "top_right",
 			DefaultCreatedBy: defaultCreatedBy(),
+			SilenceEditor: SilenceEditorConfig{
+				AlwaysVisibleMatchers: ptrTo(defaultSilenceEditorMatchers()),
+				CollapseMatchers:      ptrTo(true),
+			},
 		},
 	}
 }
@@ -131,12 +146,10 @@ func validate(cfg *Config) error {
 		cfg.UI.DefaultCreatedBy = defaultCreatedBy()
 	}
 	if cfg.UI.SilenceEditor.AlwaysVisibleMatchers == nil {
-		defaultMatchers := []string{"alertname", "cluster", "severity", "pod"}
-		cfg.UI.SilenceEditor.AlwaysVisibleMatchers = &defaultMatchers
+		cfg.UI.SilenceEditor.AlwaysVisibleMatchers = ptrTo(defaultSilenceEditorMatchers())
 	}
 	if cfg.UI.SilenceEditor.CollapseMatchers == nil {
-		defaultCollapse := true
-		cfg.UI.SilenceEditor.CollapseMatchers = &defaultCollapse
+		cfg.UI.SilenceEditor.CollapseMatchers = ptrTo(true)
 	}
 	return nil
 }

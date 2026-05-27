@@ -317,6 +317,9 @@
     border-radius: 8px;
     width: 520px;
     max-width: 92vw;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   }
   .dialog-header {
@@ -342,7 +345,12 @@
   }
   .btn-close:hover { color: #e2e8f0; }
 
-  .dialog-body { padding: 14px 18px; }
+  .dialog-body {
+    padding: 14px 18px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
 
   .context-strip {
     display: flex;
