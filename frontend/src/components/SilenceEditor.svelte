@@ -302,7 +302,12 @@
 
         <div class="field">
           <span class="field-label">Matchers ({allMatchers.length})</span>
-          <MatcherEditor bind:matchers={editorMatchers} source={alert.source}>
+          <MatcherEditor
+            bind:matchers={editorMatchers}
+            source={alert.source}
+            revealedAfterIndex={revealedAfterIndex}
+            revealedCount={revealedCount}
+          >
             <svelte:fragment slot="actions">
               {#if canExpand}
                 <button type="button" class="matcher-toggle" on:click={expandMatchers}>
