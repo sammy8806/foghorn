@@ -245,7 +245,7 @@ func (a *App) GetAbout() AboutInfo {
 		Version:     version,
 		Description: "The better open desktop alert monitor.",
 		RepoURL:     "https://github.com/sammy8806/foghorn",
-		Copyright:   "© 2026 Foghorn contributors",
+		Copyright:   "© 2026 Steven Tappert & Foghorn contributors",
 	}
 }
 
