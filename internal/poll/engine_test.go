@@ -41,7 +41,7 @@ func (m *mockProvider) FetchOnCall(_ context.Context) (*model.OnCallStatus, erro
 		ScheduleID:   "default",
 		ScheduleName: "default",
 		Users: []model.OnCallUser{
-			{Name: "Alice Example", Email: "alice@example.com"},
+			{Name: "on-call primary", Email: "primary-oncall@example.test"},
 		},
 	}, nil
 }

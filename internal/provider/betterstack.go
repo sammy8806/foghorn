@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -247,6 +248,18 @@ type bsIncidentComment struct {
 	} `json:"attributes"`
 }
 
+var betterStackMentionRE = regexp.MustCompile(`\*\*M_START\*\*(.*?)\*\*M_END\*\*`)
+
+type betterStackMention struct {
+	Type       string `json:"type"`
+	ID         any    `json:"id"`
+	Value      any    `json:"value"`
+	BetterID   any    `json:"better_stack_id"`
+	Email      string `json:"email"`
+	TagifyName string `json:"tagify_name"`
+	Prefix     string `json:"prefix"`
+}
+
 func (i bsIncident) toAlert(cfg config.SourceConfig, comments []bsIncidentComment) model.Alert {
 	startsAt := parseRFC3339(i.Attributes.StartedAt)
 	updatedAt := startsAt
@@ -316,7 +329,7 @@ func (i bsIncident) toAlert(cfg config.SourceConfig, comments []bsIncidentCommen
 func formatBetterStackComments(comments []bsIncidentComment) string {
 	parts := make([]string, 0, len(comments))
 	for _, comment := range comments {
-		content := strings.TrimSpace(comment.Attributes.Content)
+		content := strings.TrimSpace(formatBetterStackMentions(comment.Attributes.Content))
 		if content == "" {
 			continue
 		}
@@ -337,6 +350,55 @@ func formatBetterStackComments(comments []bsIncidentComment) string {
 	}
 
 	return strings.Join(parts, "\n\n")
+}
+
+func formatBetterStackMentions(content string) string {
+	return betterStackMentionRE.ReplaceAllStringFunc(content, func(token string) string {
+		matches := betterStackMentionRE.FindStringSubmatch(token)
+		if len(matches) != 2 {
+			return token
+		}
+
+		var mention betterStackMention
+		payload := matches[1]
+		if err := json.Unmarshal([]byte(payload), &mention); err != nil {
+			payload = strings.ReplaceAll(payload, `\"`, `"`)
+			if err := json.Unmarshal([]byte(payload), &mention); err != nil {
+				return token
+			}
+		}
+
+		name := firstNonEmpty(
+			mention.TagifyName,
+			mentionValueString(mention.Value),
+			mention.Email,
+			mentionValueString(mention.ID),
+			mentionValueString(mention.BetterID),
+		)
+		if name == "" {
+			return token
+		}
+		prefix := strings.TrimSpace(mention.Prefix)
+		if prefix == "" {
+			prefix = "@"
+		}
+		display := prefix + name
+		if email := strings.TrimSpace(mention.Email); email != "" {
+			return fmt.Sprintf("[%s](mailto:%s)", display, email)
+		}
+		return display
+	})
+}
+
+func mentionValueString(value any) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	default:
+		return ""
+	}
 }
 
 func betterStackIncidentURL(cfg config.SourceConfig, incident bsIncident) string {

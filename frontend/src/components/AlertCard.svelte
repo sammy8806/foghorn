@@ -87,6 +87,66 @@
   let testNotificationStatus = '';
   let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
 
+  type CommentSegment = {
+    kind: 'text' | 'mention';
+    text: string;
+    email?: string;
+  };
+
+  type ParsedComment = {
+    author: string;
+    time: string;
+    body: string;
+  };
+
+  const commentHeaderPattern = /^(.+?)\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/;
+
+  function parseCommentBlocks(text: string): ParsedComment[] {
+    const comments: ParsedComment[] = [];
+    let current: ParsedComment | null = null;
+
+    for (const line of text.split('\n')) {
+      const header = line.match(commentHeaderPattern);
+      if (header) {
+        if (current) comments.push(current);
+        current = { author: header[1], time: header[2], body: '' };
+        continue;
+      }
+
+      if (current) {
+        current.body = current.body ? `${current.body}\n${line}` : line;
+        continue;
+      }
+
+      if (line.trim() !== '') {
+        comments.push({ author: '', time: '', body: line });
+      }
+    }
+
+    if (current) comments.push(current);
+    return comments.length ? comments : [{ author: '', time: '', body: text }];
+  }
+
+  function commentBodySegments(text: string): CommentSegment[] {
+    const segments: CommentSegment[] = [];
+    const mentionPattern = /\[(@[^\]]+)\]\(mailto:([^)]+)\)/g;
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = mentionPattern.exec(text)) !== null) {
+      if (match.index > cursor) {
+        segments.push({ kind: 'text', text: text.slice(cursor, match.index) });
+      }
+      segments.push({ kind: 'mention', text: match[1], email: match[2] });
+      cursor = match.index + match[0].length;
+    }
+
+    if (cursor < text.length) {
+      segments.push({ kind: 'text', text: text.slice(cursor) });
+    }
+    return segments.length ? segments : [{ kind: 'text', text }];
+  }
+
   function openSilenceCreate() {
     silenceMode = 'create';
     editingSilence = null;
@@ -211,19 +271,23 @@
           {#if annotationName === 'comments'}
             <div class="comments-section">
               <strong class="comments-label">comments:</strong>
-              {#each annotationDisplay.text.split('\n\n') as commentBlock}
-                {@const lines = commentBlock.split('\n')}
-                {@const headerMatch = lines[0]?.match(/^(.+?)\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/)}
+              {#each parseCommentBlocks(annotationDisplay.text) as comment}
                 <div class="comment-card">
-                  {#if headerMatch}
+                  {#if comment.author}
                     <div class="comment-header">
-                      <span class="comment-author">{headerMatch[1]}</span>
-                      <span class="comment-time">{new Date(headerMatch[2]).toLocaleString()}</span>
+                      <span class="comment-author">{comment.author}</span>
+                      <span class="comment-time">{new Date(comment.time).toLocaleString()}</span>
                     </div>
-                    <div class="comment-body">{lines.slice(1).join('\n')}</div>
-                  {:else}
-                    <div class="comment-body">{commentBlock}</div>
                   {/if}
+                  <div class="comment-body">
+                    {#each commentBodySegments(comment.body.trim()) as segment}
+                      {#if segment.kind === 'mention'}
+                        <span class="comment-mention" title={segment.email}>{segment.text}</span>
+                      {:else}
+                        <span>{segment.text}</span>
+                      {/if}
+                    {/each}
+                  </div>
                 </div>
               {/each}
             </div>
@@ -530,6 +594,20 @@
     color: #cbd5e1;
     white-space: pre-wrap;
     line-height: 1.4;
+  }
+  .comment-mention {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 1px 6px;
+    margin: 0 1px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.18);
+    color: #bfdbfe;
+    font-weight: 700;
+    line-height: 1.5;
+    vertical-align: baseline;
   }
 
   .silence-details {

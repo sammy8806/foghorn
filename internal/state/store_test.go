@@ -237,7 +237,7 @@ func TestOnCallLifecycle(t *testing.T) {
 		ScheduleID:   "default",
 		ScheduleName: "default",
 		Users: []model.OnCallUser{
-			{Name: "Alice Example", Email: "alice@example.com"},
+			{Name: "on-call primary", Email: "primary-oncall@example.test"},
 		},
 	})
 
@@ -245,7 +245,7 @@ func TestOnCallLifecycle(t *testing.T) {
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 on-call status, got %d", len(statuses))
 	}
-	if statuses[0].Users[0].Name != "Alice Example" {
+	if statuses[0].Users[0].Name != "on-call primary" {
 		t.Fatalf("unexpected on-call user: %#v", statuses[0].Users)
 	}
 

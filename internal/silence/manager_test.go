@@ -47,7 +47,7 @@ func TestCreateSilence(t *testing.T) {
 	mp := &mockProvider{name: "test-am", silenceID: "silence-abc"}
 	mgr := New(map[string]provider.Provider{"test-am": mp})
 
-	id, err := mgr.CreateSilence(context.Background(), "test-am", sampleMatchers(), "2h", "alice", "test silence", "fallback")
+	id, err := mgr.CreateSilence(context.Background(), "test-am", sampleMatchers(), "2h", "operator-a", "test silence", "fallback")
 	if err != nil {
 		t.Fatalf("CreateSilence() error: %v", err)
 	}
@@ -60,8 +60,8 @@ func TestCreateSilence(t *testing.T) {
 	if mp.lastReq.Comment != "test silence" {
 		t.Errorf("expected comment 'test silence', got %q", mp.lastReq.Comment)
 	}
-	if mp.lastReq.CreatedBy != "alice" {
-		t.Errorf("expected createdBy 'alice', got %q", mp.lastReq.CreatedBy)
+	if mp.lastReq.CreatedBy != "operator-a" {
+		t.Errorf("expected createdBy 'operator-a', got %q", mp.lastReq.CreatedBy)
 	}
 	if mp.lastReq.EndsAt.Sub(mp.lastReq.StartsAt) < 2*time.Hour-time.Second {
 		t.Errorf("expected 2h duration, got %v", mp.lastReq.EndsAt.Sub(mp.lastReq.StartsAt))
@@ -78,7 +78,7 @@ func TestCreateSilenceExtendedDurationUnits(t *testing.T) {
 	}{
 		{"3d", 3 * 24 * time.Hour},
 		{"1w", 7 * 24 * time.Hour},
-		{"1w2d3h", (7*24+2*24+3)*time.Hour},
+		{"1w2d3h", (7*24 + 2*24 + 3) * time.Hour},
 		{"30m", 30 * time.Minute},
 		{"2h", 2 * time.Hour},
 	}
@@ -135,7 +135,7 @@ func TestUpdateSilenceForwardsID(t *testing.T) {
 	mp := &mockProvider{name: "test-am", silenceID: "silence-abc"}
 	mgr := New(map[string]provider.Provider{"test-am": mp})
 
-	err := mgr.UpdateSilence(context.Background(), "test-am", "sil-123", sampleMatchers(), "1h", "alice", "updated", "fallback")
+	err := mgr.UpdateSilence(context.Background(), "test-am", "sil-123", sampleMatchers(), "1h", "operator-a", "updated", "fallback")
 	if err != nil {
 		t.Fatalf("UpdateSilence() error: %v", err)
 	}
