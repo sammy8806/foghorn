@@ -244,6 +244,7 @@ type bsIncidentComment struct {
 	Attributes struct {
 		Content   string `json:"content"`
 		UserEmail string `json:"user_email"`
+		UserName  string `json:"user_name"`
 		CreatedAt string `json:"created_at"`
 	} `json:"attributes"`
 }
@@ -336,7 +337,11 @@ func formatBetterStackComments(comments []bsIncidentComment) string {
 
 		headerParts := make([]string, 0, 2)
 		if email := strings.TrimSpace(comment.Attributes.UserEmail); email != "" {
-			headerParts = append(headerParts, email)
+			if author := strings.TrimSpace(comment.Attributes.UserName); author != "" {
+				headerParts = append(headerParts, fmt.Sprintf("%s <%s>", author, email))
+			} else {
+				headerParts = append(headerParts, email)
+			}
 		}
 		if createdAt := parseRFC3339(comment.Attributes.CreatedAt); !createdAt.IsZero() {
 			headerParts = append(headerParts, createdAt.Format(time.RFC3339))

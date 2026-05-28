@@ -95,11 +95,12 @@
 
   type ParsedComment = {
     author: string;
+    email: string;
     time: string;
     body: string;
   };
 
-  const commentHeaderPattern = /^(.+?)\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/;
+  const commentHeaderPattern = /^(.+?)(?:\s+<([^>]+)>)?\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/;
 
   function parseCommentBlocks(text: string): ParsedComment[] {
     const comments: ParsedComment[] = [];
@@ -109,7 +110,7 @@
       const header = line.match(commentHeaderPattern);
       if (header) {
         if (current) comments.push(current);
-        current = { author: header[1], time: header[2], body: '' };
+        current = { author: header[1], email: header[2] || '', time: header[3], body: '' };
         continue;
       }
 
@@ -119,12 +120,12 @@
       }
 
       if (line.trim() !== '') {
-        comments.push({ author: '', time: '', body: line });
+        comments.push({ author: '', email: '', time: '', body: line });
       }
     }
 
     if (current) comments.push(current);
-    return comments.length ? comments : [{ author: '', time: '', body: text }];
+    return comments.length ? comments : [{ author: '', email: '', time: '', body: text }];
   }
 
   function commentBodySegments(text: string): CommentSegment[] {
@@ -275,7 +276,7 @@
                 <div class="comment-card">
                   {#if comment.author}
                     <div class="comment-header">
-                      <span class="comment-author">{comment.author}</span>
+                      <span class="comment-author" title={comment.email}>{comment.author}</span>
                       <span class="comment-time">{new Date(comment.time).toLocaleString()}</span>
                     </div>
                   {/if}
@@ -596,18 +597,9 @@
     line-height: 1.4;
   }
   .comment-mention {
-    display: inline-flex;
-    align-items: center;
-    max-width: 100%;
-    padding: 1px 6px;
-    margin: 0 1px;
-    border: 1px solid rgba(96, 165, 250, 0.35);
-    border-radius: 999px;
-    background: rgba(37, 99, 235, 0.18);
+    display: inline;
     color: #bfdbfe;
     font-weight: 700;
-    line-height: 1.5;
-    vertical-align: baseline;
   }
 
   .silence-details {
