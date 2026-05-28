@@ -625,6 +625,31 @@ export namespace config {
 
 }
 
+export namespace main {
+	
+	export class AboutInfo {
+	    name: string;
+	    version: string;
+	    description: string;
+	    repoURL: string;
+	    copyright: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AboutInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.description = source["description"];
+	        this.repoURL = source["repoURL"];
+	        this.copyright = source["copyright"];
+	    }
+	}
+
+}
+
 export namespace model {
 	
 	export class Matcher {

@@ -10,6 +10,10 @@ export function ExecuteAction(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExecuteAction'](arg1, arg2, arg3);
 }
 
+export function GetAbout() {
+  return window['go']['main']['App']['GetAbout']();
+}
+
 export function GetActions() {
   return window['go']['main']['App']['GetActions']();
 }
