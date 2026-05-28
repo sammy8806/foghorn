@@ -55,6 +55,8 @@ func newPlatformTray(m *Manager) platformTray {
 
 		mShow := systray.AddMenuItem("Show or Hide Window", "Toggle the Foghorn window")
 		systray.AddSeparator()
+		mAbout := systray.AddMenuItem("About Foghorn", "About Foghorn")
+		systray.AddSeparator()
 		mQuit := systray.AddMenuItem("Quit Foghorn", "Quit Foghorn")
 
 		go func() {
@@ -62,6 +64,8 @@ func newPlatformTray(m *Manager) platformTray {
 				select {
 				case <-mShow.ClickedCh:
 					m.handleClick()
+				case <-mAbout.ClickedCh:
+					m.handleAbout()
 				case <-mQuit.ClickedCh:
 					m.handleQuit()
 				case <-lt.stopCh:
