@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -73,5 +74,49 @@ func TestVisibleEntryStyleScalar(t *testing.T) {
 	}
 	if len(entries[1].Style) != 1 || entries[1].Style[0] != StyleInfo {
 		t.Errorf("entry[1].Style = %#v, want [info]", entries[1].Style)
+	}
+}
+
+func TestValidateVisibleEntriesEmptySource(t *testing.T) {
+	entries := []VisibleEntry{
+		{Source: "summary"},
+		{Source: ""},
+	}
+	err := validateVisibleEntries("display.visible_annotations", entries)
+	if err == nil {
+		t.Fatal("expected error for empty source, got nil")
+	}
+	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
+		t.Errorf("error message missing positional context: %v", err)
+	}
+	if !strings.Contains(err.Error(), "source is required") {
+		t.Errorf("error message missing 'source is required': %v", err)
+	}
+}
+
+func TestValidateVisibleEntriesUnknownStyle(t *testing.T) {
+	entries := []VisibleEntry{
+		{Source: "summary"},
+		{Source: "description", Style: []EntryStyle{StylePull, "ominous"}},
+	}
+	err := validateVisibleEntries("display.visible_annotations", entries)
+	if err == nil {
+		t.Fatal("expected error for unknown style, got nil")
+	}
+	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
+		t.Errorf("error message missing positional context: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"ominous"`) {
+		t.Errorf("error message missing the bad token: %v", err)
+	}
+}
+
+func TestValidateVisibleEntriesAllValid(t *testing.T) {
+	entries := []VisibleEntry{
+		{Source: "summary"},
+		{Source: "description", Style: []EntryStyle{StyleMuted, StylePull, StyleDanger, StyleWarning, StyleInfo}},
+	}
+	if err := validateVisibleEntries("display.visible_annotations", entries); err != nil {
+		t.Errorf("expected no error, got: %v", err)
 	}
 }

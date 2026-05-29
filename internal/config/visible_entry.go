@@ -54,6 +54,31 @@ func (e *VisibleEntry) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
+var validStyles = map[EntryStyle]struct{}{
+	StyleMuted:   {},
+	StylePull:    {},
+	StyleDanger:  {},
+	StyleWarning: {},
+	StyleInfo:    {},
+}
+
+// validateVisibleEntries enforces that every entry has a non-empty source and
+// only references known style tokens. The field argument is used to produce
+// positional error messages like "display.visible_annotations[2]: ...".
+func validateVisibleEntries(field string, entries []VisibleEntry) error {
+	for i, e := range entries {
+		if strings.TrimSpace(e.Source) == "" {
+			return fmt.Errorf("%s[%d]: source is required", field, i)
+		}
+		for _, s := range e.Style {
+			if _, ok := validStyles[s]; !ok {
+				return fmt.Errorf("%s[%d]: unknown style %q", field, i, s)
+			}
+		}
+	}
+	return nil
+}
+
 // styleTokens is a custom YAML adapter that accepts either a comma-separated
 // scalar ("pull, danger") or a sequence ([pull, danger]).
 type styleTokens []EntryStyle
