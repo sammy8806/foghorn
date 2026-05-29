@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,9 +30,59 @@ type VisibleEntry struct {
 }
 
 func (e *VisibleEntry) UnmarshalYAML(node *yaml.Node) error {
-	if node.Kind == yaml.ScalarNode {
+	switch node.Kind {
+	case yaml.ScalarNode:
 		e.Source = node.Value
 		return nil
+	case yaml.MappingNode:
+		var aux struct {
+			Source string      `yaml:"source"`
+			Order  int         `yaml:"order"`
+			Label  string      `yaml:"label"`
+			Style  styleTokens `yaml:"style"`
+		}
+		if err := node.Decode(&aux); err != nil {
+			return fmt.Errorf("visible entry: %w", err)
+		}
+		e.Source = aux.Source
+		e.Order = aux.Order
+		e.Label = aux.Label
+		e.Style = []EntryStyle(aux.Style)
+		return nil
+	default:
+		return fmt.Errorf("visible entry: expected scalar or mapping, got node kind %d", node.Kind)
 	}
-	return fmt.Errorf("visible entry: expected scalar or mapping, got node kind %d", node.Kind)
+}
+
+// styleTokens is a custom YAML adapter that accepts either a comma-separated
+// scalar ("pull, danger") or a sequence ([pull, danger]).
+type styleTokens []EntryStyle
+
+func (s *styleTokens) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		for _, part := range strings.Split(node.Value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			*s = append(*s, EntryStyle(part))
+		}
+		return nil
+	case yaml.SequenceNode:
+		var raw []string
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		for _, v := range raw {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			*s = append(*s, EntryStyle(v))
+		}
+		return nil
+	default:
+		return fmt.Errorf("style: expected scalar or sequence, got node kind %d", node.Kind)
+	}
 }
