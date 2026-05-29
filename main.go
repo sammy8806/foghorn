@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"foghorn/internal/config"
+	"foghorn/internal/model"
 	"foghorn/internal/notify"
 	"foghorn/internal/poll"
 	"foghorn/internal/provider"
@@ -175,8 +176,9 @@ func main() {
 							return
 						case event := <-localDiffCh:
 							trayMgr.UpdateState(store.SeverityBreakdown())
-							localNotifier.OnDiff(event.Diff)
-							wailsruntime.EventsEmit(ctx, "alerts:updated", app.resolveDiff(localCtx, event.Diff))
+							resolved := app.resolveDiff(localCtx, event.Diff)
+							localNotifier.OnDiff(filterHiddenFromDiff(resolved))
+							wailsruntime.EventsEmit(ctx, "alerts:updated", resolved)
 						}
 					}
 				}(bgCtx, diffCh, notifier)
@@ -251,6 +253,30 @@ func buildProviders(sources []config.SourceConfig) map[string]provider.Provider 
 		}
 	}
 	return providers
+}
+
+// filterHiddenFromDiff drops alerts tagged with HiddenBy from each diff
+// bucket. Used so notifications skip alerts a hide rule has suppressed.
+func filterHiddenFromDiff(diff model.Diff) model.Diff {
+	return model.Diff{
+		New:      dropHidden(diff.New),
+		Resolved: dropHidden(diff.Resolved),
+		Changed:  dropHidden(diff.Changed),
+	}
+}
+
+func dropHidden(alerts []model.Alert) []model.Alert {
+	if len(alerts) == 0 {
+		return alerts
+	}
+	out := alerts[:0:0]
+	for _, alert := range alerts {
+		if len(alert.HiddenBy) > 0 {
+			continue
+		}
+		out = append(out, alert)
+	}
+	return out
 }
 
 func sourceNames(sources []config.SourceConfig) []string {

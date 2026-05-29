@@ -38,6 +38,7 @@ export interface Alert {
   silences?: SilenceInfo[];
   inhibitedBy: string[];
   receivers: string[];
+  hiddenBy?: string[];
 }
 
 export type SeverityCounts = Record<string, number>;
@@ -701,8 +702,12 @@ function getRawFieldValue(alert: Alert, name: string): string | undefined {
     case 'startsAt': return alert.startsAt;
     case 'updatedAt': return alert.updatedAt;
     case 'source': return alert.source;
+    case 'sourceType': return alert.sourceType;
     case 'name': return alert.name;
     case 'state': return alert.state;
+    case 'hiddenBy': return alert.hiddenBy?.length ? alert.hiddenBy.join(', ') : undefined;
+    case 'silencedBy': return alert.silencedBy?.length ? alert.silencedBy.join(', ') : undefined;
+    case 'inhibitedBy': return alert.inhibitedBy?.length ? alert.inhibitedBy.join(', ') : undefined;
     default: return undefined;
   }
 }

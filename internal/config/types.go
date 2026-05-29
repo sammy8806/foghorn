@@ -19,7 +19,28 @@ type Config struct {
 	Notifications NotificationsConfig `yaml:"notifications"`
 	Actions       []ActionConfig      `yaml:"actions"`
 	Resolvers     []ResolverConfig    `yaml:"resolvers"`
+	Hide          []HideRule          `yaml:"hide"`
 	UI            UIConfig            `yaml:"ui"`
+}
+
+// HideRule suppresses matching alerts from the default UI view. Alerts hidden
+// by a rule still load and remain visible via the "Show all" toggle, badged
+// with the rule's Name.
+//
+// All matchers within a rule AND together; ParsedMinAge (if > 0) further
+// requires the alert's age (now - startsAt) to meet the threshold before the
+// rule applies. Sources, when non-empty, restricts the rule to alerts whose
+// source name appears in the list.
+type HideRule struct {
+	Name     string   `yaml:"name"`
+	Matchers []string `yaml:"matchers"`
+	Sources  []string `yaml:"sources"`
+	// MinAge accepts Go duration syntax (e.g. "30m", "24h") plus a "d" suffix
+	// for whole days (e.g. "7d"). Empty/zero disables the age check.
+	MinAge string `yaml:"min_age"`
+
+	// ParsedMinAge holds the parsed MinAge value; set during validate().
+	ParsedMinAge time.Duration `yaml:"-"`
 }
 
 type SourceConfig struct {
@@ -136,29 +157,37 @@ func (d *DisplayConfig) ParsedSortBy() []SortCriterion {
 // ResolveFieldRef parses a field reference like "field:severity", "label:cluster",
 // or "annotation:team". Bare strings without a prefix are treated as label names.
 func ResolveFieldRef(ref string) (kind, name string) {
-	ref = stripFieldRefMode(ref)
-	if s, ok := strings.CutPrefix(ref, "field:"); ok {
-		return "field", s
-	}
-	if s, ok := strings.CutPrefix(ref, "label:"); ok {
-		return "label", s
-	}
-	if s, ok := strings.CutPrefix(ref, "annotation:"); ok {
-		return "annotation", s
-	}
-	return "label", ref
+	kind, name, _ = ResolveFieldRefMode(ref)
+	return kind, name
 }
 
-func stripFieldRefMode(ref string) string {
+// ResolveFieldRefMode parses a field reference and returns kind, name, and
+// the mode suffix ("raw", "resolved", or "both"). Mode defaults to "both"
+// when no suffix is present.
+func ResolveFieldRefMode(ref string) (kind, name, mode string) {
+	ref, mode = splitFieldRefMode(ref)
+	if s, ok := strings.CutPrefix(ref, "field:"); ok {
+		return "field", s, mode
+	}
+	if s, ok := strings.CutPrefix(ref, "label:"); ok {
+		return "label", s, mode
+	}
+	if s, ok := strings.CutPrefix(ref, "annotation:"); ok {
+		return "annotation", s, mode
+	}
+	return "label", ref, mode
+}
+
+func splitFieldRefMode(ref string) (rest, mode string) {
 	lastColon := strings.LastIndex(ref, ":")
 	if lastColon <= 0 {
-		return ref
+		return ref, "both"
 	}
-	mode := ref[lastColon+1:]
-	if _, ok := fieldRefModes[mode]; ok {
-		return ref[:lastColon]
+	suffix := ref[lastColon+1:]
+	if _, ok := fieldRefModes[suffix]; ok {
+		return ref[:lastColon], suffix
 	}
-	return ref
+	return ref, "both"
 }
 
 // defaultOrder returns the default sort direction for a field reference.

@@ -37,6 +37,7 @@ function matchesFilter(alert: Alert, f: FilterState): boolean {
   }
 
   if (f.showAll) return true;
+  if (alert.hiddenBy && alert.hiddenBy.length > 0) return false;
   if (f.severity !== 'all' && alert.severity !== f.severity) return false;
   if (f.source !== 'all' && alert.source !== f.source) return false;
   if (!f.showSilenced && alert.silencedBy?.length > 0) return false;

@@ -3,11 +3,10 @@ package silence
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
+	"foghorn/internal/duration"
 	"foghorn/internal/model"
 	"foghorn/internal/provider"
 )
@@ -81,57 +80,19 @@ func (m *Manager) Unsilence(ctx context.Context, source, silenceID string) error
 	return p.Unsilence(ctx, silenceID)
 }
 
-func (m *Manager) resolve(source, duration string) (provider.Provider, time.Duration, error) {
+func (m *Manager) resolve(source, durationStr string) (provider.Provider, time.Duration, error) {
 	p, ok := m.providers[source]
 	if !ok {
 		return nil, 0, fmt.Errorf("no provider registered for source %q", source)
 	}
-	dur, err := parseDuration(duration)
+	dur, err := duration.Parse(durationStr)
 	if err != nil {
-		return nil, 0, fmt.Errorf("invalid duration %q: %w", duration, err)
+		return nil, 0, fmt.Errorf("invalid duration %q: %w", durationStr, err)
+	}
+	if dur <= 0 {
+		return nil, 0, fmt.Errorf("invalid duration %q: must be positive", durationStr)
 	}
 	return p, dur, nil
-}
-
-// leadingWeekDay matches a leading week or day component (e.g. "1w", "3d"),
-// which the standard library's time.ParseDuration does not understand.
-var leadingWeekDay = regexp.MustCompile(`^\s*(\d+)([wd])`)
-
-// parseDuration extends time.ParseDuration with week ("w") and day ("d") units
-// so the backend accepts the same grammar the UI offers (e.g. "3d", "1w2d3h").
-// Leading week/day components are folded into hours; the remainder is handed to
-// the standard parser, preserving its support for h/m/s/ms and composite values.
-func parseDuration(s string) (time.Duration, error) {
-	rest := strings.TrimSpace(s)
-	var extra time.Duration
-	for {
-		m := leadingWeekDay.FindStringSubmatch(rest)
-		if m == nil {
-			break
-		}
-		n, err := strconv.Atoi(m[1])
-		if err != nil {
-			return 0, err
-		}
-		unit := 24 * time.Hour
-		if m[2] == "w" {
-			unit = 7 * 24 * time.Hour
-		}
-		extra += time.Duration(n) * unit
-		rest = strings.TrimSpace(rest[len(m[0]):])
-	}
-	if rest == "" {
-		if extra == 0 {
-			// No week/day components and nothing left: mirror stdlib's error.
-			return time.ParseDuration(strings.TrimSpace(s))
-		}
-		return extra, nil
-	}
-	d, err := time.ParseDuration(rest)
-	if err != nil {
-		return 0, err
-	}
-	return extra + d, nil
 }
 
 func resolveCreatedBy(createdBy, fallback string) string {

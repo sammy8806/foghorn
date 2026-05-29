@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"foghorn/internal/duration"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -156,6 +158,20 @@ func validate(cfg *Config) error {
 	}
 	if cfg.UI.PopupFollowCursor == nil {
 		cfg.UI.PopupFollowCursor = ptrTo(true)
+	}
+	for i := range cfg.Hide {
+		rule := &cfg.Hide[i]
+		if len(rule.Matchers) == 0 {
+			return fmt.Errorf("hide[%d]: at least one matcher is required", i)
+		}
+		parsed, err := duration.Parse(rule.MinAge)
+		if err != nil {
+			return fmt.Errorf("hide[%d] min_age: invalid duration %q: %w", i, rule.MinAge, err)
+		}
+		if parsed < 0 {
+			return fmt.Errorf("hide[%d] min_age: %q must be non-negative", i, rule.MinAge)
+		}
+		rule.ParsedMinAge = parsed
 	}
 	return nil
 }

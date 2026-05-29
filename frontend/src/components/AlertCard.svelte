@@ -14,6 +14,14 @@
     return fieldNameFromRef(spec);
   }
 
+  // hasRefPrefix returns true when a config-supplied ref already carries an
+  // explicit kind prefix (field:/label:/annotation:). Used so visible_labels
+  // and visible_annotations can hold cross-kind refs like `field:hiddenBy`
+  // without being silently coerced into the loop's default kind.
+  function hasRefPrefix(spec: string): boolean {
+    return spec.startsWith('field:') || spec.startsWith('label:') || spec.startsWith('annotation:');
+  }
+
   $: visibleLabels = $verbose
     ? Object.keys(alert.labels || {})
     : (config.visible_labels || []).filter(spec => {
@@ -255,6 +263,9 @@
     {#if alert.inhibitedBy?.length > 0}
       <span class="badge badge-inhibited">inhibited</span>
     {/if}
+    {#if alert.hiddenBy?.length}
+      <span class="badge badge-hidden" title={`Hidden by rule(s): ${alert.hiddenBy.join(', ')}`}>hidden</span>
+    {/if}
     {#each matchedBadges as badgeRule}
       <span class="badge badge-custom" title={`${fieldNameFromRef(badgeRule.field)} matches ${badgeRule.equals.join(', ')}`}>{badgeRule.label}</span>
     {/each}
@@ -267,7 +278,7 @@
     <div class="alert-body">
       {#each betterStackVisibleAnnotations as key}
         {@const annotationName = fieldNameFromRef(key)}
-        {@const annotationDisplay = resolveAlertFieldDisplay(alert, key.startsWith('annotation:') ? key : `annotation:${key}`)}
+        {@const annotationDisplay = resolveAlertFieldDisplay(alert, hasRefPrefix(key) ? key : `annotation:${key}`)}
         {#if annotationDisplay?.text}
           {#if annotationName === 'comments'}
             <div class="comments-section">
@@ -338,7 +349,7 @@
       <div class="label-chips">
         {#each visibleLabels as spec}
           {@const label = labelName(spec)}
-          {@const labelDisplay = resolveAlertFieldDisplay(alert, spec.startsWith('label:') ? spec : `label:${spec}`)}
+          {@const labelDisplay = resolveAlertFieldDisplay(alert, hasRefPrefix(spec) ? spec : `label:${spec}`)}
           {#if labelDisplay?.text}
             <span class="chip">
               {#if labelDisplay.mode === 'both' && labelDisplay.raw && labelDisplay.resolved && labelDisplay.raw !== labelDisplay.resolved}
@@ -365,6 +376,9 @@
           {/if}
           {#if alert.inhibitedBy?.length > 0}
             <span class="meta-item"><strong>inhibitedBy:</strong> {alert.inhibitedBy.join(', ')}</span>
+          {/if}
+          {#if alert.hiddenBy?.length}
+            <span class="meta-item"><strong>hiddenBy:</strong> {alert.hiddenBy.join(', ')}</span>
           {/if}
           {#if alert.receivers?.length > 0}
             <span class="meta-item"><strong>receivers:</strong> {alert.receivers.join(', ')}</span>
@@ -532,6 +546,7 @@
   }
   .badge-silenced { background: #334155; color: #94a3b8; }
   .badge-inhibited { background: #292524; color: #a8a29e; }
+  .badge-hidden { background: #3f3f46; color: #d4d4d8; }
   .badge-custom {
     background: #0f766e;
     color: #ccfbf1;

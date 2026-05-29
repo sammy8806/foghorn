@@ -173,6 +173,26 @@ export namespace config {
 		    return a;
 		}
 	}
+	export class HideRule {
+	    Name: string;
+	    Matchers: string[];
+	    Sources: string[];
+	    MinAge: string;
+	    ParsedMinAge: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HideRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Matchers = source["Matchers"];
+	        this.Sources = source["Sources"];
+	        this.MinAge = source["MinAge"];
+	        this.ParsedMinAge = source["ParsedMinAge"];
+	    }
+	}
 	export class ResolverConfig {
 	    Name: string;
 	    Field: string;
@@ -463,6 +483,7 @@ export namespace config {
 	    Notifications: NotificationsConfig;
 	    Actions: ActionConfig[];
 	    Resolvers: ResolverConfig[];
+	    Hide: HideRule[];
 	    UI: UIConfig;
 	
 	    static createFrom(source: any = {}) {
@@ -478,6 +499,7 @@ export namespace config {
 	        this.Notifications = this.convertValues(source["Notifications"], NotificationsConfig);
 	        this.Actions = this.convertValues(source["Actions"], ActionConfig);
 	        this.Resolvers = this.convertValues(source["Resolvers"], ResolverConfig);
+	        this.Hide = this.convertValues(source["Hide"], HideRule);
 	        this.UI = this.convertValues(source["UI"], UIConfig);
 	    }
 	
@@ -499,6 +521,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 	
 	
 	export class SortCriterion {
@@ -733,6 +756,7 @@ export namespace model {
 	    silences?: SilenceInfo[];
 	    inhibitedBy: string[];
 	    receivers: string[];
+	    hiddenBy?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Alert(source);
@@ -758,6 +782,7 @@ export namespace model {
 	        this.silences = this.convertValues(source["silences"], SilenceInfo);
 	        this.inhibitedBy = source["inhibitedBy"];
 	        this.receivers = source["receivers"];
+	        this.hiddenBy = source["hiddenBy"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
