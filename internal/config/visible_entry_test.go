@@ -56,3 +56,22 @@ func TestVisibleEntryUnmarshalMapping(t *testing.T) {
 		t.Errorf("entry[1] = %#v", entries[1])
 	}
 }
+
+func TestVisibleEntryStyleScalar(t *testing.T) {
+	yamlData := `
+- source: description
+  style: "pull, danger"
+- source: link
+  style: info
+`
+	var entries []VisibleEntry
+	if err := yaml.Unmarshal([]byte(yamlData), &entries); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(entries[0].Style) != 2 || entries[0].Style[0] != StylePull || entries[0].Style[1] != StyleDanger {
+		t.Errorf("entry[0].Style = %#v, want [pull danger]", entries[0].Style)
+	}
+	if len(entries[1].Style) != 1 || entries[1].Style[0] != StyleInfo {
+		t.Errorf("entry[1].Style = %#v, want [info]", entries[1].Style)
+	}
+}
