@@ -76,8 +76,8 @@ type SortCriterion struct {
 // NormalizedDisplayConfig is what the frontend receives — sort_by is always a
 // resolved []SortCriterion regardless of how it was written in the config file.
 type NormalizedDisplayConfig struct {
-	VisibleLabels          []string            `json:"visible_labels"`
-	VisibleAnnotations     []string            `json:"visible_annotations"`
+	VisibleLabels          []VisibleEntry      `json:"visible_labels"`
+	VisibleAnnotations     []VisibleEntry      `json:"visible_annotations"`
 	SubtitleAnnotations    []string            `json:"subtitle_annotations"`
 	GroupBy                []string            `json:"group_by"`
 	GroupByOverrideKeyMode string              `json:"group_by_override_key_mode"`
@@ -102,8 +102,8 @@ type BadgeRule struct {
 }
 
 type DisplayConfig struct {
-	VisibleLabels          []string            `yaml:"visible_labels" json:"visible_labels"`
-	VisibleAnnotations     []string            `yaml:"visible_annotations" json:"visible_annotations"`
+	VisibleLabels          []VisibleEntry      `yaml:"visible_labels" json:"visible_labels"`
+	VisibleAnnotations     []VisibleEntry      `yaml:"visible_annotations" json:"visible_annotations"`
 	SubtitleAnnotations    []string            `yaml:"subtitle_annotations" json:"subtitle_annotations"`
 	GroupBy                []string            `yaml:"group_by" json:"group_by"`
 	GroupByOverrideKeyMode string              `yaml:"group_by_override_key_mode" json:"group_by_override_key_mode"`
@@ -127,6 +127,21 @@ func (d *DisplayConfig) Normalize() NormalizedDisplayConfig {
 		Badges:                 d.Badges,
 		SortBy:                 d.ParsedSortBy(),
 	}
+}
+
+// finalizeVisibleEntries validates and sorts the visible_annotations and
+// visible_labels lists in place. Called from validate() at config load time so
+// downstream consumers see normalized, ordered entries.
+func (d *DisplayConfig) finalizeVisibleEntries() error {
+	if err := validateVisibleEntries("display.visible_annotations", d.VisibleAnnotations); err != nil {
+		return err
+	}
+	if err := validateVisibleEntries("display.visible_labels", d.VisibleLabels); err != nil {
+		return err
+	}
+	sortVisibleEntries(d.VisibleAnnotations)
+	sortVisibleEntries(d.VisibleLabels)
+	return nil
 }
 
 func (d *DisplayConfig) OverrideKeyMode() string {

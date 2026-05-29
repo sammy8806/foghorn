@@ -173,6 +173,9 @@ func validate(cfg *Config) error {
 		}
 		rule.ParsedMinAge = parsed
 	}
+	if err := cfg.Display.finalizeVisibleEntries(); err != nil {
+		return err
+	}
 	return nil
 }
 
