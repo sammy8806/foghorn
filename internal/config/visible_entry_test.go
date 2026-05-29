@@ -120,3 +120,25 @@ func TestValidateVisibleEntriesAllValid(t *testing.T) {
 		t.Errorf("expected no error, got: %v", err)
 	}
 }
+
+func TestSortVisibleEntries(t *testing.T) {
+	entries := []VisibleEntry{
+		{Source: "a", Order: -5},
+		{Source: "b"},
+		{Source: "c"},
+		{Source: "d", Order: 5},
+		{Source: "e"},
+		{Source: "f", Order: -5},
+	}
+	sortVisibleEntries(entries)
+	got := make([]string, len(entries))
+	for i, e := range entries {
+		got[i] = e.Source
+	}
+	want := []string{"a", "f", "b", "c", "e", "d"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("sorted order = %v, want %v", got, want)
+		}
+	}
+}

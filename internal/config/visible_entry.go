@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -77,6 +78,15 @@ func validateVisibleEntries(field string, entries []VisibleEntry) error {
 		}
 	}
 	return nil
+}
+
+// sortVisibleEntries sorts in place by Order ascending, with original list
+// position as the stable tiebreaker. Bare strings (Order == 0) keep their
+// relative order; entries with negative Order float above, positive sink below.
+func sortVisibleEntries(entries []VisibleEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].Order < entries[j].Order
+	})
 }
 
 // styleTokens is a custom YAML adapter that accepts either a comma-separated
