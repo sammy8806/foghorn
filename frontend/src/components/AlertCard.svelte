@@ -31,14 +31,28 @@
     return [base, ...styles.map(s => `${base}--${s}`)].join(' ');
   }
 
+  // verboseEntries powers "Show all": it reveals every field without discarding
+  // the configured presentation. The configured entries are kept verbatim (in
+  // their backend-sorted order, with their label/style/order overrides and any
+  // synthetic refs like field:hiddenBy intact), and the alert's remaining keys
+  // are appended as bare entries. Verbose augments the config, it doesn't
+  // replace it.
+  function verboseEntries(configured: VisibleEntry[], alertKeys: string[]): VisibleEntry[] {
+    const covered = new Set(configured.map(e => labelName(e.source)));
+    const extras = alertKeys
+      .filter(k => !covered.has(k))
+      .map(k => ({ source: k, order: 0 }));
+    return [...configured, ...extras];
+  }
+
   $: visibleLabels = $verbose
-    ? Object.keys(alert.labels || {}).map(k => ({ source: k, order: 0 }))
+    ? verboseEntries(config.visible_labels || [], Object.keys(alert.labels || {}))
     : (config.visible_labels || []).filter(entry => {
         const name = labelName(entry.source);
         return name !== 'alertname' && name !== 'severity';
       });
   $: visibleAnnotations = $verbose
-    ? Object.keys(alert.annotations || {}).map(k => ({ source: k, order: 0 }))
+    ? verboseEntries(config.visible_annotations || [], Object.keys(alert.annotations || {}))
     : (config.visible_annotations || []);
   $: betterStackVisibleAnnotations = (() => {
     const entries = [...visibleAnnotations];
