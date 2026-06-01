@@ -95,6 +95,36 @@ display:
     - description
     - summary
 
+  # visible_labels and visible_annotations accept either a bare field ref or a
+  # mapping. The bare form (just a string) is shorthand for `{source: <string>}`.
+  # The mapping form supports:
+  #   source  required. Same field-ref grammar as everywhere else (label name,
+  #           or field:/label:/annotation: prefix with optional :raw/:resolved/:both).
+  #   order   optional integer. Entries sort by order ascending; ties keep
+  #           original list order. Negative values float above bare entries,
+  #           positive values sink below. Defaults to 0.
+  #   label   optional display label override. Defaults to the field name.
+  #   style   optional visual treatment(s). One of, or a list of:
+  #             muted    de-emphasized text
+  #             pull     featured block (annotations only; no-op on label chips)
+  #             danger   red accent
+  #             warning  amber accent
+  #             info     blue accent
+  #           Accepts a scalar ("pull, danger") or a sequence ([pull, danger]).
+  #
+  # Example mixing both forms:
+  #   visible_annotations:
+  #     - source: field:hiddenBy
+  #       order: -5
+  #       label: Hidden By
+  #       style: muted
+  #     - summary
+  #     - link
+  #     - source: description
+  #       order: 5
+  #       label: Description
+  #       style: [pull, danger]
+
   visible_labels:
     - cluster:raw
     - namespace
@@ -116,7 +146,9 @@ display:
     # Surface the matching hide rule(s) like a regular annotation when an
     # alert is revealed via "Show all". Uses the field:* prefix because
     # hiddenBy is a synthetic alert field, not an actual annotation.
-    # - field:hiddenBy
+    # - source: field:hiddenBy
+    #   label: Hidden By
+    #   style: muted
 
   group_by:
     - field:source
