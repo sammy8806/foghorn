@@ -116,8 +116,54 @@ jobs:
           path: build/bin/foghorn-*-x86_64.AppImage
           if-no-files-found: error
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> "$env:GITHUB_PATH"
+
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          echo "$(go env GOPATH)\bin" >> "$env:GITHUB_PATH"
+
+      - name: Resolve FOGHORN_VERSION
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" && "$REF" == refs/tags/v* ]]; then
+            echo "FOGHORN_VERSION=${REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "FOGHORN_VERSION=$DISPATCH_VERSION" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build installer
+        run: ./scripts/build-windows.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foghorn-windows-installer
+          path: build/bin/foghorn-*-amd64-installer.exe
+          if-no-files-found: error
+
   release:
-    needs: [build-macos, build-linux]
+    needs: [build-macos, build-linux, build-windows]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -146,6 +192,7 @@ jobs:
           ls -lah artifacts
           test -n "$(find artifacts -maxdepth 1 -name 'foghorn-*-universal.dmg' -print -quit)"
           test -n "$(find artifacts -maxdepth 1 -name 'foghorn-*-x86_64.AppImage' -print -quit)"
+          test -n "$(find artifacts -maxdepth 1 -name 'foghorn-*-amd64-installer.exe' -print -quit)"
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -153,6 +200,7 @@ jobs:
           files: |
             artifacts/foghorn-*-universal.dmg
             artifacts/foghorn-*-x86_64.AppImage
+            artifacts/foghorn-*-amd64-installer.exe
           overwrite_files: true
           fail_on_unmatched_files: true
           generate_release_notes: true

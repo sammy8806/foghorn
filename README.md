@@ -120,24 +120,41 @@ If `dnf` prompts about an unrelated third-party repository GPG key during prereq
 
 ### Windows
 
-Windows is theoretically supported via the standard Wails build:
+For a bare executable, use the standard Wails build:
 
 ```powershell
 wails build
 ```
 
-The Windows executable is written to `build\bin\foghorn.exe`. Windows builds are not regularly tested.
+The Windows executable is written to `build\bin\foghorn.exe`.
+
+To build a distributable NSIS installer, you need [NSIS](https://nsis.sourceforge.io/) on your `PATH` in addition to the standard Wails prerequisites (Go, Node.js/npm, the Wails CLI, and the WebView2 runtime — run `wails doctor` to check). NSIS installs to `C:\Program Files (x86)\NSIS`, which neither installer below adds to `PATH` automatically:
+
+```powershell
+# Install NSIS (pick one)
+winget install NSIS.NSIS     # winget, built into Windows 11
+choco install nsis -y        # or chocolatey
+
+# Add it to PATH for your user (open a fresh terminal afterwards)
+[Environment]::SetEnvironmentVariable(
+  "Path",
+  [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\Program Files (x86)\NSIS",
+  "User")
+```
+
+Then build the installer:
+
+```powershell
+./scripts/build-windows.ps1
+```
+
+The installer is written to `build\bin\foghorn-<version>-amd64-installer.exe`. It bundles the binary and bootstraps the WebView2 runtime on the target machine. The script resolves its version the same way as `scripts/version.sh` (prefers `FOGHORN_VERSION`, then `git describe`, then `dev`).
 
 ### Release builds
 
-Local release artifacts use `scripts/version.sh` for their version string. It prefers `FOGHORN_VERSION`, then `git describe --tags --always --dirty`, then `dev`.
+Local release artifacts use `scripts/version.sh` (or, on Windows, `scripts/build-windows.ps1`) for their version string. They prefer `FOGHORN_VERSION`, then `git describe --tags --always --dirty`, then `dev`.
 
-Maintainers can use the release workflow to build the macOS DMG and Linux AppImage from tags or manual dispatch.
-```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-$env:Path = (go env GOPATH) + ";$env:Path"
-wails build
-```
+Maintainers can use the release workflow to build the macOS DMG, Linux AppImage, and Windows installer from tags or manual dispatch. Pushing a `v*` tag (or running the workflow manually) builds all three and publishes them to a GitHub release.
 
 Windows builds include the native system tray. Closing the window hides it; use the tray menu to show or hide the window, or to quit Foghorn.
 
