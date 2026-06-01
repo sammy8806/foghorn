@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Alert, DisplayConfig, SilenceInfo } from '../stores/alerts';
+  import type { Alert, DisplayConfig, SilenceInfo, VisibleEntry } from '../stores/alerts';
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
@@ -22,21 +22,31 @@
     return spec.startsWith('field:') || spec.startsWith('label:') || spec.startsWith('annotation:');
   }
 
+  function entryLabel(entry: VisibleEntry, fallback: string): string {
+    return entry.label && entry.label.length > 0 ? entry.label : fallback;
+  }
+
+  function entryClasses(base: string, entry: VisibleEntry): string {
+    const styles = entry.style || [];
+    return [base, ...styles.map(s => `${base}--${s}`)].join(' ');
+  }
+
   $: visibleLabels = $verbose
-    ? Object.keys(alert.labels || {})
-    : (config.visible_labels || []).filter(spec => {
-        const name = labelName(spec);
+    ? Object.keys(alert.labels || {}).map(k => ({ source: k, order: 0 }))
+    : (config.visible_labels || []).filter(entry => {
+        const name = labelName(entry.source);
         return name !== 'alertname' && name !== 'severity';
       });
   $: visibleAnnotations = $verbose
-    ? Object.keys(alert.annotations || {})
+    ? Object.keys(alert.annotations || {}).map(k => ({ source: k, order: 0 }))
     : (config.visible_annotations || []);
   $: betterStackVisibleAnnotations = (() => {
-    const names = [...visibleAnnotations];
-    if (alert.sourceType === 'betterstack' && alert.annotations?.comments && !names.includes('comments')) {
-      names.push('comments');
+    const entries = [...visibleAnnotations];
+    const hasComments = entries.some(e => labelName(e.source) === 'comments');
+    if (alert.sourceType === 'betterstack' && alert.annotations?.comments && !hasComments) {
+      entries.push({ source: 'comments', order: 0 });
     }
-    return names;
+    return entries;
   })();
   $: matchedBadges = (config.badges || []).filter(rule => alertMatchesBadgeRule(alert, rule));
 
@@ -276,13 +286,16 @@
 
   {#if expanded}
     <div class="alert-body">
-      {#each betterStackVisibleAnnotations as key}
-        {@const annotationName = fieldNameFromRef(key)}
-        {@const annotationDisplay = resolveAlertFieldDisplay(alert, hasRefPrefix(key) ? key : `annotation:${key}`)}
+      {#each betterStackVisibleAnnotations as entry}
+        {@const ref = hasRefPrefix(entry.source) ? entry.source : `annotation:${entry.source}`}
+        {@const annotationName = fieldNameFromRef(ref)}
+        {@const annotationDisplay = resolveAlertFieldDisplay(alert, ref)}
+        {@const displayLabel = entryLabel(entry, annotationName)}
+        {@const annotationClass = entryClasses('annotation', entry)}
         {#if annotationDisplay?.text}
           {#if annotationName === 'comments'}
             <div class="comments-section">
-              <strong class="comments-label">comments:</strong>
+              <strong class="comments-label">{displayLabel}:</strong>
               {#each parseCommentBlocks(annotationDisplay.text) as comment}
                 <div class="comment-card">
                   {#if comment.author}
@@ -304,7 +317,7 @@
               {/each}
             </div>
           {:else}
-            <p class="annotation"><strong>{annotationName}:</strong>
+            <p class={annotationClass}><strong>{displayLabel}:</strong>
               {#if annotationDisplay.text.match(/^https?:\/\//)}
                 <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
               {:else}
@@ -347,11 +360,13 @@
       {/if}
 
       <div class="label-chips">
-        {#each visibleLabels as spec}
-          {@const label = labelName(spec)}
-          {@const labelDisplay = resolveAlertFieldDisplay(alert, hasRefPrefix(spec) ? spec : `label:${spec}`)}
+        {#each visibleLabels as entry}
+          {@const ref = hasRefPrefix(entry.source) ? entry.source : `label:${entry.source}`}
+          {@const label = entryLabel(entry, labelName(entry.source))}
+          {@const labelDisplay = resolveAlertFieldDisplay(alert, ref)}
+          {@const chipClass = entryClasses('chip', entry)}
           {#if labelDisplay?.text}
-            <span class="chip">
+            <span class={chipClass}>
               {#if labelDisplay.mode === 'both' && labelDisplay.raw && labelDisplay.resolved && labelDisplay.raw !== labelDisplay.resolved}
                 <span>{label}={labelDisplay.raw}</span>
                 <span class="chip-resolved">({labelDisplay.resolved})</span>
@@ -565,6 +580,24 @@
     color: #cbd5e1;
     margin: 2px 0;
   }
+  .annotation--muted { color: #64748b; font-size: 10px; }
+  .annotation--pull {
+    font-size: 12px;
+    padding: 5px 8px;
+    border-left: 3px solid #334155;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
+    margin: 4px 0;
+  }
+  .annotation--danger { border-left-color: #ef4444; color: #ef4444; }
+  .annotation--warning { border-left-color: #f59e0b; color: #f59e0b; }
+  .annotation--info { border-left-color: #3b82f6; color: #3b82f6; }
+
+  .chip--muted { opacity: 0.65; }
+  .chip--danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+  .chip--warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+  .chip--info { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+  /* .chip--pull is intentionally not styled — pull is an annotation-only treatment. */
   .comments-section {
     margin: 4px 0;
   }
