@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"foghorn/internal/config"
+	"foghorn/internal/model"
 	"foghorn/internal/notify"
 	"foghorn/internal/poll"
 	"foghorn/internal/provider"
@@ -29,7 +30,13 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// version is overridden at build time via -ldflags "-X main.version=<version>".
+// Defaults to "dev" for plain `go run` / `wails dev` / unconfigured local builds.
+var version = "dev"
+
 func main() {
+	log.Printf("foghorn %s starting", version)
+
 	cfgPath := configPath()
 	config.MigrateLegacyPath(cfgPath)
 	cfg, err := config.Load(cfgPath)
@@ -69,6 +76,19 @@ func main() {
 		}
 	}
 
+	// showWindow makes the popup visible and is shared by the tray toggle's
+	// "show" branch and the About menu item.
+	showWindow := func() {
+		if app.ctx == nil {
+			return
+		}
+		setDockIconVisible(true)
+		wailsruntime.WindowShow(app.ctx)
+		wailsruntime.WindowSetAlwaysOnTop(app.ctx, *cfg.UI.AlwaysOnTop)
+		windowVisible.Store(true)
+		wailsruntime.EventsEmit(app.ctx, "popup:opening")
+	}
+
 	trayMgr := tray.NewManager(
 		func() {
 			if app.ctx == nil {
@@ -77,14 +97,19 @@ func main() {
 			if windowVisible.Load() {
 				wailsruntime.WindowHide(app.ctx)
 				windowVisible.Store(false)
+				setDockIconVisible(false)
 			} else {
-				wailsruntime.WindowShow(app.ctx)
-				wailsruntime.WindowSetAlwaysOnTop(app.ctx, true)
-				windowVisible.Store(true)
-				wailsruntime.EventsEmit(app.ctx, "popup:opening")
+				showWindow()
 			}
 		},
 		requestQuit,
+		func() {
+			if app.ctx == nil {
+				return
+			}
+			showWindow()
+			wailsruntime.EventsEmit(app.ctx, "about:show")
+		},
 	)
 
 	// Handle Ctrl+C / SIGTERM when running from the CLI. Wails installs its
@@ -95,10 +120,16 @@ func main() {
 	// here we ensure a Ctrl+C actually terminates the process.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
-		<-sigCh
-		signal.Stop(sigCh)
-		requestQuit()
+		for signalCount := 1; ; signalCount++ {
+			<-sigCh
+			if signalCount == 1 {
+				requestQuit()
+				continue
+			}
+			os.Exit(1)
+		}
 	}()
 
 	if err := wails.Run(&options.App{
@@ -115,6 +146,7 @@ func main() {
 		},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
+			setDockIconVisible(!tray.StartHiddenByDefault())
 
 			restartRuntime := func(nextCfg *config.Config) {
 				runtimeMu.Lock()
@@ -150,8 +182,9 @@ func main() {
 							return
 						case event := <-localDiffCh:
 							trayMgr.UpdateState(store.SeverityBreakdown())
-							localNotifier.OnDiff(event.Diff)
-							wailsruntime.EventsEmit(ctx, "alerts:updated", app.ResolveDiff(event.Diff))
+							resolved := app.resolveDiff(localCtx, event.Diff)
+							localNotifier.OnDiff(filterHiddenFromDiff(resolved))
+							wailsruntime.EventsEmit(ctx, "alerts:updated", resolved)
 						}
 					}
 				}(bgCtx, diffCh, notifier)
@@ -177,6 +210,7 @@ func main() {
 			}
 			wailsruntime.WindowHide(ctx)
 			windowVisible.Store(false)
+			setDockIconVisible(false)
 			return true
 		},
 		OnShutdown: func(ctx context.Context) {
@@ -237,6 +271,30 @@ func buildProviders(sources []config.SourceConfig) map[string]provider.Provider 
 		}
 	}
 	return providers
+}
+
+// filterHiddenFromDiff drops alerts tagged with HiddenBy from each diff
+// bucket. Used so notifications skip alerts a hide rule has suppressed.
+func filterHiddenFromDiff(diff model.Diff) model.Diff {
+	return model.Diff{
+		New:      dropHidden(diff.New),
+		Resolved: dropHidden(diff.Resolved),
+		Changed:  dropHidden(diff.Changed),
+	}
+}
+
+func dropHidden(alerts []model.Alert) []model.Alert {
+	if len(alerts) == 0 {
+		return alerts
+	}
+	out := alerts[:0:0]
+	for _, alert := range alerts {
+		if len(alert.HiddenBy) > 0 {
+			continue
+		}
+		out = append(out, alert)
+	}
+	return out
 }
 
 func sourceNames(sources []config.SourceConfig) []string {

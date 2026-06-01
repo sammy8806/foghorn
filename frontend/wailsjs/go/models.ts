@@ -109,14 +109,32 @@ export namespace config {
 	        this.TeamID = source["TeamID"];
 	    }
 	}
+	export class SilenceEditorConfig {
+	    always_visible_matchers?: string[];
+	    collapse_matchers?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SilenceEditorConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.always_visible_matchers = source["always_visible_matchers"];
+	        this.collapse_matchers = source["collapse_matchers"];
+	    }
+	}
 	export class UIConfig {
 	    theme: string;
 	    popup_width: number;
 	    popup_height: number;
+	    popup_position: string;
+	    always_on_top?: boolean;
+	    popup_follow_cursor?: boolean;
 	    show_resolved: boolean;
 	    show_silenced: boolean;
 	    default_created_by: string;
 	    idle_image: string;
+	    silence_editor: SilenceEditorConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new UIConfig(source);
@@ -127,10 +145,52 @@ export namespace config {
 	        this.theme = source["theme"];
 	        this.popup_width = source["popup_width"];
 	        this.popup_height = source["popup_height"];
+	        this.popup_position = source["popup_position"];
+	        this.always_on_top = source["always_on_top"];
+	        this.popup_follow_cursor = source["popup_follow_cursor"];
 	        this.show_resolved = source["show_resolved"];
 	        this.show_silenced = source["show_silenced"];
 	        this.default_created_by = source["default_created_by"];
 	        this.idle_image = source["idle_image"];
+	        this.silence_editor = this.convertValues(source["silence_editor"], SilenceEditorConfig);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HideRule {
+	    Name: string;
+	    Matchers: string[];
+	    Sources: string[];
+	    MinAge: string;
+	    ParsedMinAge: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HideRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Matchers = source["Matchers"];
+	        this.Sources = source["Sources"];
+	        this.MinAge = source["MinAge"];
+	        this.ParsedMinAge = source["ParsedMinAge"];
 	    }
 	}
 	export class ResolverConfig {
@@ -279,9 +339,27 @@ export namespace config {
 	        this.source_types = source["source_types"];
 	    }
 	}
+	export class VisibleEntry {
+	    source: string;
+	    order: number;
+	    label?: string;
+	    style?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new VisibleEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.order = source["order"];
+	        this.label = source["label"];
+	        this.style = source["style"];
+	    }
+	}
 	export class DisplayConfig {
-	    visible_labels: string[];
-	    visible_annotations: string[];
+	    visible_labels: VisibleEntry[];
+	    visible_annotations: VisibleEntry[];
 	    subtitle_annotations: string[];
 	    group_by: string[];
 	    group_by_override_key_mode: string;
@@ -295,8 +373,8 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.visible_labels = source["visible_labels"];
-	        this.visible_annotations = source["visible_annotations"];
+	        this.visible_labels = this.convertValues(source["visible_labels"], VisibleEntry);
+	        this.visible_annotations = this.convertValues(source["visible_annotations"], VisibleEntry);
 	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
@@ -423,6 +501,7 @@ export namespace config {
 	    Notifications: NotificationsConfig;
 	    Actions: ActionConfig[];
 	    Resolvers: ResolverConfig[];
+	    Hide: HideRule[];
 	    UI: UIConfig;
 	
 	    static createFrom(source: any = {}) {
@@ -438,6 +517,7 @@ export namespace config {
 	        this.Notifications = this.convertValues(source["Notifications"], NotificationsConfig);
 	        this.Actions = this.convertValues(source["Actions"], ActionConfig);
 	        this.Resolvers = this.convertValues(source["Resolvers"], ResolverConfig);
+	        this.Hide = this.convertValues(source["Hide"], HideRule);
 	        this.UI = this.convertValues(source["UI"], UIConfig);
 	    }
 	
@@ -461,6 +541,7 @@ export namespace config {
 	}
 	
 	
+	
 	export class SortCriterion {
 	    field: string;
 	    order: string;
@@ -476,8 +557,8 @@ export namespace config {
 	    }
 	}
 	export class NormalizedDisplayConfig {
-	    visible_labels: string[];
-	    visible_annotations: string[];
+	    visible_labels: VisibleEntry[];
+	    visible_annotations: VisibleEntry[];
 	    subtitle_annotations: string[];
 	    group_by: string[];
 	    group_by_override_key_mode: string;
@@ -492,8 +573,8 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.visible_labels = source["visible_labels"];
-	        this.visible_annotations = source["visible_annotations"];
+	        this.visible_labels = this.convertValues(source["visible_labels"], VisibleEntry);
+	        this.visible_annotations = this.convertValues(source["visible_annotations"], VisibleEntry);
 	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
@@ -581,6 +662,33 @@ export namespace config {
 	
 	
 	
+	
+	
+
+}
+
+export namespace main {
+	
+	export class AboutInfo {
+	    name: string;
+	    version: string;
+	    description: string;
+	    repoURL: string;
+	    copyright: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AboutInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.version = source["version"];
+	        this.description = source["description"];
+	        this.repoURL = source["repoURL"];
+	        this.copyright = source["copyright"];
+	    }
+	}
 
 }
 
@@ -667,6 +775,7 @@ export namespace model {
 	    silences?: SilenceInfo[];
 	    inhibitedBy: string[];
 	    receivers: string[];
+	    hiddenBy?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Alert(source);
@@ -692,40 +801,7 @@ export namespace model {
 	        this.silences = this.convertValues(source["silences"], SilenceInfo);
 	        this.inhibitedBy = source["inhibitedBy"];
 	        this.receivers = source["receivers"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class Diff {
-	    new: Alert[];
-	    resolved: Alert[];
-	    changed: Alert[];
-	
-	    static createFrom(source: any = {}) {
-	        return new Diff(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.new = this.convertValues(source["new"], Alert);
-	        this.resolved = this.convertValues(source["resolved"], Alert);
-	        this.changed = this.convertValues(source["changed"], Alert);
+	        this.hiddenBy = source["hiddenBy"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

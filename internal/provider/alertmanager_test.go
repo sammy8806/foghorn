@@ -132,7 +132,7 @@ func TestAlertmanagerFetchSilences(t *testing.T) {
 	silences := []map[string]interface{}{
 		{
 			"id":        "sil-001",
-			"createdBy": "steve",
+			"createdBy": "operator-a",
 			"comment":   "noisy during maintenance",
 			"startsAt":  "2026-03-31T10:00:00Z",
 			"endsAt":    "2026-03-31T14:00:00Z",
@@ -140,7 +140,7 @@ func TestAlertmanagerFetchSilences(t *testing.T) {
 		},
 		{
 			"id":        "sil-002",
-			"createdBy": "alice",
+			"createdBy": "operator-b",
 			"comment":   "investigating root cause",
 			"startsAt":  "2026-03-31T08:00:00Z",
 			"endsAt":    "2026-03-31T10:00:00Z",
@@ -148,7 +148,7 @@ func TestAlertmanagerFetchSilences(t *testing.T) {
 		},
 		{
 			"id":        "sil-003",
-			"createdBy": "bob",
+			"createdBy": "operator-c",
 			"comment":   "",
 			"startsAt":  "2026-03-31T12:00:00Z",
 			"endsAt":    "2026-03-31T16:00:00Z",
@@ -186,8 +186,8 @@ func TestAlertmanagerFetchSilences(t *testing.T) {
 	if result[0].ID != "sil-001" {
 		t.Errorf("expected first silence ID 'sil-001', got %q", result[0].ID)
 	}
-	if result[0].CreatedBy != "steve" {
-		t.Errorf("expected createdBy 'steve', got %q", result[0].CreatedBy)
+	if result[0].CreatedBy != "operator-a" {
+		t.Errorf("expected createdBy 'operator-a', got %q", result[0].CreatedBy)
 	}
 	if result[0].Comment != "noisy during maintenance" {
 		t.Errorf("expected comment 'noisy during maintenance', got %q", result[0].Comment)
@@ -196,8 +196,8 @@ func TestAlertmanagerFetchSilences(t *testing.T) {
 	if result[1].ID != "sil-003" {
 		t.Errorf("expected second silence ID 'sil-003', got %q", result[1].ID)
 	}
-	if result[1].CreatedBy != "bob" {
-		t.Errorf("expected createdBy 'bob', got %q", result[1].CreatedBy)
+	if result[1].CreatedBy != "operator-c" {
+		t.Errorf("expected createdBy 'operator-c', got %q", result[1].CreatedBy)
 	}
 }
 
@@ -274,7 +274,7 @@ func TestAlertmanagerFetchSilencesParsesMatchers(t *testing.T) {
 	silences := []map[string]interface{}{
 		{
 			"id":        "sil-m",
-			"createdBy": "alice",
+			"createdBy": "operator-a",
 			"comment":   "mixed matchers",
 			"startsAt":  "2026-03-31T10:00:00Z",
 			"endsAt":    "2026-03-31T14:00:00Z",

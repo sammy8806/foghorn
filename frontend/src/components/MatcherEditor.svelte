@@ -4,6 +4,8 @@
 
   export let matchers: Matcher[] = [];
   export let source: string = '';
+  export let revealedAfterIndex: number | null = null;
+  export let revealedCount: number = 0;
 
   type Op = '=' | '!=' | '=~' | '!~';
   const OPS: Op[] = ['=', '!=', '=~', '!~'];
@@ -65,6 +67,11 @@
   function addBlank() {
     matchers = [...matchers, { name: '', value: '', isRegex: false, isEqual: true }];
   }
+
+  function isRevealed(i: number): boolean {
+    if (revealedAfterIndex === null) return false;
+    return i >= revealedAfterIndex && i < revealedAfterIndex + revealedCount;
+  }
 </script>
 
 <div class="matcher-editor">
@@ -72,7 +79,12 @@
     {@const invalidRegex = !regexValid(m)}
     {@const invalidName = !m.name.trim()}
     {@const invalidValue = !m.value}
-    <div class="chip" class:invalid={invalidRegex || invalidName || invalidValue}>
+    {#if revealedAfterIndex !== null && i === revealedAfterIndex}
+      <div class="revealed-separator" aria-hidden="true">
+        <span>· · · more · · ·</span>
+      </div>
+    {/if}
+    <div class="chip" class:invalid={invalidRegex || invalidName || invalidValue} class:was-collapsed={isRevealed(i)}>
       <div class="chip-field name">
         <LabelAutocomplete
           value={m.name}
@@ -109,7 +121,10 @@
       {/if}
     </div>
   {/each}
-  <button class="add" type="button" on:click={addBlank}>+ Add matcher</button>
+  <div class="matcher-footer">
+    <button class="add" type="button" on:click={addBlank}>+ Add matcher</button>
+    <slot name="actions" />
+  </div>
 </div>
 
 <style>
@@ -160,6 +175,12 @@
     color: #f87171;
     font-size: 10px;
   }
+  .matcher-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
   .add {
     align-self: flex-start;
     background: none;
@@ -173,5 +194,34 @@
   .add:hover {
     border-color: #3b82f6;
     color: #e2e8f0;
+  }
+  .revealed-separator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0;
+    user-select: none;
+  }
+  .revealed-separator::before,
+  .revealed-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #334155;
+  }
+  .revealed-separator span {
+    color: #475569;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  @keyframes revealed-fade {
+    0%   { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
+    70%  { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
+    100% { background: #0f172a; box-shadow: none; }
+  }
+
+  .chip.was-collapsed {
+    animation: revealed-fade 2.5s ease-out forwards;
   }
 </style>

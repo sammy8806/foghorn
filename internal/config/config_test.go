@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -71,6 +72,7 @@ ui:
   theme: system
   popup_width: 800
   popup_height: 600
+  popup_position: bottom_left
   show_resolved: false
   show_silenced: true
 `
@@ -99,6 +101,9 @@ ui:
 	}
 	if cfg.UI.PopupWidth != 800 {
 		t.Errorf("expected popup_width 800, got %d", cfg.UI.PopupWidth)
+	}
+	if cfg.UI.PopupPosition != "bottom_left" {
+		t.Errorf("expected popup_position bottom_left, got %q", cfg.UI.PopupPosition)
 	}
 	if cfg.Severities.Default != "info" {
 		t.Fatalf("expected severity default info, got %q", cfg.Severities.Default)
@@ -282,6 +287,53 @@ ui:
 	}
 }
 
+func TestLoadConfigInvalidPopupPositionReportsExpandedValue(t *testing.T) {
+	t.Setenv("FOGHORN_TEST_POPUP_POSITION", " Sideways ")
+
+	yaml := `
+sources:
+  - name: test
+    type: alertmanager
+    url: http://localhost:9093
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  popup_position: ${FOGHORN_TEST_POPUP_POSITION}
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected invalid popup_position config to fail")
+	}
+	msg := err.Error()
+	for _, want := range []string{`ui.popup_position "Sideways"`, `normalized: "sideways"`} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("expected error to contain %q, got %q", want, msg)
+		}
+	}
+}
+
 func TestDefaultEnablesNewAlertNotifications(t *testing.T) {
 	cfg := Default()
 
@@ -296,6 +348,97 @@ func TestDefaultEnablesNewAlertNotifications(t *testing.T) {
 	}
 	if cfg.Notifications.BatchThreshold != 5 {
 		t.Fatalf("expected default batch threshold 5, got %d", cfg.Notifications.BatchThreshold)
+	}
+}
+
+func writeAndLoad(t *testing.T, yamlBody string) *Config {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	return cfg
+}
+
+const minimalSource = `
+sources:
+  - name: test-am
+    type: alertmanager
+    url: http://localhost:9093
+`
+
+func TestSilenceEditorDefaultsWhenAbsent(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource)
+	se := cfg.UI.SilenceEditor
+	if se.AlwaysVisibleMatchers == nil {
+		t.Fatal("always_visible_matchers should be resolved to a non-nil default")
+	}
+	got := *se.AlwaysVisibleMatchers
+	want := []string{"alertname", "cluster", "severity", "pod"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("default whitelist = %v, want %v", got, want)
+	}
+	if se.CollapseMatchers == nil || !(*se.CollapseMatchers) {
+		t.Fatalf("collapse_matchers default = %v, want true", se.CollapseMatchers)
+	}
+}
+
+func TestPopupFollowCursorDefaultsTrue(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource)
+	if cfg.UI.PopupFollowCursor == nil {
+		t.Fatal("popup_follow_cursor should be resolved to a non-nil default")
+	}
+	if !*cfg.UI.PopupFollowCursor {
+		t.Fatalf("popup_follow_cursor default = %v, want true", *cfg.UI.PopupFollowCursor)
+	}
+}
+
+func TestPopupFollowCursorExplicitFalse(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  popup_follow_cursor: false
+`)
+	if cfg.UI.PopupFollowCursor == nil || *cfg.UI.PopupFollowCursor {
+		t.Fatalf("popup_follow_cursor = %v, want false", cfg.UI.PopupFollowCursor)
+	}
+}
+
+func TestSilenceEditorExplicitEmptyWhitelist(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  silence_editor:
+    always_visible_matchers: []
+`)
+	se := cfg.UI.SilenceEditor
+	if se.AlwaysVisibleMatchers == nil {
+		t.Fatal("explicit empty whitelist should stay non-nil (empty), not become default")
+	}
+	if len(*se.AlwaysVisibleMatchers) != 0 {
+		t.Fatalf("explicit empty whitelist = %v, want empty", *se.AlwaysVisibleMatchers)
+	}
+}
+
+func TestSilenceEditorCollapseDisabled(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  silence_editor:
+    collapse_matchers: false
+`)
+	se := cfg.UI.SilenceEditor
+	if se.CollapseMatchers == nil || *se.CollapseMatchers {
+		t.Fatalf("collapse_matchers = %v, want false", se.CollapseMatchers)
+	}
+}
+
+func TestDefaultPopulatesSilenceEditor(t *testing.T) {
+	cfg := Default()
+	if cfg.UI.SilenceEditor.AlwaysVisibleMatchers == nil || cfg.UI.SilenceEditor.CollapseMatchers == nil {
+		t.Fatal("Default() must populate SilenceEditor pointer fields")
 	}
 }
 
@@ -339,5 +482,117 @@ ui:
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected duplicate severity alias config to fail")
+	}
+}
+
+func TestLoadConfigVisibleEntriesMixed(t *testing.T) {
+	yaml := `
+sources:
+  - name: test-am
+    type: alertmanager
+    url: http://localhost:9093
+
+display:
+  visible_annotations:
+    - source: field:hiddenBy
+      order: -5
+      label: Hidden By
+      style: muted
+    - summary
+    - link
+    - source: description
+      order: 5
+      label: Description
+      style: [pull, danger]
+  visible_labels:
+    - cluster:raw
+    - source: namespace
+      style: muted
+  group_by: [cluster]
+  sort_by: severity
+
+ui:
+  popup_position: top_right
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	gotAnnotationSources := make([]string, len(cfg.Display.VisibleAnnotations))
+	for i, e := range cfg.Display.VisibleAnnotations {
+		gotAnnotationSources[i] = e.Source
+	}
+	wantAnnotationSources := []string{"field:hiddenBy", "summary", "link", "description"}
+	if len(gotAnnotationSources) != len(wantAnnotationSources) {
+		t.Fatalf("annotation count: got %d (%v), want %d (%v)", len(gotAnnotationSources), gotAnnotationSources, len(wantAnnotationSources), wantAnnotationSources)
+	}
+	for i := range wantAnnotationSources {
+		if gotAnnotationSources[i] != wantAnnotationSources[i] {
+			t.Fatalf("annotation order = %v, want %v", gotAnnotationSources, wantAnnotationSources)
+		}
+	}
+
+	// The "description" entry should carry the styles set in YAML.
+	descEntry := cfg.Display.VisibleAnnotations[3]
+	if descEntry.Label != "Description" {
+		t.Errorf("description label = %q, want %q", descEntry.Label, "Description")
+	}
+	if len(descEntry.Style) != 2 || descEntry.Style[0] != StylePull || descEntry.Style[1] != StyleDanger {
+		t.Errorf("description style = %#v, want [pull danger]", descEntry.Style)
+	}
+
+	// Labels: cluster:raw is bare (Order 0, list pos 0); namespace is mapping (Order 0, list pos 1).
+	if len(cfg.Display.VisibleLabels) != 2 {
+		t.Fatalf("expected 2 visible labels, got %d", len(cfg.Display.VisibleLabels))
+	}
+	if cfg.Display.VisibleLabels[0].Source != "cluster:raw" {
+		t.Errorf("labels[0].Source = %q, want %q", cfg.Display.VisibleLabels[0].Source, "cluster:raw")
+	}
+	if cfg.Display.VisibleLabels[1].Source != "namespace" || len(cfg.Display.VisibleLabels[1].Style) != 1 || cfg.Display.VisibleLabels[1].Style[0] != StyleMuted {
+		t.Errorf("labels[1] = %#v", cfg.Display.VisibleLabels[1])
+	}
+}
+
+func TestLoadConfigVisibleEntriesUnknownStyle(t *testing.T) {
+	yaml := `
+sources:
+  - name: test-am
+    type: alertmanager
+    url: http://localhost:9093
+
+display:
+  visible_annotations:
+    - summary
+    - source: description
+      style: ominous
+  visible_labels: []
+  group_by: [cluster]
+  sort_by: severity
+
+ui:
+  popup_position: top_right
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected Load() to fail with unknown style, got nil")
+	}
+	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
+		t.Errorf("error missing positional context: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"ominous"`) {
+		t.Errorf("error missing bad token: %v", err)
 	}
 }

@@ -43,7 +43,7 @@ func TestResolveDiffResolvesFrontendPayloads(t *testing.T) {
 		},
 	}, state.New())
 
-	diff := app.ResolveDiff(model.Diff{
+	diff := app.resolveDiff(context.Background(), model.Diff{
 		Resolved: []model.Alert{
 			{
 				ID:     "a1",
@@ -146,5 +146,30 @@ func TestRefreshAlertsRecordsFetchFailures(t *testing.T) {
 	}
 	if health[0].LastPoll.Before(time.Now().Add(-time.Minute)) {
 		t.Fatalf("expected recent last poll timestamp, got %#v", health[0])
+	}
+}
+
+func TestGetAboutReturnsMetadata(t *testing.T) {
+	oldVersion := version
+	version = "1.2.3-test"
+	defer func() { version = oldVersion }()
+
+	app := NewApp(&config.Config{}, state.New())
+	info := app.GetAbout()
+
+	if info.Name != "Foghorn" {
+		t.Errorf("Name = %q, want %q", info.Name, "Foghorn")
+	}
+	if info.Version != "1.2.3-test" {
+		t.Errorf("Version = %q, want build version %q", info.Version, "1.2.3-test")
+	}
+	if info.RepoURL != "https://github.com/sammy8806/foghorn" {
+		t.Errorf("RepoURL = %q", info.RepoURL)
+	}
+	if info.Description == "" {
+		t.Error("Description is empty")
+	}
+	if info.Copyright == "" {
+		t.Error("Copyright is empty")
 	}
 }

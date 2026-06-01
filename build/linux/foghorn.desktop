@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Foghorn
+Comment=Desktop alert monitor for Alertmanager, Grafana, Prometheus, and Better Stack
+Exec=foghorn
+Icon=foghorn
+Categories=Utility;Monitor;
+Terminal=false
+StartupWMClass=foghorn

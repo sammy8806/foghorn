@@ -1,4 +1,6 @@
 build/bin
+build/.cache
+build/dist
 node_modules
 frontend/dist
 docs/superpowers

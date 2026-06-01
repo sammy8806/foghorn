@@ -88,3 +88,12 @@ func trayHandleQuit(handle C.uintptr_t) {
 	}
 	manager.handleQuit()
 }
+
+//export trayHandleAbout
+func trayHandleAbout(handle C.uintptr_t) {
+	manager, ok := cgo.Handle(handle).Value().(*Manager)
+	if !ok {
+		return
+	}
+	manager.handleAbout()
+}

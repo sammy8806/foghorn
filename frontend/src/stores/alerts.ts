@@ -3,6 +3,25 @@ import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSev
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
+function normalizeEntries(input: unknown): VisibleEntry[] {
+  if (!Array.isArray(input)) return [];
+  return input.map(item => {
+    if (typeof item === 'string') {
+      return { source: item, order: 0 };
+    }
+    if (item && typeof item === 'object' && 'source' in item) {
+      const raw = item as Partial<VisibleEntry>;
+      return {
+        source: String(raw.source ?? ''),
+        order: typeof raw.order === 'number' ? raw.order : 0,
+        label: raw.label,
+        style: Array.isArray(raw.style) ? (raw.style as EntryStyle[]) : undefined,
+      };
+    }
+    return { source: '', order: 0 };
+  }).filter(e => e.source !== '');
+}
+
 export interface Matcher {
   name: string;
   value: string;
@@ -38,6 +57,7 @@ export interface Alert {
   silences?: SilenceInfo[];
   inhibitedBy: string[];
   receivers: string[];
+  hiddenBy?: string[];
 }
 
 export type SeverityCounts = Record<string, number>;
@@ -74,9 +94,18 @@ export interface AlertGroup {
   alerts: Alert[];
 }
 
+export type EntryStyle = 'muted' | 'pull' | 'danger' | 'warning' | 'info';
+
+export interface VisibleEntry {
+  source: string;
+  order: number;
+  label?: string;
+  style?: EntryStyle[];
+}
+
 export interface DisplayConfig {
-  visible_labels: string[];
-  visible_annotations: string[];
+  visible_labels: VisibleEntry[];
+  visible_annotations: VisibleEntry[];
   subtitle_annotations: string[];
   group_by: string[];
   group_by_override_key_mode: 'raw' | 'display';
@@ -103,8 +132,13 @@ export interface BadgeRule {
 export const alerts = writable<Alert[]>([]);
 export const severityCounts = writable<SeverityCounts>(emptySeverityCounts());
 export const displayConfig = writable<DisplayConfig>({
-  visible_labels: ['alertname', 'severity', 'cluster', 'namespace'],
-  visible_annotations: ['summary'],
+  visible_labels: [
+    { source: 'alertname', order: 0 },
+    { source: 'severity', order: 0 },
+    { source: 'cluster', order: 0 },
+    { source: 'namespace', order: 0 },
+  ],
+  visible_annotations: [{ source: 'summary', order: 0 }],
   subtitle_annotations: ['summary', 'description'],
   group_by: ['cluster'],
   group_by_override_key_mode: 'display',
@@ -328,8 +362,8 @@ export async function loadDisplayConfig(): Promise<void> {
     const cfg = await GetDisplayConfig();
     if (cfg) {
       displayConfig.set({
-        visible_labels: cfg.visible_labels ?? [],
-        visible_annotations: cfg.visible_annotations ?? [],
+        visible_labels: normalizeEntries(cfg.visible_labels),
+        visible_annotations: normalizeEntries(cfg.visible_annotations),
         subtitle_annotations: cfg.subtitle_annotations ?? [],
         group_by: cfg.group_by ?? [],
         group_by_override_key_mode: cfg.group_by_override_key_mode === 'raw' ? 'raw' : 'display',
@@ -701,8 +735,12 @@ function getRawFieldValue(alert: Alert, name: string): string | undefined {
     case 'startsAt': return alert.startsAt;
     case 'updatedAt': return alert.updatedAt;
     case 'source': return alert.source;
+    case 'sourceType': return alert.sourceType;
     case 'name': return alert.name;
     case 'state': return alert.state;
+    case 'hiddenBy': return alert.hiddenBy?.length ? alert.hiddenBy.join(', ') : undefined;
+    case 'silencedBy': return alert.silencedBy?.length ? alert.silencedBy.join(', ') : undefined;
+    case 'inhibitedBy': return alert.inhibitedBy?.length ? alert.inhibitedBy.join(', ') : undefined;
     default: return undefined;
   }
 }

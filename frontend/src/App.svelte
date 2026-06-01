@@ -1,12 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+  import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
   import { isWails } from './stores/alerts';
   import AlertList from './components/AlertList.svelte';
+  import About from './components/About.svelte';
+
+  let view: 'list' | 'about' = 'list';
 
   onMount(() => {
     if (!isWails()) return;
-    document.addEventListener('click', (e) => {
+
+    const unlisten = EventsOn('about:show', () => {
+      view = 'about';
+    });
+
+    const onClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest('a[href]');
       if (!anchor) return;
       const href = anchor.getAttribute('href');
@@ -14,12 +22,22 @@
         e.preventDefault();
         BrowserOpenURL(href);
       }
-    });
+    };
+    document.addEventListener('click', onClick);
+
+    return () => {
+      unlisten();
+      document.removeEventListener('click', onClick);
+    };
   });
 </script>
 
 <main>
-  <AlertList />
+  {#if view === 'about'}
+    <About on:back={() => (view = 'list')} />
+  {:else}
+    <AlertList />
+  {/if}
 </main>
 
 <style>

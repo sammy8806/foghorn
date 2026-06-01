@@ -75,12 +75,16 @@ display:
   #   :resolved  prefer the resolved value, fall back to original
   #
   # Supported built-in field:* values:
-  #   field:severity   configured severity order from severities.levels
-  #   field:startsAt   alert start time
-  #   field:updatedAt  last update time
-  #   field:source     source name
-  #   field:name       alert name
-  #   field:state      firing < silenced < inhibited < resolved
+  #   field:severity     configured severity order from severities.levels
+  #   field:startsAt     alert start time
+  #   field:updatedAt    last update time
+  #   field:source       source name
+  #   field:sourceType   provider type (alertmanager, betterstack, ...)
+  #   field:name         alert name
+  #   field:state        firing < silenced < inhibited < resolved
+  #   field:hiddenBy     comma-joined names of matching hide rules
+  #   field:silencedBy   comma-joined silence IDs (when present)
+  #   field:inhibitedBy  comma-joined inhibition fingerprints (when present)
   #
   # Bare strings still work for labels in group_by, for example:
   #   - cluster
@@ -90,6 +94,36 @@ display:
   subtitle_annotations:
     - description
     - summary
+
+  # visible_labels and visible_annotations accept either a bare field ref or a
+  # mapping. The bare form (just a string) is shorthand for `{source: <string>}`.
+  # The mapping form supports:
+  #   source  required. Same field-ref grammar as everywhere else (label name,
+  #           or field:/label:/annotation: prefix with optional :raw/:resolved/:both).
+  #   order   optional integer. Entries sort by order ascending; ties keep
+  #           original list order. Negative values float above bare entries,
+  #           positive values sink below. Defaults to 0.
+  #   label   optional display label override. Defaults to the field name.
+  #   style   optional visual treatment(s). One of, or a list of:
+  #             muted    de-emphasized text
+  #             pull     featured block (annotations only; no-op on label chips)
+  #             danger   red accent
+  #             warning  amber accent
+  #             info     blue accent
+  #           Accepts a scalar ("pull, danger") or a sequence ([pull, danger]).
+  #
+  # Example mixing both forms:
+  #   visible_annotations:
+  #     - source: field:hiddenBy
+  #       order: -5
+  #       label: Hidden By
+  #       style: muted
+  #     - summary
+  #     - link
+  #     - source: description
+  #       order: 5
+  #       label: Description
+  #       style: [pull, danger]
 
   visible_labels:
     - cluster:raw
@@ -109,6 +143,12 @@ display:
     - summary
     - link
     - runbook
+    # Surface the matching hide rule(s) like a regular annotation when an
+    # alert is revealed via "Show all". Uses the field:* prefix because
+    # hiddenBy is a synthetic alert field, not an actual annotation.
+    # - source: field:hiddenBy
+    #   label: Hidden By
+    #   style: muted
 
   group_by:
     - field:source
@@ -125,13 +165,13 @@ display:
   #
   # Example with display mode:
   # group_by_overrides:
-  #   local-alertmanager/saas-cs-0b:
+  #   local-alertmanager/cluster-prod:
   #     - label:namespace
   #
   # Example with raw mode and `group_by: [label:cluster:both]`:
   # group_by_override_key_mode: raw
   # group_by_overrides:
-  #   saas-cs-0b:
+  #   cluster-prod:
   #     - label:namespace
 
   # Optional alert bubbles. Each rule renders a badge when the configured field
@@ -201,13 +241,89 @@ resolvers:
 #   timeout: 500ms
 #   cache_ttl: 24h
 
+# Hide rules suppress matching alerts from the default UI view. They differ
+# from silences in two important ways:
+#   - hide rules live in this config file, not in the alertmanager backend
+#   - the alert is never sent to the source; it is filtered locally
+# Hidden alerts remain loaded and re-appear when "Show all" is toggled in the
+# UI, where they are tagged with the matching rule name(s).
+#
+# Each rule:
+#   name      Optional, used as the badge label and in logs.
+#   matchers  Required. List of `<field><op><value>` expressions, all AND'd.
+#             Operators:  =   equality
+#                         !=  inequality
+#                         =~  regex match
+#                         !~  negative regex match
+#             Values may be quoted with double quotes if they contain spaces.
+#   sources   Optional. List of source names; empty/missing means all sources.
+#   min_age   Optional. Only hide alerts firing continuously for at least
+#             this long. Same grammar as the silence dialog: Go's
+#             time.ParseDuration (30m, 2h, 500ms) plus "d" for days and "w"
+#             for weeks, freely composable (e.g. 24h, 7d, 1w2d3h). When an
+#             alert flutters or refires, startsAt resets, so min_age
+#             naturally lets transient activity surface again.
+#
+# Matcher field syntax mirrors display.group_by / display.sort_by:
+#   alertname             bare name -> label lookup (with fallback to the
+#                         normalized alert field for severity/state/source/
+#                         alertname when the label is absent)
+#   label:cluster         explicit label
+#   annotation:summary    annotation
+#   field:severity        normalized alert field
+# Optional mode suffix on the LHS:
+#   cluster:raw           match only the raw label value
+#   cluster:resolved      match only the value produced by resolvers
+#   cluster:both          either (this is the default)
+#
+# Examples:
+hide:
+  # Hide PrometheusWatchdog (and any other zero-severity heartbeat alerts)
+  # only after they've been firing steadily for a day. If the deadman flips
+  # off/on, min_age resets and the alert returns to view.
+  - name: stable deadman switches
+    matchers:
+      - alertname=PrometheusWatchdog
+      - severity=none
+    min_age: 24h
+
+  # Always hide synthetic test alerts from a specific source. No min_age,
+  # so they disappear immediately on first poll.
+  - name: synthetic noise
+    matchers:
+      - alertname=~"^Test.*"
+    sources: [local-alertmanager]
+
+  # Match against the raw cluster label only — useful when a resolver renames
+  # clusters for display but you want to filter on the underlying ID.
+  # - name: drop staging cluster
+  #   matchers:
+  #     - cluster:raw=staging-1
+
 ui:
   theme: system
-  popup_width: 800
+  popup_width: 500
   popup_height: 600
+  # Popup corner: top_right, top_left, bottom_right, or bottom_left.
+  popup_position: top_right
+  # Keep the popup window above all other windows. Defaults to true.
+  always_on_top: true
+  # macOS only: open the popup on whichever monitor the tray icon was clicked
+  # on. Defaults to true. Set to false to restore the old behavior of reopening
+  # on the monitor the popup was last shown on.
+  popup_follow_cursor: true
   show_resolved: false
-  show_silenced: true
+  show_silenced: false
   default_created_by: ${USER}
+  # Silence create/edit dialog. By default only a short whitelist of matchers
+  # is shown; the rest collapse behind a "Show N more matchers" toggle. Hidden
+  # matchers are still included in the silence — collapsing is purely visual.
+  silence_editor:
+    # Matcher names (exact match) that always stay visible. Defaults to
+    # [alertname, cluster, severity, pod] when omitted. Set to [] to collapse all.
+    always_visible_matchers: [alertname, cluster, severity, pod, namespace, purpose, region, job, job_name, svcname, persistentvolumeclaim, node, name]
+    # Set to false to disable collapsing and always show every matcher.
+    collapse_matchers: true
   # Optional image shown when there are no active alerts. Accepts a URL or
   # a local file path (absolute, or relative to the config directory).
   # idle_image: https://i.imgflip.com/2/1ihzfe.jpg

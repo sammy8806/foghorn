@@ -10,6 +10,10 @@ export function ExecuteAction(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExecuteAction'](arg1, arg2, arg3);
 }
 
+export function GetAbout() {
+  return window['go']['main']['App']['GetAbout']();
+}
+
 export function GetActions() {
   return window['go']['main']['App']['GetActions']();
 }
@@ -54,8 +58,8 @@ export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }
 
-export function LayoutPopup(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5);
+export function LayoutPopup(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function OpenNotificationSettings() {
@@ -64,10 +68,6 @@ export function OpenNotificationSettings() {
 
 export function RefreshAlerts() {
   return window['go']['main']['App']['RefreshAlerts']();
-}
-
-export function ResolveDiff(arg1) {
-  return window['go']['main']['App']['ResolveDiff'](arg1);
 }
 
 export function SetProviders(arg1) {

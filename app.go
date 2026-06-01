@@ -8,6 +8,7 @@ import (
 
 	"foghorn/internal/action"
 	"foghorn/internal/config"
+	"foghorn/internal/hide"
 	"foghorn/internal/model"
 	"foghorn/internal/notify"
 	"foghorn/internal/provider"
@@ -27,6 +28,7 @@ type App struct {
 	silenceMgr *silence.Manager
 	actionEng  *action.Engine
 	resolveEng *resolve.Engine
+	hideEng    *hide.Engine
 }
 
 var currentApp *App
@@ -37,9 +39,18 @@ func NewApp(cfg *config.Config, store *state.Store) *App {
 		store:      store,
 		actionEng:  action.New(cfg.Actions),
 		resolveEng: resolve.New(cfg.Resolvers),
+		hideEng:    buildHideEngine(cfg.Hide),
 	}
 	currentApp = app
 	return app
+}
+
+func buildHideEngine(rules []config.HideRule) *hide.Engine {
+	engine, errs := hide.New(rules)
+	for _, err := range errs {
+		log.Printf("hide: %v", err)
+	}
+	return engine
 }
 
 func activeApp() *App {
@@ -69,6 +80,7 @@ func (a *App) UpdateConfig(cfg *config.Config) {
 	a.cfg = cfg
 	a.actionEng = action.New(cfg.Actions)
 	a.resolveEng = resolve.New(cfg.Resolvers)
+	a.hideEng = buildHideEngine(cfg.Hide)
 }
 
 // --- Wails-bound methods (called from Svelte frontend) ---
@@ -77,24 +89,30 @@ func (a *App) UpdateConfig(cfg *config.Config) {
 func (a *App) GetAlerts() []model.Alert {
 	a.mu.RLock()
 	resolveEng := a.resolveEng
+	hideEng := a.hideEng
 	a.mu.RUnlock()
 
-	return resolveEng.ResolveAlerts(a.store.All())
+	return hideEng.Apply(resolveEng.ResolveAlerts(a.store.All()))
 }
 
-// ResolveDiff applies display resolvers to diff payloads before they are sent to the UI.
-func (a *App) ResolveDiff(diff model.Diff) model.Diff {
+// resolveDiff applies display resolvers and hide rules to diff payloads
+// before they are sent to the UI. Hide rules tag matching alerts with
+// HiddenBy but do not remove them from the diff — the frontend handles
+// visibility based on the user's "Show all" preference.
+func (a *App) resolveDiff(_ context.Context, diff model.Diff) model.Diff {
 	a.mu.RLock()
 	resolveEng := a.resolveEng
+	hideEng := a.hideEng
 	a.mu.RUnlock()
 
-	if resolveEng == nil {
-		return diff
+	if resolveEng != nil {
+		diff.New = resolveEng.ResolveAlerts(diff.New)
+		diff.Resolved = resolveEng.ResolveAlerts(diff.Resolved)
+		diff.Changed = resolveEng.ResolveAlerts(diff.Changed)
 	}
-
-	diff.New = resolveEng.ResolveAlerts(diff.New)
-	diff.Resolved = resolveEng.ResolveAlerts(diff.Resolved)
-	diff.Changed = resolveEng.ResolveAlerts(diff.Changed)
+	diff.New = hideEng.Apply(diff.New)
+	diff.Resolved = hideEng.Apply(diff.Resolved)
+	diff.Changed = hideEng.Apply(diff.Changed)
 	return diff
 }
 
@@ -228,8 +246,32 @@ func (a *App) GetUIConfig() config.UIConfig {
 	return ui
 }
 
-func (a *App) LayoutPopup(width, height, rightMargin, topMargin, bottomMargin int) {
-	layoutPopupWindow(width, height, rightMargin, topMargin, bottomMargin)
+// AboutInfo is the static app metadata shown in the in-app About screen.
+type AboutInfo struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	RepoURL     string `json:"repoURL"`
+	Copyright   string `json:"copyright"`
+}
+
+// GetAbout returns static metadata for the About screen. Version reflects the
+// build-time `version` var (package main).
+func (a *App) GetAbout() AboutInfo {
+	return AboutInfo{
+		Name:        "Foghorn",
+		Version:     version,
+		Description: "The better open desktop alert monitor.",
+		RepoURL:     "https://github.com/sammy8806/foghorn",
+		Copyright:   "© 2026 Steven Tappert & Foghorn contributors",
+	}
+}
+
+func (a *App) LayoutPopup(width, height, horizontalMargin, topMargin, bottomMargin int, position string) {
+	a.mu.RLock()
+	followCursor := a.cfg.UI.PopupFollowCursor == nil || *a.cfg.UI.PopupFollowCursor
+	a.mu.RUnlock()
+	layoutPopupWindow(width, height, horizontalMargin, topMargin, bottomMargin, position, followCursor)
 }
 
 func (a *App) TestNotificationForAlert(alertID, source string) error {

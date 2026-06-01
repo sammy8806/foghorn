@@ -11,7 +11,13 @@
 
   const dispatch = createEventDispatcher<{ close: void; silenced: void }>();
 
-  let matchers: Matcher[] = [];
+  let editorMatchers: Matcher[] = [];
+  let hiddenMatchers: Matcher[] = [];
+  let expanded = false;
+  let revealedAfterIndex: number | null = null;
+  let revealedCount = 0;
+  let alwaysVisible: string[] = ['alertname', 'cluster', 'severity', 'pod'];
+  let collapseEnabled = true;
   let duration = '2h';
   let createdBy = '';
   let comment = '';
@@ -20,15 +26,26 @@
   let confirmExpire = false;
   let initializedForOpen = false;
 
-  const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h'];
+  // Combined source of truth: hidden matchers are always part of the silence.
+  $: allMatchers = [...editorMatchers, ...hiddenMatchers];
+  // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
+  // only while expanded and some visible matcher would collapse back out of the
+  // whitelist. The two are mutually exclusive: expanding empties hiddenMatchers.
+  $: canExpand = collapseEnabled && hiddenMatchers.length > 0;
+  $: canCollapse =
+    collapseEnabled &&
+    expanded &&
+    editorMatchers.some((m) => !alwaysVisible.includes(m.name));
+
+  const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h', '3d', '1w'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
 
   $: canSubmit =
     !loading &&
     !!duration &&
     !!createdBy.trim() &&
-    matchers.length > 0 &&
-    matchers.every((m) => m.name.trim() && m.value && regexValid(m));
+    allMatchers.length > 0 &&
+    allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
 
   function regexValid(m: Matcher): boolean {
     if (!m.isRegex) return true;
@@ -55,6 +72,61 @@
     }
   }
 
+  async function loadSilenceEditorConfig(): Promise<void> {
+    try {
+      const uiConfig = (await GetUIConfig()) as any;
+      const se = uiConfig?.silence_editor ?? uiConfig?.SilenceEditor ?? {};
+      const list = se?.always_visible_matchers ?? se?.AlwaysVisibleMatchers;
+      if (Array.isArray(list)) alwaysVisible = list;
+      const collapse = se?.collapse_matchers ?? se?.CollapseMatchers;
+      if (typeof collapse === 'boolean') collapseEnabled = collapse;
+    } catch {
+      // Keep defaults (dev mode / no Wails).
+    }
+  }
+
+  function splitMatchers(all: Matcher[]): { visible: Matcher[]; hidden: Matcher[] } {
+    const visible: Matcher[] = [];
+    const hidden: Matcher[] = [];
+    for (const m of all) {
+      if (alwaysVisible.includes(m.name)) visible.push(m);
+      else hidden.push(m);
+    }
+    return { visible, hidden };
+  }
+
+  function applyCollapse(all: Matcher[]) {
+    revealedAfterIndex = null;
+    revealedCount = 0;
+    if (!collapseEnabled) {
+      editorMatchers = all;
+      hiddenMatchers = [];
+      expanded = true;
+      return;
+    }
+    const { visible, hidden } = splitMatchers(all);
+    editorMatchers = visible;
+    hiddenMatchers = hidden;
+    expanded = false;
+  }
+
+  function expandMatchers() {
+    revealedAfterIndex = editorMatchers.length;
+    revealedCount = hiddenMatchers.length;
+    editorMatchers = [...editorMatchers, ...hiddenMatchers];
+    hiddenMatchers = [];
+    expanded = true;
+  }
+
+  function collapseMatchers() {
+    const { visible, hidden } = splitMatchers(editorMatchers);
+    editorMatchers = visible;
+    hiddenMatchers = hidden;
+    expanded = false;
+    revealedAfterIndex = null;
+    revealedCount = 0;
+  }
+
   function matchersFromAlertLabels(a: Alert): Matcher[] {
     const entries = Object.entries(a.labels || {});
     return entries.map(([name, value]) => ({
@@ -69,30 +141,37 @@
     return (ms || []).map((m) => ({ ...m }));
   }
 
-  // DURATION_RE accepts 1d, 2h, 30m, 10s and any concatenation (e.g. "1d2h30m").
+  // DURATION_RE accepts 1w, 1d, 2h, 30m, 10s and any concatenation (e.g. "1w2d3h30m").
   // The regex requires at least one group present (enforced by post-match check).
-  const DURATION_RE = /^\s*(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?\s*$/i;
+  const DURATION_RE = /^\s*(?:(\d+)w)?\s*(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?\s*$/i;
 
   function parseDurationMs(s: string): number | null {
     const trimmed = (s || '').trim();
     if (!trimmed) return null;
     const match = trimmed.match(DURATION_RE);
     if (!match || match.slice(1).every((g) => !g)) return null;
-    const [, d, h, m, sec] = match;
+    const [, w, d, h, m, sec] = match;
+    const weeks = w ? parseInt(w, 10) : 0;
     const days = d ? parseInt(d, 10) : 0;
     const hours = h ? parseInt(h, 10) : 0;
     const mins = m ? parseInt(m, 10) : 0;
     const secs = sec ? parseInt(sec, 10) : 0;
-    return (((days * 24 + hours) * 60 + mins) * 60 + secs) * 1000;
+    return ((((weeks * 7 + days) * 24 + hours) * 60 + mins) * 60 + secs) * 1000;
   }
 
   function roundDuration(ms: number): string {
     if (ms <= 0) return '0s';
     // Round to the nearest minute for a clean unit string.
     const totalMins = Math.max(1, Math.round(ms / 60000));
-    const hours = Math.floor(totalMins / 60);
+    const totalHours = Math.floor(totalMins / 60);
     const minutes = totalMins % 60;
+    const totalDays = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const weeks = Math.floor(totalDays / 7);
+    const days = totalDays % 7;
     const parts: string[] = [];
+    if (weeks) parts.push(`${weeks}w`);
+    if (days) parts.push(`${days}d`);
     if (hours) parts.push(`${hours}h`);
     if (minutes) parts.push(`${minutes}m`);
     return parts.length ? parts.join('') : '1m';
@@ -105,15 +184,17 @@
     duration = roundDuration(currentMs + shortcutMs);
   }
 
-  function resetForOpen() {
+  async function resetForOpen() {
     error = '';
     loading = false;
     confirmExpire = false;
+    await loadSilenceEditorConfig();
+    let all: Matcher[];
     if (mode === 'edit' && silence && alert) {
-      matchers = cloneMatchers(silence.matchers);
-      if (!matchers.length) {
+      all = cloneMatchers(silence.matchers);
+      if (!all.length) {
         // Safety net: silence without matchers is unusual but don't nuke the editor.
-        matchers = matchersFromAlertLabels(alert);
+        all = matchersFromAlertLabels(alert);
       }
       const endMs = new Date(silence.endsAt).getTime() - Date.now();
       duration = roundDuration(Math.max(0, endMs));
@@ -121,7 +202,7 @@
       comment = silence.comment || '';
       createdBy = (silence.createdBy || '').trim();
     } else {
-      matchers = alert ? matchersFromAlertLabels(alert) : [];
+      all = alert ? matchersFromAlertLabels(alert) : [];
       duration = '2h';
       comment = '';
       createdBy = '';
@@ -129,11 +210,12 @@
         if (!createdBy) createdBy = v;
       });
     }
+    applyCollapse(all);
   }
 
   $: if (open && !initializedForOpen) {
     initializedForOpen = true;
-    resetForOpen();
+    void resetForOpen();
   }
 
   $: if (!open) {
@@ -154,9 +236,9 @@
     error = '';
     try {
       if (mode === 'edit' && silence) {
-        await UpdateSilence(alert.source, silence.id, matchers, duration, createdBy, comment);
+        await UpdateSilence(alert.source, silence.id, allMatchers, duration, createdBy, comment);
       } else {
-        await CreateSilence(alert.source, matchers, duration, createdBy, comment);
+        await CreateSilence(alert.source, allMatchers, duration, createdBy, comment);
       }
       dispatch('silenced');
       dispatch('close');
@@ -226,8 +308,25 @@
         </div>
 
         <div class="field">
-          <span class="field-label">Matchers</span>
-          <MatcherEditor bind:matchers source={alert.source} />
+          <span class="field-label">Matchers ({allMatchers.length})</span>
+          <MatcherEditor
+            bind:matchers={editorMatchers}
+            source={alert.source}
+            revealedAfterIndex={revealedAfterIndex}
+            revealedCount={revealedCount}
+          >
+            <svelte:fragment slot="actions">
+              {#if canExpand}
+                <button type="button" class="matcher-toggle" on:click={expandMatchers}>
+                  ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
+                </button>
+              {:else if canCollapse}
+                <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
+                  ▾ Hide matchers
+                </button>
+              {/if}
+            </svelte:fragment>
+          </MatcherEditor>
         </div>
 
         <div class="field">
@@ -317,6 +416,9 @@
     border-radius: 8px;
     width: 520px;
     max-width: 92vw;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   }
   .dialog-header {
@@ -342,7 +444,25 @@
   }
   .btn-close:hover { color: #e2e8f0; }
 
-  .dialog-body { padding: 14px 18px; }
+  .matcher-toggle {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 0;
+    white-space: nowrap;
+  }
+  .matcher-toggle:hover {
+    color: #e2e8f0;
+  }
+
+  .dialog-body {
+    padding: 14px 18px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
 
   .context-strip {
     display: flex;

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"foghorn/internal/duration"
 	"foghorn/internal/model"
 	"foghorn/internal/provider"
 )
@@ -79,14 +80,17 @@ func (m *Manager) Unsilence(ctx context.Context, source, silenceID string) error
 	return p.Unsilence(ctx, silenceID)
 }
 
-func (m *Manager) resolve(source, duration string) (provider.Provider, time.Duration, error) {
+func (m *Manager) resolve(source, durationStr string) (provider.Provider, time.Duration, error) {
 	p, ok := m.providers[source]
 	if !ok {
 		return nil, 0, fmt.Errorf("no provider registered for source %q", source)
 	}
-	dur, err := time.ParseDuration(duration)
+	dur, err := duration.Parse(durationStr)
 	if err != nil {
-		return nil, 0, fmt.Errorf("invalid duration %q: %w", duration, err)
+		return nil, 0, fmt.Errorf("invalid duration %q: %w", durationStr, err)
+	}
+	if dur <= 0 {
+		return nil, 0, fmt.Errorf("invalid duration %q: must be positive", durationStr)
 	}
 	return p, dur, nil
 }

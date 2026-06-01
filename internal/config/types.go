@@ -19,7 +19,28 @@ type Config struct {
 	Notifications NotificationsConfig `yaml:"notifications"`
 	Actions       []ActionConfig      `yaml:"actions"`
 	Resolvers     []ResolverConfig    `yaml:"resolvers"`
+	Hide          []HideRule          `yaml:"hide"`
 	UI            UIConfig            `yaml:"ui"`
+}
+
+// HideRule suppresses matching alerts from the default UI view. Alerts hidden
+// by a rule still load and remain visible via the "Show all" toggle, badged
+// with the rule's Name.
+//
+// All matchers within a rule AND together; ParsedMinAge (if > 0) further
+// requires the alert's age (now - startsAt) to meet the threshold before the
+// rule applies. Sources, when non-empty, restricts the rule to alerts whose
+// source name appears in the list.
+type HideRule struct {
+	Name     string   `yaml:"name"`
+	Matchers []string `yaml:"matchers"`
+	Sources  []string `yaml:"sources"`
+	// MinAge accepts Go duration syntax (e.g. "30m", "24h") plus a "d" suffix
+	// for whole days (e.g. "7d"). Empty/zero disables the age check.
+	MinAge string `yaml:"min_age"`
+
+	// ParsedMinAge holds the parsed MinAge value; set during validate().
+	ParsedMinAge time.Duration `yaml:"-"`
 }
 
 type SourceConfig struct {
@@ -55,8 +76,8 @@ type SortCriterion struct {
 // NormalizedDisplayConfig is what the frontend receives — sort_by is always a
 // resolved []SortCriterion regardless of how it was written in the config file.
 type NormalizedDisplayConfig struct {
-	VisibleLabels          []string            `json:"visible_labels"`
-	VisibleAnnotations     []string            `json:"visible_annotations"`
+	VisibleLabels          []VisibleEntry      `json:"visible_labels"`
+	VisibleAnnotations     []VisibleEntry      `json:"visible_annotations"`
 	SubtitleAnnotations    []string            `json:"subtitle_annotations"`
 	GroupBy                []string            `json:"group_by"`
 	GroupByOverrideKeyMode string              `json:"group_by_override_key_mode"`
@@ -81,8 +102,8 @@ type BadgeRule struct {
 }
 
 type DisplayConfig struct {
-	VisibleLabels          []string            `yaml:"visible_labels" json:"visible_labels"`
-	VisibleAnnotations     []string            `yaml:"visible_annotations" json:"visible_annotations"`
+	VisibleLabels          []VisibleEntry      `yaml:"visible_labels" json:"visible_labels"`
+	VisibleAnnotations     []VisibleEntry      `yaml:"visible_annotations" json:"visible_annotations"`
 	SubtitleAnnotations    []string            `yaml:"subtitle_annotations" json:"subtitle_annotations"`
 	GroupBy                []string            `yaml:"group_by" json:"group_by"`
 	GroupByOverrideKeyMode string              `yaml:"group_by_override_key_mode" json:"group_by_override_key_mode"`
@@ -106,6 +127,21 @@ func (d *DisplayConfig) Normalize() NormalizedDisplayConfig {
 		Badges:                 d.Badges,
 		SortBy:                 d.ParsedSortBy(),
 	}
+}
+
+// finalizeVisibleEntries validates and sorts the visible_annotations and
+// visible_labels lists in place. Called from validate() at config load time so
+// downstream consumers see normalized, ordered entries.
+func (d *DisplayConfig) finalizeVisibleEntries() error {
+	if err := validateVisibleEntries("display.visible_annotations", d.VisibleAnnotations); err != nil {
+		return err
+	}
+	if err := validateVisibleEntries("display.visible_labels", d.VisibleLabels); err != nil {
+		return err
+	}
+	sortVisibleEntries(d.VisibleAnnotations)
+	sortVisibleEntries(d.VisibleLabels)
+	return nil
 }
 
 func (d *DisplayConfig) OverrideKeyMode() string {
@@ -136,29 +172,37 @@ func (d *DisplayConfig) ParsedSortBy() []SortCriterion {
 // ResolveFieldRef parses a field reference like "field:severity", "label:cluster",
 // or "annotation:team". Bare strings without a prefix are treated as label names.
 func ResolveFieldRef(ref string) (kind, name string) {
-	ref = stripFieldRefMode(ref)
-	if s, ok := strings.CutPrefix(ref, "field:"); ok {
-		return "field", s
-	}
-	if s, ok := strings.CutPrefix(ref, "label:"); ok {
-		return "label", s
-	}
-	if s, ok := strings.CutPrefix(ref, "annotation:"); ok {
-		return "annotation", s
-	}
-	return "label", ref
+	kind, name, _ = ResolveFieldRefMode(ref)
+	return kind, name
 }
 
-func stripFieldRefMode(ref string) string {
+// ResolveFieldRefMode parses a field reference and returns kind, name, and
+// the mode suffix ("raw", "resolved", or "both"). Mode defaults to "both"
+// when no suffix is present.
+func ResolveFieldRefMode(ref string) (kind, name, mode string) {
+	ref, mode = splitFieldRefMode(ref)
+	if s, ok := strings.CutPrefix(ref, "field:"); ok {
+		return "field", s, mode
+	}
+	if s, ok := strings.CutPrefix(ref, "label:"); ok {
+		return "label", s, mode
+	}
+	if s, ok := strings.CutPrefix(ref, "annotation:"); ok {
+		return "annotation", s, mode
+	}
+	return "label", ref, mode
+}
+
+func splitFieldRefMode(ref string) (rest, mode string) {
 	lastColon := strings.LastIndex(ref, ":")
 	if lastColon <= 0 {
-		return ref
+		return ref, "both"
 	}
-	mode := ref[lastColon+1:]
-	if _, ok := fieldRefModes[mode]; ok {
-		return ref[:lastColon]
+	suffix := ref[lastColon+1:]
+	if _, ok := fieldRefModes[suffix]; ok {
+		return ref[:lastColon], suffix
 	}
-	return ref
+	return ref, "both"
 }
 
 // defaultOrder returns the default sort direction for a field reference.
@@ -282,11 +326,23 @@ type ResolverConfig struct {
 }
 
 type UIConfig struct {
-	Theme            string `yaml:"theme" json:"theme"`
-	PopupWidth       int    `yaml:"popup_width" json:"popup_width"`
-	PopupHeight      int    `yaml:"popup_height" json:"popup_height"`
-	ShowResolved     bool   `yaml:"show_resolved" json:"show_resolved"`
-	ShowSilenced     bool   `yaml:"show_silenced" json:"show_silenced"`
-	DefaultCreatedBy string `yaml:"default_created_by" json:"default_created_by"`
-	IdleImage        string `yaml:"idle_image" json:"idle_image"`
+	Theme             string              `yaml:"theme" json:"theme"`
+	PopupWidth        int                 `yaml:"popup_width" json:"popup_width"`
+	PopupHeight       int                 `yaml:"popup_height" json:"popup_height"`
+	PopupPosition     string              `yaml:"popup_position" json:"popup_position"`
+	AlwaysOnTop       *bool               `yaml:"always_on_top" json:"always_on_top"`
+	PopupFollowCursor *bool               `yaml:"popup_follow_cursor" json:"popup_follow_cursor"`
+	ShowResolved      bool                `yaml:"show_resolved" json:"show_resolved"`
+	ShowSilenced      bool                `yaml:"show_silenced" json:"show_silenced"`
+	DefaultCreatedBy  string              `yaml:"default_created_by" json:"default_created_by"`
+	IdleImage         string              `yaml:"idle_image" json:"idle_image"`
+	SilenceEditor     SilenceEditorConfig `yaml:"silence_editor" json:"silence_editor"`
+}
+
+// SilenceEditorConfig controls the silence create/edit dialog. Pointer fields
+// let validate() distinguish an absent YAML key (apply defaults) from an
+// explicitly empty value (e.g. always_visible_matchers: [] means collapse all).
+type SilenceEditorConfig struct {
+	AlwaysVisibleMatchers *[]string `yaml:"always_visible_matchers" json:"always_visible_matchers"`
+	CollapseMatchers      *bool     `yaml:"collapse_matchers" json:"collapse_matchers"`
 }

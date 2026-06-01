@@ -8,10 +8,23 @@ import (
 	"regexp"
 	"strings"
 
+	"foghorn/internal/duration"
+
 	"gopkg.in/yaml.v3"
 )
 
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+// ptrTo returns a pointer to a copy of v. Using a function avoids shared
+// mutable state when the same default value is needed in multiple places.
+func ptrTo[T any](v T) *T { return &v }
+
+// defaultSilenceEditorMatchers returns a fresh slice of the default
+// always-visible matchers. A function (not a package-level var) is used so
+// that each caller gets an independent slice with no aliasing.
+func defaultSilenceEditorMatchers() []string {
+	return []string{"alertname", "cluster", "severity", "pod"}
+}
 
 // Default returns a minimal usable config with no sources.
 func Default() *Config {
@@ -27,7 +40,12 @@ func Default() *Config {
 			Theme:            "system",
 			PopupWidth:       800,
 			PopupHeight:      600,
+			PopupPosition:    "top_right",
 			DefaultCreatedBy: defaultCreatedBy(),
+			SilenceEditor: SilenceEditorConfig{
+				AlwaysVisibleMatchers: ptrTo(defaultSilenceEditorMatchers()),
+				CollapseMatchers:      ptrTo(true),
+			},
 		},
 	}
 }
@@ -106,11 +124,57 @@ func validate(cfg *Config) error {
 	if cfg.UI.PopupHeight == 0 {
 		cfg.UI.PopupHeight = 600
 	}
+	rawPopupPosition := cfg.UI.PopupPosition
+	normalizedPopupPosition := strings.ToLower(strings.TrimSpace(rawPopupPosition))
+	switch normalizedPopupPosition {
+	case "", "top_right", "top-right":
+		cfg.UI.PopupPosition = "top_right"
+	case "top_left", "top-left":
+		cfg.UI.PopupPosition = "top_left"
+	case "bottom_right", "bottom-right":
+		cfg.UI.PopupPosition = "bottom_right"
+	case "bottom_left", "bottom-left":
+		cfg.UI.PopupPosition = "bottom_left"
+	default:
+		if normalizedPopupPosition != rawPopupPosition {
+			return fmt.Errorf("ui.popup_position %q (normalized: %q) must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition, normalizedPopupPosition)
+		}
+		return fmt.Errorf("ui.popup_position %q must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition)
+	}
 	if cfg.Notifications.BatchThreshold == 0 {
 		cfg.Notifications.BatchThreshold = 5
 	}
 	if strings.TrimSpace(cfg.UI.DefaultCreatedBy) == "" {
 		cfg.UI.DefaultCreatedBy = defaultCreatedBy()
+	}
+	if cfg.UI.SilenceEditor.AlwaysVisibleMatchers == nil {
+		cfg.UI.SilenceEditor.AlwaysVisibleMatchers = ptrTo(defaultSilenceEditorMatchers())
+	}
+	if cfg.UI.SilenceEditor.CollapseMatchers == nil {
+		cfg.UI.SilenceEditor.CollapseMatchers = ptrTo(true)
+	}
+	if cfg.UI.AlwaysOnTop == nil {
+		cfg.UI.AlwaysOnTop = ptrTo(true)
+	}
+	if cfg.UI.PopupFollowCursor == nil {
+		cfg.UI.PopupFollowCursor = ptrTo(true)
+	}
+	for i := range cfg.Hide {
+		rule := &cfg.Hide[i]
+		if len(rule.Matchers) == 0 {
+			return fmt.Errorf("hide[%d]: at least one matcher is required", i)
+		}
+		parsed, err := duration.Parse(rule.MinAge)
+		if err != nil {
+			return fmt.Errorf("hide[%d] min_age: invalid duration %q: %w", i, rule.MinAge, err)
+		}
+		if parsed < 0 {
+			return fmt.Errorf("hide[%d] min_age: %q must be non-negative", i, rule.MinAge)
+		}
+		rule.ParsedMinAge = parsed
+	}
+	if err := cfg.Display.finalizeVisibleEntries(); err != nil {
+		return err
 	}
 	return nil
 }

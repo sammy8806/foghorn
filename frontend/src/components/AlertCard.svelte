@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Alert, DisplayConfig, SilenceInfo } from '../stores/alerts';
+  import type { Alert, DisplayConfig, SilenceInfo, VisibleEntry } from '../stores/alerts';
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
@@ -14,21 +14,53 @@
     return fieldNameFromRef(spec);
   }
 
+  // hasRefPrefix returns true when a config-supplied ref already carries an
+  // explicit kind prefix (field:/label:/annotation:). Used so visible_labels
+  // and visible_annotations can hold cross-kind refs like `field:hiddenBy`
+  // without being silently coerced into the loop's default kind.
+  function hasRefPrefix(spec: string): boolean {
+    return spec.startsWith('field:') || spec.startsWith('label:') || spec.startsWith('annotation:');
+  }
+
+  function entryLabel(entry: VisibleEntry, fallback: string): string {
+    return entry.label && entry.label.length > 0 ? entry.label : fallback;
+  }
+
+  function entryClasses(base: string, entry: VisibleEntry): string {
+    const styles = entry.style || [];
+    return [base, ...styles.map(s => `${base}--${s}`)].join(' ');
+  }
+
+  // verboseEntries powers "Show all": it reveals every field without discarding
+  // the configured presentation. The configured entries are kept verbatim (in
+  // their backend-sorted order, with their label/style/order overrides and any
+  // synthetic refs like field:hiddenBy intact), and the alert's remaining keys
+  // are appended as bare entries. Verbose augments the config, it doesn't
+  // replace it.
+  function verboseEntries(configured: VisibleEntry[], alertKeys: string[]): VisibleEntry[] {
+    const covered = new Set(configured.map(e => labelName(e.source)));
+    const extras = alertKeys
+      .filter(k => !covered.has(k))
+      .map(k => ({ source: k, order: 0 }));
+    return [...configured, ...extras];
+  }
+
   $: visibleLabels = $verbose
-    ? Object.keys(alert.labels || {})
-    : (config.visible_labels || []).filter(spec => {
-        const name = labelName(spec);
+    ? verboseEntries(config.visible_labels || [], Object.keys(alert.labels || {}))
+    : (config.visible_labels || []).filter(entry => {
+        const name = labelName(entry.source);
         return name !== 'alertname' && name !== 'severity';
       });
   $: visibleAnnotations = $verbose
-    ? Object.keys(alert.annotations || {})
+    ? verboseEntries(config.visible_annotations || [], Object.keys(alert.annotations || {}))
     : (config.visible_annotations || []);
   $: betterStackVisibleAnnotations = (() => {
-    const names = [...visibleAnnotations];
-    if (alert.sourceType === 'betterstack' && alert.annotations?.comments && !names.includes('comments')) {
-      names.push('comments');
+    const entries = [...visibleAnnotations];
+    const hasComments = entries.some(e => labelName(e.source) === 'comments');
+    if (alert.sourceType === 'betterstack' && alert.annotations?.comments && !hasComments) {
+      entries.push({ source: 'comments', order: 0 });
     }
-    return names;
+    return entries;
   })();
   $: matchedBadges = (config.badges || []).filter(rule => alertMatchesBadgeRule(alert, rule));
 
@@ -86,6 +118,67 @@
   let testingNotification = false;
   let testNotificationStatus = '';
   let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  type CommentSegment = {
+    kind: 'text' | 'mention';
+    text: string;
+    email?: string;
+  };
+
+  type ParsedComment = {
+    author: string;
+    email: string;
+    time: string;
+    body: string;
+  };
+
+  const commentHeaderPattern = /^(.+?)(?:\s+<([^>]+)>)?\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/;
+
+  function parseCommentBlocks(text: string): ParsedComment[] {
+    const comments: ParsedComment[] = [];
+    let current: ParsedComment | null = null;
+
+    for (const line of text.split('\n')) {
+      const header = line.match(commentHeaderPattern);
+      if (header) {
+        if (current) comments.push(current);
+        current = { author: header[1], email: header[2] || '', time: header[3], body: '' };
+        continue;
+      }
+
+      if (current) {
+        current.body = current.body ? `${current.body}\n${line}` : line;
+        continue;
+      }
+
+      if (line.trim() !== '') {
+        comments.push({ author: '', email: '', time: '', body: line });
+      }
+    }
+
+    if (current) comments.push(current);
+    return comments.length ? comments : [{ author: '', email: '', time: '', body: text }];
+  }
+
+  function commentBodySegments(text: string): CommentSegment[] {
+    const segments: CommentSegment[] = [];
+    const mentionPattern = /\[(@[^\]]+)\]\(mailto:([^)]+)\)/g;
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = mentionPattern.exec(text)) !== null) {
+      if (match.index > cursor) {
+        segments.push({ kind: 'text', text: text.slice(cursor, match.index) });
+      }
+      segments.push({ kind: 'mention', text: match[1], email: match[2] });
+      cursor = match.index + match[0].length;
+    }
+
+    if (cursor < text.length) {
+      segments.push({ kind: 'text', text: text.slice(cursor) });
+    }
+    return segments.length ? segments : [{ kind: 'text', text }];
+  }
 
   function openSilenceCreate() {
     silenceMode = 'create';
@@ -194,6 +287,9 @@
     {#if alert.inhibitedBy?.length > 0}
       <span class="badge badge-inhibited">inhibited</span>
     {/if}
+    {#if alert.hiddenBy?.length}
+      <span class="badge badge-hidden" title={`Hidden by rule(s): ${alert.hiddenBy.join(', ')}`}>hidden</span>
+    {/if}
     {#each matchedBadges as badgeRule}
       <span class="badge badge-custom" title={`${fieldNameFromRef(badgeRule.field)} matches ${badgeRule.equals.join(', ')}`}>{badgeRule.label}</span>
     {/each}
@@ -204,31 +300,38 @@
 
   {#if expanded}
     <div class="alert-body">
-      {#each betterStackVisibleAnnotations as key}
-        {@const annotationName = fieldNameFromRef(key)}
-        {@const annotationDisplay = resolveAlertFieldDisplay(alert, key.startsWith('annotation:') ? key : `annotation:${key}`)}
+      {#each betterStackVisibleAnnotations as entry}
+        {@const ref = hasRefPrefix(entry.source) ? entry.source : `annotation:${entry.source}`}
+        {@const annotationName = fieldNameFromRef(ref)}
+        {@const annotationDisplay = resolveAlertFieldDisplay(alert, ref)}
+        {@const displayLabel = entryLabel(entry, annotationName)}
+        {@const annotationClass = entryClasses('annotation', entry)}
         {#if annotationDisplay?.text}
           {#if annotationName === 'comments'}
             <div class="comments-section">
-              <strong class="comments-label">comments:</strong>
-              {#each annotationDisplay.text.split('\n\n') as commentBlock}
-                {@const lines = commentBlock.split('\n')}
-                {@const headerMatch = lines[0]?.match(/^(.+?)\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/)}
+              <strong class="comments-label">{displayLabel}:</strong>
+              {#each parseCommentBlocks(annotationDisplay.text) as comment}
                 <div class="comment-card">
-                  {#if headerMatch}
+                  {#if comment.author}
                     <div class="comment-header">
-                      <span class="comment-author">{headerMatch[1]}</span>
-                      <span class="comment-time">{new Date(headerMatch[2]).toLocaleString()}</span>
+                      <span class="comment-author" title={comment.email}>{comment.author}</span>
+                      <span class="comment-time">{new Date(comment.time).toLocaleString()}</span>
                     </div>
-                    <div class="comment-body">{lines.slice(1).join('\n')}</div>
-                  {:else}
-                    <div class="comment-body">{commentBlock}</div>
                   {/if}
+                  <div class="comment-body">
+                    {#each commentBodySegments(comment.body.trim()) as segment}
+                      {#if segment.kind === 'mention'}
+                        <span class="comment-mention" title={segment.email}>{segment.text}</span>
+                      {:else}
+                        <span>{segment.text}</span>
+                      {/if}
+                    {/each}
+                  </div>
                 </div>
               {/each}
             </div>
           {:else}
-            <p class="annotation"><strong>{annotationName}:</strong>
+            <p class={annotationClass}><strong>{displayLabel}:</strong>
               {#if annotationDisplay.text.match(/^https?:\/\//)}
                 <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
               {:else}
@@ -271,11 +374,13 @@
       {/if}
 
       <div class="label-chips">
-        {#each visibleLabels as spec}
-          {@const label = labelName(spec)}
-          {@const labelDisplay = resolveAlertFieldDisplay(alert, spec.startsWith('label:') ? spec : `label:${spec}`)}
+        {#each visibleLabels as entry}
+          {@const ref = hasRefPrefix(entry.source) ? entry.source : `label:${entry.source}`}
+          {@const label = entryLabel(entry, labelName(entry.source))}
+          {@const labelDisplay = resolveAlertFieldDisplay(alert, ref)}
+          {@const chipClass = entryClasses('chip', entry)}
           {#if labelDisplay?.text}
-            <span class="chip">
+            <span class={chipClass}>
               {#if labelDisplay.mode === 'both' && labelDisplay.raw && labelDisplay.resolved && labelDisplay.raw !== labelDisplay.resolved}
                 <span>{label}={labelDisplay.raw}</span>
                 <span class="chip-resolved">({labelDisplay.resolved})</span>
@@ -300,6 +405,9 @@
           {/if}
           {#if alert.inhibitedBy?.length > 0}
             <span class="meta-item"><strong>inhibitedBy:</strong> {alert.inhibitedBy.join(', ')}</span>
+          {/if}
+          {#if alert.hiddenBy?.length}
+            <span class="meta-item"><strong>hiddenBy:</strong> {alert.hiddenBy.join(', ')}</span>
           {/if}
           {#if alert.receivers?.length > 0}
             <span class="meta-item"><strong>receivers:</strong> {alert.receivers.join(', ')}</span>
@@ -467,6 +575,7 @@
   }
   .badge-silenced { background: #334155; color: #94a3b8; }
   .badge-inhibited { background: #292524; color: #a8a29e; }
+  .badge-hidden { background: #3f3f46; color: #d4d4d8; }
   .badge-custom {
     background: #0f766e;
     color: #ccfbf1;
@@ -485,6 +594,24 @@
     color: #cbd5e1;
     margin: 2px 0;
   }
+  .annotation--muted { color: #64748b; font-size: 10px; }
+  .annotation--pull {
+    font-size: 12px;
+    padding: 5px 8px;
+    border-left: 3px solid #334155;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
+    margin: 4px 0;
+  }
+  .annotation--danger { border-left-color: #ef4444; color: #ef4444; }
+  .annotation--warning { border-left-color: #f59e0b; color: #f59e0b; }
+  .annotation--info { border-left-color: #3b82f6; color: #3b82f6; }
+
+  .chip--muted { opacity: 0.65; }
+  .chip--danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+  .chip--warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+  .chip--info { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+  /* .chip--pull is intentionally not styled — pull is an annotation-only treatment. */
   .comments-section {
     margin: 4px 0;
   }
@@ -530,6 +657,11 @@
     color: #cbd5e1;
     white-space: pre-wrap;
     line-height: 1.4;
+  }
+  .comment-mention {
+    display: inline;
+    color: #bfdbfe;
+    font-weight: 700;
   }
 
   .silence-details {

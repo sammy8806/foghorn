@@ -32,6 +32,7 @@ type Alert struct {
 	Silences            []SilenceInfo     `json:"silences,omitempty"`
 	InhibitedBy         []string          `json:"inhibitedBy"`
 	Receivers           []string          `json:"receivers"`
+	HiddenBy            []string          `json:"hiddenBy,omitempty"`
 }
 
 // Key returns the deduplication key for this alert.
