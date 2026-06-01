@@ -30,6 +30,10 @@ Unicode true
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
+# Use a stable, standalone uninstall key instead of the default
+# "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}" (which would be "Steven TappertFoghorn").
+!define UNINST_KEY_NAME "Foghorn"
+####
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
@@ -72,7 +76,7 @@ ManifestDPIAware true
 
 Name "${INFO_PRODUCTNAME}"
 OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
-InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}" # Default installing folder ($PROGRAMFILES is Program Files folder).
+InstallDir "$PROGRAMFILES64\${INFO_PRODUCTNAME}" # Default installing folder ($PROGRAMFILES is Program Files folder).
 ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
