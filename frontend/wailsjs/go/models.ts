@@ -339,9 +339,27 @@ export namespace config {
 	        this.source_types = source["source_types"];
 	    }
 	}
+	export class VisibleEntry {
+	    source: string;
+	    order: number;
+	    label?: string;
+	    style?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new VisibleEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.order = source["order"];
+	        this.label = source["label"];
+	        this.style = source["style"];
+	    }
+	}
 	export class DisplayConfig {
-	    visible_labels: string[];
-	    visible_annotations: string[];
+	    visible_labels: VisibleEntry[];
+	    visible_annotations: VisibleEntry[];
 	    subtitle_annotations: string[];
 	    group_by: string[];
 	    group_by_override_key_mode: string;
@@ -355,8 +373,8 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.visible_labels = source["visible_labels"];
-	        this.visible_annotations = source["visible_annotations"];
+	        this.visible_labels = this.convertValues(source["visible_labels"], VisibleEntry);
+	        this.visible_annotations = this.convertValues(source["visible_annotations"], VisibleEntry);
 	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
@@ -539,8 +557,8 @@ export namespace config {
 	    }
 	}
 	export class NormalizedDisplayConfig {
-	    visible_labels: string[];
-	    visible_annotations: string[];
+	    visible_labels: VisibleEntry[];
+	    visible_annotations: VisibleEntry[];
 	    subtitle_annotations: string[];
 	    group_by: string[];
 	    group_by_override_key_mode: string;
@@ -555,8 +573,8 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.visible_labels = source["visible_labels"];
-	        this.visible_annotations = source["visible_annotations"];
+	        this.visible_labels = this.convertValues(source["visible_labels"], VisibleEntry);
+	        this.visible_annotations = this.convertValues(source["visible_annotations"], VisibleEntry);
 	        this.subtitle_annotations = source["subtitle_annotations"];
 	        this.group_by = source["group_by"];
 	        this.group_by_override_key_mode = source["group_by_override_key_mode"];
@@ -634,6 +652,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 	
 	
 	
