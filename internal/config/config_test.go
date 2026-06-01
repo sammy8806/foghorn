@@ -484,3 +484,115 @@ ui:
 		t.Fatal("expected duplicate severity alias config to fail")
 	}
 }
+
+func TestLoadConfigVisibleEntriesMixed(t *testing.T) {
+	yaml := `
+sources:
+  - name: test-am
+    type: alertmanager
+    url: http://localhost:9093
+
+display:
+  visible_annotations:
+    - source: field:hiddenBy
+      order: -5
+      label: Hidden By
+      style: muted
+    - summary
+    - link
+    - source: description
+      order: 5
+      label: Description
+      style: [pull, danger]
+  visible_labels:
+    - cluster:raw
+    - source: namespace
+      style: muted
+  group_by: [cluster]
+  sort_by: severity
+
+ui:
+  popup_position: top_right
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	gotAnnotationSources := make([]string, len(cfg.Display.VisibleAnnotations))
+	for i, e := range cfg.Display.VisibleAnnotations {
+		gotAnnotationSources[i] = e.Source
+	}
+	wantAnnotationSources := []string{"field:hiddenBy", "summary", "link", "description"}
+	if len(gotAnnotationSources) != len(wantAnnotationSources) {
+		t.Fatalf("annotation count: got %d (%v), want %d (%v)", len(gotAnnotationSources), gotAnnotationSources, len(wantAnnotationSources), wantAnnotationSources)
+	}
+	for i := range wantAnnotationSources {
+		if gotAnnotationSources[i] != wantAnnotationSources[i] {
+			t.Fatalf("annotation order = %v, want %v", gotAnnotationSources, wantAnnotationSources)
+		}
+	}
+
+	// The "description" entry should carry the styles set in YAML.
+	descEntry := cfg.Display.VisibleAnnotations[3]
+	if descEntry.Label != "Description" {
+		t.Errorf("description label = %q, want %q", descEntry.Label, "Description")
+	}
+	if len(descEntry.Style) != 2 || descEntry.Style[0] != StylePull || descEntry.Style[1] != StyleDanger {
+		t.Errorf("description style = %#v, want [pull danger]", descEntry.Style)
+	}
+
+	// Labels: cluster:raw is bare (Order 0, list pos 0); namespace is mapping (Order 0, list pos 1).
+	if len(cfg.Display.VisibleLabels) != 2 {
+		t.Fatalf("expected 2 visible labels, got %d", len(cfg.Display.VisibleLabels))
+	}
+	if cfg.Display.VisibleLabels[0].Source != "cluster:raw" {
+		t.Errorf("labels[0].Source = %q, want %q", cfg.Display.VisibleLabels[0].Source, "cluster:raw")
+	}
+	if cfg.Display.VisibleLabels[1].Source != "namespace" || len(cfg.Display.VisibleLabels[1].Style) != 1 || cfg.Display.VisibleLabels[1].Style[0] != StyleMuted {
+		t.Errorf("labels[1] = %#v", cfg.Display.VisibleLabels[1])
+	}
+}
+
+func TestLoadConfigVisibleEntriesUnknownStyle(t *testing.T) {
+	yaml := `
+sources:
+  - name: test-am
+    type: alertmanager
+    url: http://localhost:9093
+
+display:
+  visible_annotations:
+    - summary
+    - source: description
+      style: ominous
+  visible_labels: []
+  group_by: [cluster]
+  sort_by: severity
+
+ui:
+  popup_position: top_right
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected Load() to fail with unknown style, got nil")
+	}
+	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
+		t.Errorf("error missing positional context: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"ominous"`) {
+		t.Errorf("error missing bad token: %v", err)
+	}
+}
