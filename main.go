@@ -84,7 +84,8 @@ func main() {
 		}
 		setDockIconVisible(true)
 		wailsruntime.WindowShow(app.ctx)
-		wailsruntime.WindowSetAlwaysOnTop(app.ctx, *cfg.UI.AlwaysOnTop)
+		alwaysOnTop := cfg.UI.AlwaysOnTop == nil || *cfg.UI.AlwaysOnTop
+		wailsruntime.WindowSetAlwaysOnTop(app.ctx, alwaysOnTop)
 		windowVisible.Store(true)
 		wailsruntime.EventsEmit(app.ctx, "popup:opening")
 	}
