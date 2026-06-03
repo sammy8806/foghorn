@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +25,8 @@ type alertmanagerAPI struct {
 	health model.ProviderHealth
 	apiV2  string
 	kind   string
+	oidc   *oidcDeviceAuthenticator
+	cookie *cookieAuthenticator
 }
 
 func NewAlertmanager(cfg config.SourceConfig) *alertmanagerAPI {
@@ -33,13 +38,24 @@ func NewGrafana(cfg config.SourceConfig) *alertmanagerAPI {
 }
 
 func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanagerAPI {
+	cookieAuth, err := newCookieAuthenticator(cfg)
+	if err != nil {
+		log.Printf("%s %s cookie auth disabled: %v", kind, cfg.Name, err)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	if cookieAuth != nil {
+		client.Jar = cookieAuth.jar
+		client.CheckRedirect = stopCrossDomainCookieRedirect
+	}
 	return &alertmanagerAPI{
-		cfg: cfg,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-		apiV2: apiV2,
-		kind:  kind,
+		cfg:    cfg,
+		client: client,
+		apiV2:  apiV2,
+		kind:   kind,
+		oidc:   newOIDCDeviceAuthenticator(cfg.Auth, client),
+		cookie: cookieAuth,
 	}
 }
 
@@ -68,9 +84,12 @@ func (a *alertmanagerAPI) Fetch(ctx context.Context) ([]model.Alert, error) {
 	}
 	req.URL.RawQuery = q.Encode()
 
-	a.applyAuth(req)
+	if err := a.applyAuth(ctx, req); err != nil {
+		a.recordError(err)
+		return nil, err
+	}
 
-	resp, err := a.client.Do(req)
+	resp, err := a.do(req)
 	if err != nil {
 		a.recordError(err)
 		return nil, fmt.Errorf("fetching alerts from %s: %w", a.cfg.Name, err)
@@ -132,9 +151,11 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	a.applyAuth(httpReq)
+	if err := a.applyAuth(ctx, httpReq); err != nil {
+		return "", err
+	}
 
-	resp, err := a.client.Do(httpReq)
+	resp, err := a.do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("creating silence on %s: %w", a.cfg.Name, err)
 	}
@@ -159,9 +180,11 @@ func (a *alertmanagerAPI) Unsilence(ctx context.Context, silenceID string) error
 	if err != nil {
 		return err
 	}
-	a.applyAuth(req)
+	if err := a.applyAuth(ctx, req); err != nil {
+		return err
+	}
 
-	resp, err := a.client.Do(req)
+	resp, err := a.do(req)
 	if err != nil {
 		return fmt.Errorf("deleting silence on %s: %w", a.cfg.Name, err)
 	}
@@ -178,9 +201,11 @@ func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInf
 	if err != nil {
 		return nil, err
 	}
-	a.applyAuth(req)
+	if err := a.applyAuth(ctx, req); err != nil {
+		return nil, err
+	}
 
-	resp, err := a.client.Do(req)
+	resp, err := a.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching silences from %s: %w", a.cfg.Name, err)
 	}
@@ -224,12 +249,71 @@ func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInf
 	return silences, nil
 }
 
+func (a *alertmanagerAPI) do(req *http.Request) (*http.Response, error) {
+	resp, err := a.client.Do(req)
+	if err != nil || resp == nil || a.cookie == nil || !isRedirect(resp.StatusCode) {
+		return resp, err
+	}
+	location := resp.Header.Get("Location")
+	if location == "" {
+		return resp, err
+	}
+	loginURL, parseErr := req.URL.Parse(location)
+	if parseErr != nil || !isCrossHost(req.URL, loginURL) {
+		return resp, err
+	}
+	resp.Body.Close()
+	if err := a.cookie.HandleRedirect(req.Context(), loginURL.String(), req.URL.String()); err != nil {
+		return nil, err
+	}
+	retry := req.Clone(req.Context())
+	if req.Body != nil {
+		if req.GetBody == nil {
+			return nil, fmt.Errorf("%s %s requires cookie login but request body cannot be replayed", a.kind, a.cfg.Name)
+		}
+		body, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		retry.Body = body
+	}
+	return a.client.Do(retry)
+}
+
+func stopCrossDomainCookieRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	if isCrossHost(via[len(via)-1].URL, req.URL) {
+		return http.ErrUseLastResponse
+	}
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	return nil
+}
+
+func isRedirect(status int) bool {
+	return status == http.StatusMovedPermanently || status == http.StatusFound || status == http.StatusSeeOther || status == http.StatusTemporaryRedirect || status == http.StatusPermanentRedirect
+}
+
+func isCrossHost(from, to *url.URL) bool {
+	if from == nil || to == nil {
+		return false
+	}
+	return !strings.EqualFold(from.Host, to.Host)
+}
+
 func (a *alertmanagerAPI) endpoint(path string) string {
 	return strings.TrimRight(a.cfg.URL, "/") + a.apiV2 + path
 }
 
-func (a *alertmanagerAPI) applyAuth(req *http.Request) {
+func (a *alertmanagerAPI) applyAuth(ctx context.Context, req *http.Request) error {
+	if a.oidc != nil {
+		return a.oidc.Apply(ctx, req)
+	}
 	applyAuth(req, a.cfg.Auth)
+	return nil
 }
 
 func (a *alertmanagerAPI) recordError(err error) {

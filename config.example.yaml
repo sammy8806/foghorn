@@ -17,6 +17,29 @@ sources:
       username: ${FOGHORN_AM_USER}
       password: ${FOGHORN_AM_PASS}
     poll_interval: 30s
+  # - name: oidc-alertmanager
+  #   type: alertmanager
+  #   url: https://alertmanager.example.com
+  #   auth:
+  #     type: oidc
+  #     flow: device
+  #     issuer_url: https://login.example.com/realms/observability
+  #     client_id: foghorn-desktop
+  #     scopes: [openid, profile]
+  #     # Optional when discovery is unavailable:
+  #     # device_authorization_url: https://login.example.com/oauth/device/code
+  #     # token_url: https://login.example.com/oauth/token
+  #     # Optional: send the ID token instead of the access token.
+  #     # use_id_token: true
+  #   poll_interval: 30s
+  # - name: cookie-alertmanager
+  #   type: alertmanager
+  #   url: https://alertmanager.example.com
+  #   auth:
+  #     type: cookie
+  #     # Optional; defaults to the per-source cookie jar below the Foghorn config dir.
+  #     # cookie_file: ~/.config/foghorn/cookies/cookie-alertmanager.json
+  #   poll_interval: 30s
   # - name: grafana-alerting
   #   type: grafana
   #   # Grafana base URL. Foghorn appends /api/alertmanager/grafana/api/v2.

@@ -65,6 +65,22 @@ type AuthConfig struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	Token    string `yaml:"token"`
+
+	// OIDC device authorization flow. Configure with auth.type: oidc and
+	// auth.flow: device. IssuerURL is used for OIDC discovery unless the device
+	// and token endpoints are provided explicitly.
+	Flow                   string   `yaml:"flow"`
+	IssuerURL              string   `yaml:"issuer_url"`
+	ClientID               string   `yaml:"client_id"`
+	ClientSecret           string   `yaml:"client_secret"`
+	Scopes                 []string `yaml:"scopes"`
+	DeviceAuthorizationURL string   `yaml:"device_authorization_url"`
+	TokenURL               string   `yaml:"token_url"`
+	UseIDToken             bool     `yaml:"use_id_token"`
+
+	// Cookie auth stores cookies gathered by an embedded login browser. CookieFile
+	// is optional; when empty, Foghorn stores cookies below the user config dir.
+	CookieFile string `yaml:"cookie_file"`
 }
 
 // SortCriterion is a single sort field with optional order direction.
