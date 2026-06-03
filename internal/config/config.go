@@ -37,11 +37,13 @@ func Default() *Config {
 			BatchThreshold: 5,
 		},
 		UI: UIConfig{
-			Theme:            "system",
-			PopupWidth:       800,
-			PopupHeight:      600,
-			PopupPosition:    "top_right",
-			DefaultCreatedBy: defaultCreatedBy(),
+			Theme:             "system",
+			PopupWidth:        800,
+			PopupHeight:       600,
+			PopupPosition:     "top_right",
+			DefaultCreatedBy:  defaultCreatedBy(),
+			AlwaysOnTop:       ptrTo(true),
+			PopupFollowCursor: ptrTo(true),
 			SilenceEditor: SilenceEditorConfig{
 				AlwaysVisibleMatchers: ptrTo(defaultSilenceEditorMatchers()),
 				CollapseMatchers:      ptrTo(true),

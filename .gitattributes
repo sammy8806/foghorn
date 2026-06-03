@@ -1,0 +1,4 @@
+# Wails regenerates these bindings with LF line endings on every build. Pin
+# them to LF so core.autocrlf=true on Windows checkouts doesn't flag them as
+# perpetually "modified" (CRLF working tree vs. LF index).
+frontend/wailsjs/** text eol=lf
