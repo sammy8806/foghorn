@@ -244,11 +244,10 @@
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
-    const [uiConfig, screens] = await Promise.all([
-      GetUIConfig(),
-      ScreenGetAll(),
-    ]);
+    const uiConfig = await GetUIConfig();
+    if (uiConfig.auto_position === false) return;
 
+    const screens = await ScreenGetAll();
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
     if (!screen) return;
 

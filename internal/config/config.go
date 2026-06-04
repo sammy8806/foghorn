@@ -41,6 +41,7 @@ func Default() *Config {
 			PopupWidth:        800,
 			PopupHeight:       600,
 			PopupPosition:     "top_right",
+			AutoPosition:      ptrTo(true),
 			DefaultCreatedBy:  defaultCreatedBy(),
 			AlwaysOnTop:       ptrTo(true),
 			PopupFollowCursor: ptrTo(true),
@@ -157,6 +158,9 @@ func validate(cfg *Config) error {
 	}
 	if cfg.UI.AlwaysOnTop == nil {
 		cfg.UI.AlwaysOnTop = ptrTo(true)
+	}
+	if cfg.UI.AutoPosition == nil {
+		cfg.UI.AutoPosition = ptrTo(true)
 	}
 	if cfg.UI.PopupFollowCursor == nil {
 		cfg.UI.PopupFollowCursor = ptrTo(true)

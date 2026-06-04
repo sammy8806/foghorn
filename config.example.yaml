@@ -306,6 +306,8 @@ ui:
   popup_height: 600
   # Popup corner: top_right, top_left, bottom_right, or bottom_left.
   popup_position: top_right
+  # Automatically position and resize the popup when it opens. Defaults to true.
+  auto_position: true
   # Keep the popup window above all other windows. Defaults to true.
   always_on_top: true
   # macOS only: open the popup on whichever monitor the tray icon was clicked

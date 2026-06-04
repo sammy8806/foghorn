@@ -128,6 +128,7 @@ export namespace config {
 	    popup_width: number;
 	    popup_height: number;
 	    popup_position: string;
+	    auto_position?: boolean;
 	    always_on_top?: boolean;
 	    popup_follow_cursor?: boolean;
 	    show_resolved: boolean;
@@ -146,6 +147,7 @@ export namespace config {
 	        this.popup_width = source["popup_width"];
 	        this.popup_height = source["popup_height"];
 	        this.popup_position = source["popup_position"];
+	        this.auto_position = source["auto_position"];
 	        this.always_on_top = source["always_on_top"];
 	        this.popup_follow_cursor = source["popup_follow_cursor"];
 	        this.show_resolved = source["show_resolved"];
@@ -921,4 +923,3 @@ export namespace model {
 	}
 
 }
-

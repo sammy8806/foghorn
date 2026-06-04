@@ -330,6 +330,7 @@ type UIConfig struct {
 	PopupWidth        int                 `yaml:"popup_width" json:"popup_width"`
 	PopupHeight       int                 `yaml:"popup_height" json:"popup_height"`
 	PopupPosition     string              `yaml:"popup_position" json:"popup_position"`
+	AutoPosition      *bool               `yaml:"auto_position" json:"auto_position"`
 	AlwaysOnTop       *bool               `yaml:"always_on_top" json:"always_on_top"`
 	PopupFollowCursor *bool               `yaml:"popup_follow_cursor" json:"popup_follow_cursor"`
 	ShowResolved      bool                `yaml:"show_resolved" json:"show_resolved"`

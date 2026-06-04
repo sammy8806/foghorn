@@ -408,6 +408,26 @@ ui:
 	}
 }
 
+func TestAutoPositionDefaultsTrue(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource)
+	if cfg.UI.AutoPosition == nil {
+		t.Fatal("auto_position should be resolved to a non-nil default")
+	}
+	if !*cfg.UI.AutoPosition {
+		t.Fatalf("auto_position default = %v, want true", *cfg.UI.AutoPosition)
+	}
+}
+
+func TestAutoPositionExplicitFalse(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  auto_position: false
+`)
+	if cfg.UI.AutoPosition == nil || *cfg.UI.AutoPosition {
+		t.Fatalf("auto_position = %v, want false", cfg.UI.AutoPosition)
+	}
+}
+
 func TestSilenceEditorExplicitEmptyWhitelist(t *testing.T) {
 	cfg := writeAndLoad(t, minimalSource+`
 ui:
