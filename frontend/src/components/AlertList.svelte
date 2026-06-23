@@ -35,6 +35,8 @@
   import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
+  import SilenceEditor from './SilenceEditor.svelte';
+  import { silenceEditor, closeSilenceEditor } from '../stores/silenceEditor';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
   const popupHorizontalMargin = 8;
@@ -574,6 +576,18 @@
     {/if}
   </div>
 </div>
+
+<!-- Single top-level silence editor, driven by the silenceEditor store. Lives
+     outside the alert list so it stays open across refreshes/regrouping/sorting
+     that destroy and recreate AlertCard instances. -->
+<SilenceEditor
+  alert={$silenceEditor.alert}
+  silence={$silenceEditor.silence}
+  mode={$silenceEditor.mode}
+  open={$silenceEditor.open}
+  on:close={closeSilenceEditor}
+  on:silenced={() => refreshAlerts()}
+/>
 
 <style>
   .alert-list-container {

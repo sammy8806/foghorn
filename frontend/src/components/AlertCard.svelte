@@ -3,7 +3,7 @@
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
-  import SilenceEditor from './SilenceEditor.svelte';
+  import { openSilenceCreate, openSilenceEdit } from '../stores/silenceEditor';
 
   export let alert: Alert;
   export let config: DisplayConfig;
@@ -109,9 +109,6 @@
       : '';
 
   let expanded = false;
-  let silenceOpen = false;
-  let silenceMode: 'create' | 'edit' = 'create';
-  let editingSilence: SilenceInfo | null = null;
   let expireConfirmId: string | null = null;
   let expireError: Record<string, string> = {};
   let expiring: Record<string, boolean> = {};
@@ -178,27 +175,6 @@
       segments.push({ kind: 'text', text: text.slice(cursor) });
     }
     return segments.length ? segments : [{ kind: 'text', text }];
-  }
-
-  function openSilenceCreate() {
-    silenceMode = 'create';
-    editingSilence = null;
-    silenceOpen = true;
-  }
-
-  function openSilenceEdit(s: SilenceInfo) {
-    silenceMode = 'edit';
-    editingSilence = s;
-    silenceOpen = true;
-  }
-
-  function closeSilenceEditor() {
-    silenceOpen = false;
-    editingSilence = null;
-  }
-
-  function onSilenced() {
-    void refreshAlerts();
   }
 
   function askExpire(s: SilenceInfo) {
@@ -357,7 +333,7 @@
                     </button>
                     <button class="btn-link-edit" on:click|stopPropagation={cancelExpire} disabled={!!expiring[s.id]}>Cancel</button>
                   {:else}
-                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(s)}>Edit</button>
+                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}>Edit</button>
                     <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}>Expire now</button>
                   {/if}
                 </div>
@@ -433,21 +409,12 @@
           {/if}
         {/if}
         {#if supportsSilence && !alert.silencedBy?.length && !isResolved}
-          <button class="btn-silence" on:click|stopPropagation={openSilenceCreate}>Silence…</button>
+          <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}>Silence…</button>
         {/if}
       </div>
     </div>
   {/if}
 </div>
-
-<SilenceEditor
-  {alert}
-  silence={editingSilence}
-  mode={silenceMode}
-  open={silenceOpen}
-  on:close={closeSilenceEditor}
-  on:silenced={onSilenced}
-/>
 
 <style>
   .alert-card {
