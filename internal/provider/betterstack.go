@@ -27,7 +27,8 @@ func NewBetterStack(cfg config.SourceConfig) *BetterStack {
 	return &BetterStack{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: withHTTPDebug(nil),
 		},
 	}
 }

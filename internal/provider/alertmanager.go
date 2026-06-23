@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -37,6 +38,14 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
+			// Do not follow redirects. Go's default client downgrades a
+			// redirected POST to a GET and drops the body, which would turn a
+			// silence-creation POST into a harmless GET of the silence list —
+			// a 200 with no silenceID that looks like success. Surface it instead.
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+			Transport: withHTTPDebug(nil),
 		},
 		apiV2: apiV2,
 		kind:  kind,
@@ -134,22 +143,39 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 	httpReq.Header.Set("Content-Type", "application/json")
 	a.applyAuth(httpReq)
 
+	if HTTPDebugEnabled() {
+		log.Printf("silence: %s %s POST %s body=%s", a.kind, a.cfg.Name, httpReq.URL.Redacted(), string(jsonBody))
+	}
+
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("creating silence on %s: %w", a.cfg.Name, err)
 	}
 	defer resp.Body.Close()
 
+	respBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("reading silence response from %s: %w", a.cfg.Name, readErr)
+	}
+	if HTTPDebugEnabled() {
+		log.Printf("silence: %s %s response HTTP %d body=%s", a.kind, a.cfg.Name, resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-		respBody, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("silence on %s %s returned HTTP %d: %s", a.kind, a.cfg.Name, resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
 		SilenceID string `json:"silenceID"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("decoding silence response from %s (HTTP %d, body %q): %w", a.cfg.Name, resp.StatusCode, strings.TrimSpace(string(respBody)), err)
+	}
+	if strings.TrimSpace(result.SilenceID) == "" {
+		// A 2xx with no silenceID means the silence was not created (e.g. the
+		// request was rewritten by a proxy). Treat it as a failure rather than
+		// reporting a phantom success to the caller.
+		return "", fmt.Errorf("silence on %s %s returned HTTP %d but no silence ID; body: %s", a.kind, a.cfg.Name, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	return result.SilenceID, nil
 }

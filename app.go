@@ -309,7 +309,9 @@ func (a *App) CreateSilence(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return silenceMgr.CreateSilence(ctx, source, matchers, duration, createdBy, comment, defaultCreatedBy)
+	id, err := silenceMgr.CreateSilence(ctx, source, matchers, duration, createdBy, comment, defaultCreatedBy)
+	log.Printf("app: CreateSilence source=%q matchers=%d duration=%q -> id=%q err=%v", source, len(matchers), duration, id, err)
+	return id, err
 }
 
 // UpdateSilence replaces an existing silence in place on the named source.
@@ -330,7 +332,9 @@ func (a *App) UpdateSilence(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return silenceMgr.UpdateSilence(ctx, source, silenceID, matchers, duration, createdBy, comment, defaultCreatedBy)
+	err := silenceMgr.UpdateSilence(ctx, source, silenceID, matchers, duration, createdBy, comment, defaultCreatedBy)
+	log.Printf("app: UpdateSilence source=%q id=%q matchers=%d duration=%q -> err=%v", source, silenceID, len(matchers), duration, err)
+	return err
 }
 
 // Unsilence expires a silence by ID.

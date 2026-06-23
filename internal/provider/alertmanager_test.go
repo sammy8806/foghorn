@@ -128,6 +128,66 @@ func TestAlertmanagerSilence(t *testing.T) {
 	}
 }
 
+func TestAlertmanagerSilenceMissingIDIsError(t *testing.T) {
+	// Server returns 200 but no silenceID — e.g. a redirected POST that got
+	// downgraded to a GET and returned the silence list instead of a creation
+	// result. This must be treated as a failure, not a silent success.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Valid JSON object that decodes cleanly but carries no silenceID.
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}))
+	defer server.Close()
+
+	am := NewAlertmanager(config.SourceConfig{Name: "test-am", Type: "alertmanager", URL: server.URL})
+	req := model.SilenceRequest{
+		Matchers:  []model.Matcher{{Name: "alertname", Value: "TargetDown", IsEqual: true}},
+		StartsAt:  time.Now(),
+		EndsAt:    time.Now().Add(1 * time.Hour),
+		CreatedBy: "foghorn",
+	}
+
+	id, err := am.Silence(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected error when server returns no silenceID, got id=%q nil error", id)
+	}
+}
+
+func TestAlertmanagerSilenceDoesNotFollowRedirect(t *testing.T) {
+	// A reverse proxy that 301-redirects the POST must not be silently followed
+	// (Go would downgrade POST->GET and drop the body). It must surface an error.
+	var postSeen bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			postSeen = true
+			http.Redirect(w, r, r.URL.Path, http.StatusMovedPermanently)
+			return
+		}
+		// A followed GET would land here and return a valid 200 object that
+		// decodes cleanly but has no silenceID.
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}))
+	defer server.Close()
+
+	am := NewAlertmanager(config.SourceConfig{Name: "test-am", Type: "alertmanager", URL: server.URL})
+	req := model.SilenceRequest{
+		Matchers:  []model.Matcher{{Name: "alertname", Value: "TargetDown", IsEqual: true}},
+		StartsAt:  time.Now(),
+		EndsAt:    time.Now().Add(1 * time.Hour),
+		CreatedBy: "foghorn",
+	}
+
+	id, err := am.Silence(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected error on redirect, got id=%q nil error", id)
+	}
+	if !postSeen {
+		t.Fatal("expected POST to reach server")
+	}
+}
+
 func TestAlertmanagerFetchSilences(t *testing.T) {
 	silences := []map[string]interface{}{
 		{

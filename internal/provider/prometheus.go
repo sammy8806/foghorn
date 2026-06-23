@@ -25,7 +25,8 @@ func NewPrometheus(cfg config.SourceConfig) *Prometheus {
 	return &Prometheus{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: withHTTPDebug(nil),
 		},
 	}
 }
