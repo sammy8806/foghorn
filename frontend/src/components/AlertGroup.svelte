@@ -82,7 +82,7 @@
   }
 
   .group-name {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     font-weight: 600;
     color: #94a3b8;
     flex: 1;
@@ -103,14 +103,14 @@
   }
 
   .group-count {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     background: #1e293b;
     padding: 1px 7px;
     border-radius: 10px;
     color: #64748b;
   }
 
-  .chevron { font-size: 10px; color: #475569; }
+  .chevron { font-size: calc(10px * var(--font-scale, 1)); color: #475569; }
 
   .group-alerts { padding-left: 8px; }
 </style>

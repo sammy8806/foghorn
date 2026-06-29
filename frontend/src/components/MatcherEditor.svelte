@@ -154,7 +154,7 @@
     border: 1px solid #334155;
     border-radius: 3px;
     color: #e2e8f0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     padding: 3px 4px;
     font-family: monospace;
     outline: none;
@@ -165,7 +165,7 @@
     background: none;
     border: none;
     color: #64748b;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     cursor: pointer;
     padding: 0 4px;
   }
@@ -173,7 +173,7 @@
   .chip-error {
     grid-column: 1 / -1;
     color: #f87171;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
   }
   .matcher-footer {
     display: flex;
@@ -187,7 +187,7 @@
     border: 1px dashed #334155;
     border-radius: 3px;
     color: #94a3b8;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 3px 8px;
     cursor: pointer;
   }
@@ -211,7 +211,7 @@
   }
   .revealed-separator span {
     color: #475569;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     letter-spacing: 0.05em;
     white-space: nowrap;
   }

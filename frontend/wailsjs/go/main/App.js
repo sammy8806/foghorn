@@ -58,6 +58,10 @@ export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }
 
+export function GetUIScale() {
+  return window['go']['main']['App']['GetUIScale']();
+}
+
 export function LayoutPopup(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5, arg6);
 }

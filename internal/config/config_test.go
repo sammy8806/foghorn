@@ -616,3 +616,99 @@ ui:
 		t.Errorf("error missing bad token: %v", err)
 	}
 }
+
+func TestLoadConfigUIScaleDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.UI.Scale.Factor != 1.0 {
+		t.Fatalf("expected default scale factor 1.0, got %v", cfg.UI.Scale.Factor)
+	}
+	if cfg.UI.Scale.Mode != "fonts" {
+		t.Fatalf("expected default scale mode fonts, got %q", cfg.UI.Scale.Mode)
+	}
+	if !cfg.UI.Scale.ApplyToPopup {
+		t.Fatal("expected default scale apply_to_popup true")
+	}
+}
+
+func TestLoadConfigUIScalePartialDefaults(t *testing.T) {
+	yaml := minimalConfigWithUIScale("    factor: 1.25\n")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.UI.Scale.Factor != 1.25 {
+		t.Fatalf("expected scale factor 1.25, got %v", cfg.UI.Scale.Factor)
+	}
+	if cfg.UI.Scale.Mode != "fonts" {
+		t.Fatalf("expected default scale mode fonts, got %q", cfg.UI.Scale.Mode)
+	}
+	if !cfg.UI.Scale.ApplyToPopup {
+		t.Fatal("expected default scale apply_to_popup true")
+	}
+}
+
+func TestLoadConfigUIScaleClampsFactor(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want float64
+	}{
+		{name: "lower", in: "0.5", want: 0.75},
+		{name: "upper", in: "5.0", want: 2.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := minimalConfigWithUIScale("    factor: " + tt.in + "\n")
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load() error: %v", err)
+			}
+			if cfg.UI.Scale.Factor != tt.want {
+				t.Fatalf("expected scale factor %v, got %v", tt.want, cfg.UI.Scale.Factor)
+			}
+		})
+	}
+}
+
+func TestLoadConfigUIScaleInvalidMode(t *testing.T) {
+	yaml := minimalConfigWithUIScale("    mode: huge\n")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected Load() to fail with invalid ui.scale.mode, got nil")
+	}
+	if !strings.Contains(err.Error(), "ui.scale.mode") {
+		t.Fatalf("expected ui.scale.mode error, got %v", err)
+	}
+}
+
+func minimalConfigWithUIScale(scaleBody string) string {
+	return strings.Replace(minimalConfig, "  show_silenced: true\n", "  show_silenced: true\n  scale:\n"+scaleBody, 1)
+}

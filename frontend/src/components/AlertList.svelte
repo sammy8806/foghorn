@@ -251,14 +251,17 @@
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
     if (!screen) return;
 
+    const popupScale = uiConfig.scale?.mode === 'interface' && uiConfig.scale.apply_to_popup
+      ? uiConfig.scale.factor || 1
+      : 1;
     const width = clamp(
-      uiConfig.popup_width || 800,
+      Math.round((uiConfig.popup_width || 800) * popupScale),
       360,
       Math.max(360, screen.width - (popupHorizontalMargin * 2)),
     );
     const maxHeight = Math.max(minPopupHeight, screen.height - popupTopMargin - popupBottomMargin);
     const desiredHeight = measureDesiredPopupHeight();
-    const height = clamp(desiredHeight, minPopupHeight, maxHeight);
+    const height = clamp(Math.round(desiredHeight * popupScale), minPopupHeight, maxHeight);
 
     const popupPosition = normalizePopupPosition(uiConfig.popup_position);
     await LayoutPopup(width, height, popupHorizontalMargin, popupTopMargin, popupBottomMargin, popupPosition);
@@ -615,19 +618,19 @@
 
   .info-card-title {
     color: #fed7aa;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     font-weight: 700;
   }
 
   .info-card-text {
     color: #fdba74;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     margin-top: 2px;
   }
 
   .info-card-error {
     color: #fecaca;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     margin-top: 4px;
   }
 
@@ -638,7 +641,7 @@
     color: #ffedd5;
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     cursor: pointer;
     white-space: nowrap;
   }
@@ -669,7 +672,7 @@
     border: 1px solid #334155;
     border-radius: 999px;
     color: #e2e8f0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     padding: 5px 12px;
     outline: none;
     transition: border-color 0.15s;
@@ -686,7 +689,7 @@
     padding: 4px 10px;
     min-height: 33px;
     box-sizing: border-box;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
     color: #475569;
     background: #0d1117;
@@ -705,7 +708,7 @@
     border-radius: 999px;
     color: #94a3b8;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     line-height: 1;
     padding: 5px 10px;
     white-space: nowrap;
@@ -745,7 +748,7 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     box-sizing: border-box;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     line-height: 1.1;
     font-weight: 600;
     color: #fbbf24;
@@ -763,7 +766,7 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     box-sizing: border-box;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     line-height: 1.1;
     font-weight: 700;
     color: #111827;
@@ -781,7 +784,7 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     box-sizing: border-box;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     line-height: 1.1;
     font-weight: 700;
     color: #dbeafe;
@@ -799,7 +802,7 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     color: #7dd3fc;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -827,7 +830,7 @@
     border-radius: 999px;
     color: #cbd5e1;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.1;
     font-weight: 600;
     height: var(--status-item-height);
@@ -855,7 +858,7 @@
     border-radius: 999px;
     color: #cbd5e1;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     line-height: 1;
     padding: 5px 10px;
     white-space: nowrap;
@@ -881,7 +884,7 @@
     color: #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: 9px;
+    font-size: calc(9px * var(--font-scale, 1));
     font-weight: 700;
   }
   .filter-toggle.filtered .filter-toggle-label {
@@ -893,7 +896,7 @@
   }
   .filter-toggle-caret {
     color: #64748b;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
   }
 
   .filter-menu {
@@ -920,7 +923,7 @@
     border-radius: 4px;
     color: #cbd5e1;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 6px 8px;
     text-align: left;
   }
@@ -940,7 +943,7 @@
     justify-content: center;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    font-size: 9px;
+    font-size: calc(9px * var(--font-scale, 1));
   }
   .refresh-ok { color: #22c55e; }
   .refresh-fail { color: #ef4444; }
@@ -951,7 +954,7 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     color: #94a3b8;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
   }
 
   .refresh-btn {
@@ -962,7 +965,7 @@
     background: none;
     border: none;
     color: #94a3b8;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale, 1));
     line-height: 1;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
@@ -986,7 +989,7 @@
     text-align: center;
     color: #475569;
     padding: 40px 20px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     display: flex;
     flex-direction: column;
     align-items: center;

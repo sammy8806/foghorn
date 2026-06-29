@@ -123,6 +123,22 @@ export namespace config {
 	        this.collapse_matchers = source["collapse_matchers"];
 	    }
 	}
+	export class UIScale {
+	    factor: number;
+	    mode: string;
+	    apply_to_popup: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UIScale(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.factor = source["factor"];
+	        this.mode = source["mode"];
+	        this.apply_to_popup = source["apply_to_popup"];
+	    }
+	}
 	export class UIConfig {
 	    theme: string;
 	    popup_width: number;
@@ -135,6 +151,7 @@ export namespace config {
 	    show_silenced: boolean;
 	    default_created_by: string;
 	    idle_image: string;
+	    scale: UIScale;
 	    silence_editor: SilenceEditorConfig;
 	
 	    static createFrom(source: any = {}) {
@@ -154,6 +171,7 @@ export namespace config {
 	        this.show_silenced = source["show_silenced"];
 	        this.default_created_by = source["default_created_by"];
 	        this.idle_image = source["idle_image"];
+	        this.scale = this.convertValues(source["scale"], UIScale);
 	        this.silence_editor = this.convertValues(source["silence_editor"], SilenceEditorConfig);
 	    }
 	
@@ -666,6 +684,7 @@ export namespace config {
 	
 	
 	
+	
 
 }
 
@@ -923,3 +942,4 @@ export namespace model {
 	}
 
 }
+

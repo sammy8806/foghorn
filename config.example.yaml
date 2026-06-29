@@ -317,6 +317,14 @@ ui:
   show_resolved: false
   show_silenced: false
   default_created_by: ${USER}
+  # Optional UI scaling for accessibility. Defaults are a no-op.
+  scale:
+    # Scale factor is clamped to 0.75-2.0.
+    factor: 1.0
+    # fonts scales text only; interface scales the whole web UI.
+    mode: fonts
+    # When mode is interface, resize the popup window with the interface.
+    apply_to_popup: true
   # Silence create/edit dialog. By default only a short whitelist of matchers
   # is shown; the rest collapse behind a "Show N more matchers" toggle. Hidden
   # matchers are still included in the silence — collapsing is purely visual.

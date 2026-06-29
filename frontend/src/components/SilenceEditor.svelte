@@ -430,7 +430,7 @@
   }
   h3 {
     margin: 0;
-    font-size: 15px;
+    font-size: calc(15px * var(--font-scale, 1));
     font-weight: 600;
     color: #f1f5f9;
   }
@@ -439,7 +439,7 @@
     border: none;
     color: #64748b;
     cursor: pointer;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale, 1));
     padding: 2px 6px;
   }
   .btn-close:hover { color: #e2e8f0; }
@@ -448,7 +448,7 @@
     background: none;
     border: none;
     color: #94a3b8;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     cursor: pointer;
     padding: 2px 0;
     white-space: nowrap;
@@ -473,19 +473,19 @@
     padding: 6px 10px;
     background: #0f172a;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #94a3b8;
   }
   .ctx-item strong { color: #cbd5e1; margin-right: 3px; font-weight: 600; }
-  .alert-name { color: #f1f5f9; font-weight: 600; font-size: 13px; }
-  .alert-source { color: #64748b; font-size: 11px; }
+  .alert-name { color: #f1f5f9; font-weight: 600; font-size: calc(13px * var(--font-scale, 1)); }
+  .alert-source { color: #64748b; font-size: calc(11px * var(--font-scale, 1)); }
 
   .field {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     color: #94a3b8;
   }
   .field-label { font-weight: 500; color: #94a3b8; }
@@ -495,7 +495,7 @@
     border: 1px solid #334155;
     border-radius: 4px;
     color: #e2e8f0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     padding: 6px 10px;
     outline: none;
     width: 100%;
@@ -515,7 +515,7 @@
     border-radius: 3px;
     color: #94a3b8;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 3px 8px;
   }
   .preset-btn:hover { border-color: #3b82f6; color: #e2e8f0; }
@@ -523,7 +523,7 @@
 
   .error {
     color: #f87171;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     margin: 8px 0 0;
   }
 
@@ -538,7 +538,7 @@
   .footer-left { display: flex; align-items: center; gap: 8px; }
   .footer-right { display: flex; align-items: center; gap: 8px; }
   .expire-confirm-text {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     color: #f87171;
   }
 
@@ -546,7 +546,7 @@
     border-radius: 4px;
     border: none;
     cursor: pointer;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     font-weight: 500;
     padding: 7px 16px;
   }

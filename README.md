@@ -204,6 +204,8 @@ sources:
 
 See `config.example.yaml` for the full reference, including severity mapping, display/grouping options, notification rules, and Better Stack-specific fields.
 
+The `ui.scale` block can enlarge the app for accessibility. Use `mode: fonts` to scale text only, or `mode: interface` to scale the full web UI. `factor` accepts `0.75` through `2.0`; when `mode: interface`, `apply_to_popup: true` also resizes the popup window.
+
 ## Development
 
 Run in live-development mode with hot reload:

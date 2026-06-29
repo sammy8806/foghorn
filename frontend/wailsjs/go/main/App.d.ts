@@ -33,6 +33,8 @@ export function GetSourcesHealth():Promise<Array<model.SourceHealth>>;
 
 export function GetUIConfig():Promise<config.UIConfig>;
 
+export function GetUIScale():Promise<config.UIScale>;
+
 export function LayoutPopup(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number,arg6:string):Promise<void>;
 
 export function OpenNotificationSettings():Promise<void>;

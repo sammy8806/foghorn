@@ -490,13 +490,13 @@
 
   .alert-name {
     font-weight: 600;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   .alert-subtitle {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #64748b;
     white-space: nowrap;
     overflow: hidden;
@@ -510,19 +510,19 @@
   }
 
   .alert-source {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #94a3b8;
     white-space: nowrap;
   }
 
   .alert-duration {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #64748b;
     white-space: nowrap;
   }
 
   .badge {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     padding: 1px 6px;
     border-radius: 10px;
     font-weight: 600;
@@ -549,7 +549,7 @@
     border: 1px solid rgba(94, 234, 212, 0.25);
   }
 
-  .chevron { font-size: 10px; color: #64748b; }
+  .chevron { font-size: calc(10px * var(--font-scale, 1)); color: #64748b; }
 
   .alert-body {
     padding: 6px 10px 8px 22px;
@@ -557,13 +557,13 @@
   }
 
   .annotation {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #cbd5e1;
     margin: 2px 0;
   }
-  .annotation--muted { color: #64748b; font-size: 10px; }
+  .annotation--muted { color: #64748b; font-size: calc(10px * var(--font-scale, 1)); }
   .annotation--pull {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     padding: 5px 8px;
     border-left: 3px solid #334155;
     background: rgba(0, 0, 0, 0.25);
@@ -583,7 +583,7 @@
     margin: 4px 0;
   }
   .comments-label {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #cbd5e1;
     display: block;
     margin-bottom: 4px;
@@ -594,7 +594,7 @@
     border-radius: 2px;
     padding: 5px 8px;
     margin-bottom: 4px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
   }
   .comment-card:last-child {
     margin-bottom: 0;
@@ -616,7 +616,7 @@
   }
   .comment-time {
     color: #64748b;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -640,7 +640,7 @@
     border-radius: 2px;
     padding: 5px 8px;
     margin-bottom: 4px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
   }
   .silence-card:last-child {
     margin-bottom: 0;
@@ -657,7 +657,7 @@
   }
   .silence-expiry {
     color: #64748b;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -679,7 +679,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 1px 4px;
     border-radius: 3px;
   }
@@ -690,12 +690,12 @@
   .btn-link-edit:disabled, .btn-link-expire:disabled { opacity: 0.5; cursor: default; }
   .expire-confirm-label {
     color: #f87171;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     margin-right: 2px;
   }
   .silence-error {
     color: #f87171;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     margin-top: 2px;
   }
 
@@ -707,7 +707,7 @@
   }
 
   .chip {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     background: #0f172a;
     border: 1px solid #1e293b;
     padding: 2px 6px;
@@ -729,7 +729,7 @@
     padding: 4px 6px;
     background: rgba(0,0,0,0.2);
     border-radius: 3px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     font-family: monospace;
     color: #64748b;
   }
@@ -743,7 +743,7 @@
   }
 
   .annotation-link, .generator-link {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #60a5fa;
     text-decoration: none;
   }
@@ -755,7 +755,7 @@
     border-radius: 3px;
     color: #94a3b8;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 2px 8px;
   }
   .btn-silence:disabled {
@@ -765,7 +765,7 @@
   .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
 
   .action-status {
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #94a3b8;
     white-space: nowrap;
   }

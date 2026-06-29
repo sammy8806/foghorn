@@ -337,7 +337,14 @@ type UIConfig struct {
 	ShowSilenced      bool                `yaml:"show_silenced" json:"show_silenced"`
 	DefaultCreatedBy  string              `yaml:"default_created_by" json:"default_created_by"`
 	IdleImage         string              `yaml:"idle_image" json:"idle_image"`
+	Scale             UIScale             `yaml:"scale" json:"scale"`
 	SilenceEditor     SilenceEditorConfig `yaml:"silence_editor" json:"silence_editor"`
+}
+
+type UIScale struct {
+	Factor       float64 `yaml:"factor" json:"factor"`
+	Mode         string  `yaml:"mode" json:"mode"`
+	ApplyToPopup bool    `yaml:"apply_to_popup" json:"apply_to_popup"`
 }
 
 // SilenceEditorConfig controls the silence create/edit dialog. Pointer fields

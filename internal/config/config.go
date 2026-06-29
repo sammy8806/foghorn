@@ -45,6 +45,11 @@ func Default() *Config {
 			DefaultCreatedBy:  defaultCreatedBy(),
 			AlwaysOnTop:       ptrTo(true),
 			PopupFollowCursor: ptrTo(true),
+			Scale: UIScale{
+				Factor:       1.0,
+				Mode:         "fonts",
+				ApplyToPopup: true,
+			},
 			SilenceEditor: SilenceEditorConfig{
 				AlwaysVisibleMatchers: ptrTo(defaultSilenceEditorMatchers()),
 				CollapseMatchers:      ptrTo(true),
@@ -62,7 +67,7 @@ func Load(path string) (*Config, error) {
 
 	expanded := expandEnvVars(string(data))
 
-	var cfg Config
+	cfg := *Default()
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
@@ -165,6 +170,9 @@ func validate(cfg *Config) error {
 	if cfg.UI.PopupFollowCursor == nil {
 		cfg.UI.PopupFollowCursor = ptrTo(true)
 	}
+	if err := normalizeUIScale(&cfg.UI.Scale); err != nil {
+		return err
+	}
 	for i := range cfg.Hide {
 		rule := &cfg.Hide[i]
 		if len(rule.Matchers) == 0 {
@@ -181,6 +189,31 @@ func validate(cfg *Config) error {
 	}
 	if err := cfg.Display.finalizeVisibleEntries(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func normalizeUIScale(scale *UIScale) error {
+	if scale.Factor == 0 {
+		scale.Factor = 1.0
+	}
+	if scale.Factor < 0.75 {
+		log.Printf("config: ui.scale.factor %.2f is outside [0.75, 2.0], clamped to 0.75", scale.Factor)
+		scale.Factor = 0.75
+	}
+	if scale.Factor > 2.0 {
+		log.Printf("config: ui.scale.factor %.2f is outside [0.75, 2.0], clamped to 2.0", scale.Factor)
+		scale.Factor = 2.0
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(scale.Mode))
+	switch mode {
+	case "":
+		scale.Mode = "fonts"
+	case "fonts", "interface":
+		scale.Mode = mode
+	default:
+		return fmt.Errorf("ui.scale.mode %q must be one of fonts, interface", scale.Mode)
 	}
 	return nil
 }
