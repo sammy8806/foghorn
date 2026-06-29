@@ -25,8 +25,6 @@
     SORT_PRESET_OPTIONS,
     GROUP_PRESET_OPTIONS,
     sortByCriteria,
-    criteriaEqual,
-    stringArrayEqual,
     isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources } from '../stores/filter';
@@ -227,21 +225,8 @@
     return `${health.source}: ${status}; last poll: ${lastPoll}${error}${failures}`;
   }
 
-  function currentSortLabel(): string {
-    const matchingPreset = SORT_PRESET_OPTIONS.find(option =>
-      option.criteria && criteriaEqual(option.criteria, $activeSortCriteria)
-    );
-    if (matchingPreset) return matchingPreset.label;
-    return $activeSortMode === 'default' ? 'Default' : 'Custom';
-  }
-
-  function currentGroupLabel(): string {
-    const matchingPreset = GROUP_PRESET_OPTIONS.find(option =>
-      option.fields && stringArrayEqual(option.fields, $activeGroupBy)
-    );
-    if (matchingPreset) return matchingPreset.label;
-    return $activeGroupMode === 'default' ? 'Default' : 'Custom';
-  }
+  $: currentSortLabel = SORT_PRESET_OPTIONS.find(o => o.mode === $activeSortMode)?.label ?? 'Custom';
+  $: currentGroupLabel = GROUP_PRESET_OPTIONS.find(o => o.mode === $activeGroupMode)?.label ?? 'Custom';
 
   async function layoutPopup(): Promise<void> {
     await tick();
@@ -452,7 +437,7 @@
         title="Change alert grouping"
       >
         <span class="filter-toggle-label">Group</span>
-        <span class="filter-toggle-value">{currentGroupLabel()}</span>
+        <span class="filter-toggle-value">{currentGroupLabel}</span>
         <span class="filter-toggle-caret">▾</span>
       </button>
       {#if groupMenuOpen}
@@ -481,7 +466,7 @@
         title="Change alert sort order"
       >
         <span class="filter-toggle-label">Sort</span>
-        <span class="filter-toggle-value">{currentSortLabel()}</span>
+        <span class="filter-toggle-value">{currentSortLabel}</span>
         <span class="filter-toggle-caret">▾</span>
       </button>
       {#if sortMenuOpen}
