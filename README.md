@@ -206,6 +206,8 @@ See `config.example.yaml` for the full reference, including severity mapping, di
 
 The `ui.scale` block can enlarge the app for accessibility. Use `mode: fonts` to scale text only, or `mode: interface` to scale the full web UI. `factor` accepts `0.75` through `2.0`; when `mode: interface`, `apply_to_popup: true` also resizes the popup window.
 
+For how the **Sort** selector's presets work — what each one orders by, where `startsAt`/`updatedAt` come from, and the provider-specific caveats — see [`docs/sorting.md`](docs/sorting.md).
+
 ## Development
 
 Run in live-development mode with hot reload:
