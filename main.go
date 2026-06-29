@@ -158,7 +158,6 @@ func main() {
 				}
 
 				app.UpdateConfig(nextCfg)
-				applyPopupScale(ctx, nextCfg.UI)
 				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
 				app.SetProviders(buildProviders(nextCfg.Sources))
 				store.SyncSources(sourceNames(nextCfg.Sources))

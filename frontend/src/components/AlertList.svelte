@@ -94,12 +94,15 @@
       await refreshAlerts();
 
       if (!isWails()) return;
-      disposeConfigReloaded = EventsOn('config:reloaded', () => {
-        void loadSeverityConfig();
-        void loadSourceCapabilities();
-        void syncUIConfig();
-        void syncEnvironmentInfo();
-        void syncNotificationPermissionStatus();
+      disposeConfigReloaded = EventsOn('config:reloaded', async () => {
+        await Promise.all([
+          loadSeverityConfig(),
+          loadSourceCapabilities(),
+          syncUIConfig(),
+          syncEnvironmentInfo(),
+          syncNotificationPermissionStatus(),
+        ]);
+        await layoutPopup();
       });
       disposePopupOpening = EventsOn('popup:opening', async () => {
         await layoutPopup();

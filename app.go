@@ -15,8 +15,6 @@ import (
 	"foghorn/internal/resolve"
 	"foghorn/internal/silence"
 	"foghorn/internal/state"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the Wails-bound struct. Its exported methods become JS bindings.
@@ -252,16 +250,6 @@ func (a *App) GetUIScale() config.UIScale {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.cfg.UI.Scale
-}
-
-func applyPopupScale(ctx context.Context, ui config.UIConfig) {
-	width := ui.PopupWidth
-	height := ui.PopupHeight
-	if ui.Scale.Mode == "interface" && ui.Scale.ApplyToPopup {
-		width = int(float64(width) * ui.Scale.Factor)
-		height = int(float64(height) * ui.Scale.Factor)
-	}
-	wailsruntime.WindowSetSize(ctx, width, height)
 }
 
 // AboutInfo is the static app metadata shown in the in-app About screen.
