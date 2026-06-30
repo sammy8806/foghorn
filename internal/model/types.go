@@ -70,8 +70,11 @@ type ProviderHealth struct {
 
 // SourceHealth tracks the poll status for a single source as seen by the frontend.
 type SourceHealth struct {
-	Source      string    `json:"source"`
-	OK          bool      `json:"ok"`
+	Source string `json:"source"`
+	OK     bool   `json:"ok"`
+	// Pending is true for a configured source that has not completed its first
+	// poll yet. Such a source is neither OK nor failing — it is still in work.
+	Pending     bool      `json:"pending"`
 	LastPoll    time.Time `json:"lastPoll"`
 	LastError   string    `json:"lastError,omitempty"`
 	ConsecFails int       `json:"consecFails"`

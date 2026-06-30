@@ -906,6 +906,7 @@ export namespace model {
 	export class SourceHealth {
 	    source: string;
 	    ok: boolean;
+	    pending: boolean;
 	    // Go type: time
 	    lastPoll: any;
 	    lastError?: string;
@@ -919,6 +920,7 @@ export namespace model {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
 	        this.ok = source["ok"];
+	        this.pending = source["pending"];
 	        this.lastPoll = this.convertValues(source["lastPoll"], null);
 	        this.lastError = source["lastError"];
 	        this.consecFails = source["consecFails"];

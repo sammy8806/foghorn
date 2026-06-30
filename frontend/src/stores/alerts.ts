@@ -228,6 +228,9 @@ export const activeGroupBy = derived(
 export interface SourceHealth {
   source: string;
   ok: boolean;
+  // pending is true for a configured source whose first poll has not finished
+  // yet — it is still in work, neither OK nor failing.
+  pending: boolean;
   lastPoll: string;
   lastError?: string;
   consecFails: number;
@@ -279,7 +282,7 @@ function healthBySource(entries: SourceHealth[]): Map<string, SourceHealth> {
 function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceHealth[]): void {
   const previous = healthBySource(previousEntries);
   for (const entry of nextEntries) {
-    if (entry.ok) continue;
+    if (entry.ok || entry.pending) continue;
     const prior = previous.get(entry.source);
     const changed = !prior || prior.ok || prior.lastError !== entry.lastError || prior.consecFails !== entry.consecFails;
     if (!changed) continue;

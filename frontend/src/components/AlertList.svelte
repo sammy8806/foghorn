@@ -169,7 +169,10 @@
 
   $: noHealthYet = $sourcesHealth.length === 0;
   $: allSourcesOK = $sourcesHealth.length > 0 && $sourcesHealth.every(h => h.ok);
-  $: anySourceFailing = $sourcesHealth.length > 0 && $sourcesHealth.some(h => !h.ok);
+  // A pending source (first poll still in flight) is neither OK nor failing, so
+  // it must not turn the status bubble red.
+  $: anySourcePending = $sourcesHealth.some(h => h.pending);
+  $: anySourceFailing = $sourcesHealth.some(h => !h.ok && !h.pending);
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
   $: isMacOSDevMode = environmentPlatform === 'darwin' && (
     normalizedBuildType === 'dev' ||
@@ -214,13 +217,16 @@
   function formatHealthLine(health: {
     source: string;
     ok: boolean;
+    pending: boolean;
     lastPoll: string;
     lastError?: string;
     consecFails: number;
   }): string {
-    const status = health.ok ? 'OK' : 'Failing';
-    const lastPoll = health.lastPoll ? formatTime(new Date(health.lastPoll)) : 'never';
-    const error = health.ok ? '' : `; error: ${health.lastError || 'unknown error'}`;
+    const status = health.pending ? 'Pending (waiting for first poll)' : health.ok ? 'OK' : 'Failing';
+    const lastPoll = health.pending
+      ? 'not yet'
+      : health.lastPoll ? formatTime(new Date(health.lastPoll)) : 'never';
+    const error = (health.ok || health.pending) ? '' : `; error: ${health.lastError || 'unknown error'}`;
     const failures = health.consecFails > 0 ? `; consecutive failures: ${health.consecFails}` : '';
     return `${health.source}: ${status}; last poll: ${lastPoll}${error}${failures}`;
   }
@@ -519,7 +525,7 @@
       <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
         class:refresh-ok={allSourcesOK && !refreshing}
         class:refresh-fail={anySourceFailing && !refreshing}
-        class:refresh-pending={noHealthYet || refreshing}
+        class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
       >●</span>
       {#if !noHealthYet}
         <span class="refresh-time">{formatTime(latestPoll)}</span>

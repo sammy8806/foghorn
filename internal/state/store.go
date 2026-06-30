@@ -207,6 +207,15 @@ func (s *Store) SyncSources(sources []string) {
 		keep[source] = struct{}{}
 	}
 
+	// Seed a pending health entry for any newly configured source so it shows
+	// up as "in work" immediately, before its first poll completes. Existing
+	// entries (real poll results) are preserved.
+	for _, source := range sources {
+		if _, ok := s.health[source]; !ok {
+			s.health[source] = model.SourceHealth{Source: source, Pending: true}
+		}
+	}
+
 	for source := range s.bySource {
 		if _, ok := keep[source]; !ok {
 			delete(s.bySource, source)
