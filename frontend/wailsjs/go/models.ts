@@ -714,7 +714,6 @@ export namespace main {
 	}
 
 }
-
 export namespace model {
 	
 	export class Matcher {
@@ -946,4 +945,3 @@ export namespace model {
 	}
 
 }
-

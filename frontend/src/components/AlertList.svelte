@@ -194,7 +194,7 @@
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
-  $: latestPoll = $sourcesHealth.reduce((latest, h) => {
+  $: latestPoll = $sourcesHealth.filter(h => !h.pending).reduce((latest, h) => {
     const t = new Date(h.lastPoll);
     return t > latest ? t : latest;
   }, new Date(0));
