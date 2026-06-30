@@ -127,11 +127,11 @@ export namespace config {
 	    factor: number;
 	    mode: string;
 	    apply_to_popup: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UIScale(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.factor = source["factor"];
@@ -942,4 +942,3 @@ export namespace model {
 	}
 
 }
-

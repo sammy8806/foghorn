@@ -17,7 +17,13 @@ const defaultScale: UIScale = {
   apply_to_popup: true,
 };
 
-function normalizeScale(input: Partial<UIScale> | null | undefined): UIScale {
+type UIScaleInput = {
+  factor?: number;
+  mode?: string;
+  apply_to_popup?: boolean;
+};
+
+function normalizeScale(input: UIScaleInput | null | undefined): UIScale {
   const factor = typeof input?.factor === 'number' && input.factor > 0 ? input.factor : defaultScale.factor;
   const mode = input?.mode === 'interface' ? 'interface' : 'fonts';
   const applyToPopup = typeof input?.apply_to_popup === 'boolean' ? input.apply_to_popup : true;
