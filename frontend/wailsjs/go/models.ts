@@ -475,6 +475,7 @@ export namespace config {
 	    URL: string;
 	    Auth: AuthConfig;
 	    PollInterval: number;
+	    Timeout: number;
 	    Filters: string[];
 	    SeverityLabel: string;
 	    BetterStack: BetterStackConfig;
@@ -490,6 +491,7 @@ export namespace config {
 	        this.URL = source["URL"];
 	        this.Auth = this.convertValues(source["Auth"], AuthConfig);
 	        this.PollInterval = source["PollInterval"];
+	        this.Timeout = source["Timeout"];
 	        this.Filters = source["Filters"];
 	        this.SeverityLabel = source["SeverityLabel"];
 	        this.BetterStack = this.convertValues(source["BetterStack"], BetterStackConfig);
@@ -942,3 +944,4 @@ export namespace model {
 	}
 
 }
+

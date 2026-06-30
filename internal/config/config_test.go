@@ -146,6 +146,54 @@ ui:
 	}
 }
 
+func TestLoadConfigSourceTimeout(t *testing.T) {
+	yaml := `
+sources:
+  - name: with-timeout
+    type: alertmanager
+    url: http://localhost:9093
+    timeout: 5s
+  - name: without-timeout
+    type: alertmanager
+    url: http://localhost:9094
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := cfg.Sources[0].Timeout; got != 5*time.Second {
+		t.Fatalf("expected explicit timeout 5s, got %v", got)
+	}
+	if got := cfg.Sources[1].Timeout; got != DefaultSourceTimeout {
+		t.Fatalf("expected default timeout %v, got %v", DefaultSourceTimeout, got)
+	}
+}
+
 func TestLoadConfigDefaultsSeverityLabel(t *testing.T) {
 	yaml := `
 sources:

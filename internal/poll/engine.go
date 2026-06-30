@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"foghorn/internal/config"
@@ -23,6 +24,9 @@ type Engine struct {
 	store   *state.Store
 	sources []config.SourceConfig
 	factory ProviderFactory
+
+	mu       sync.Mutex
+	triggers []chan struct{}
 }
 
 // DiffEvent pairs a source name with its diff result.
@@ -43,14 +47,33 @@ func New(store *state.Store, sources []config.SourceConfig, factory ProviderFact
 func (e *Engine) Start(ctx context.Context) <-chan DiffEvent {
 	ch := make(chan DiffEvent, 64)
 
+	e.mu.Lock()
+	e.triggers = make([]chan struct{}, 0, len(e.sources))
 	for _, src := range e.sources {
-		go e.pollLoop(ctx, src, ch)
+		trigger := make(chan struct{}, 1)
+		e.triggers = append(e.triggers, trigger)
+		go e.pollLoop(ctx, src, trigger, ch)
 	}
+	e.mu.Unlock()
 
 	return ch
 }
 
-func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, ch chan<- DiffEvent) {
+// RefreshNow asks every source to poll immediately, off its normal cycle. It is
+// non-blocking: if a source already has a refresh queued, the extra signal is
+// dropped because a poll is already imminent.
+func (e *Engine) RefreshNow() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, trigger := range e.triggers {
+		select {
+		case trigger <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, trigger <-chan struct{}, ch chan<- DiffEvent) {
 	var p Provider
 
 	// Create provider based on type
@@ -83,19 +106,31 @@ func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, ch chan<
 	defer ticker.Stop()
 
 	// Initial poll immediately
-	e.poll(ctx, src.Name, p, ch)
+	e.poll(ctx, src, p, ch)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			e.poll(ctx, src.Name, p, ch)
+			e.poll(ctx, src, p, ch)
+		case <-trigger:
+			e.poll(ctx, src, p, ch)
 		}
 	}
 }
 
-func (e *Engine) poll(ctx context.Context, source string, p Provider, ch chan<- DiffEvent) {
+func (e *Engine) poll(ctx context.Context, src config.SourceConfig, p Provider, ch chan<- DiffEvent) {
+	source := src.Name
+
+	// Bound the whole poll (alerts + silences + on-call) so a slow or broken
+	// source cannot hang indefinitely.
+	if src.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, src.Timeout)
+		defer cancel()
+	}
+
 	alerts, err := p.Fetch(ctx)
 	if err != nil {
 		log.Printf("error polling %s: %v", source, err)
@@ -106,6 +141,13 @@ func (e *Engine) poll(ctx context.Context, source string, p Provider, ch chan<- 
 		default:
 		}
 		return
+	}
+
+	// Enrich alerts with silence details if the provider supports it.
+	if sp, ok := p.(provider.SilenceProvider); ok {
+		if silences, err := sp.FetchSilences(ctx); err == nil {
+			enrichSilences(alerts, silences)
+		}
 	}
 
 	diff := e.store.Update(source, alerts)
@@ -130,5 +172,31 @@ func (e *Engine) poll(ctx context.Context, source string, p Provider, ch chan<- 
 	case ch <- DiffEvent{Source: source, Diff: diff}:
 	default:
 		// Channel full, skip — non-blocking
+	}
+}
+
+// enrichSilences attaches matching silence detail to any alert that is silenced,
+// keyed by the silence IDs the provider reported on each alert.
+func enrichSilences(alerts []model.Alert, silences []model.SilenceInfo) {
+	if len(silences) == 0 {
+		return
+	}
+	byID := make(map[string]model.SilenceInfo, len(silences))
+	for _, s := range silences {
+		byID[s.ID] = s
+	}
+	for i := range alerts {
+		if len(alerts[i].SilencedBy) == 0 {
+			continue
+		}
+		var matched []model.SilenceInfo
+		for _, sid := range alerts[i].SilencedBy {
+			if info, ok := byID[sid]; ok {
+				matched = append(matched, info)
+			}
+		}
+		if len(matched) > 0 {
+			alerts[i].Silences = matched
+		}
 	}
 }

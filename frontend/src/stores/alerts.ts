@@ -287,17 +287,14 @@ function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceH
   }
 }
 
-export async function refreshAlerts(): Promise<void> {
+// reloadFromStore paints the backend's current store snapshot into the svelte
+// stores. It does NOT fetch from any source — the poll engine keeps the store
+// fresh in parallel and pushes an alerts:updated event as each source finishes,
+// so reading the store is enough to show each source's alerts the moment it
+// completes. Used both by the event handler and after an explicit refresh.
+export async function reloadFromStore(): Promise<void> {
+  if (!isWails()) return;
   try {
-    if (!isWails()) {
-      // No backend — show empty state instead of hanging/crashing.
-      alerts.set([]);
-      severityCounts.set(emptySeverityCounts());
-      onCallStatus.set([]);
-      error.set('Dev mode: no Wails backend connected');
-      return;
-    }
-    await RefreshAlerts();
     const [alertList, counts, health, onCall] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
@@ -354,6 +351,29 @@ export async function refreshAlerts(): Promise<void> {
   } finally {
     loading.set(false);
   }
+}
+
+// refreshAlerts triggers an immediate poll of every source, then paints the
+// current store. The poll runs in parallel per source on the backend; results
+// stream in via alerts:updated as each finishes, so a slow or broken source no
+// longer blocks the others. Use for explicit refreshes (mount, manual refresh,
+// after a silence/ack action).
+export async function refreshAlerts(): Promise<void> {
+  if (!isWails()) {
+    // No backend — show empty state instead of hanging/crashing.
+    alerts.set([]);
+    severityCounts.set(emptySeverityCounts());
+    onCallStatus.set([]);
+    error.set('Dev mode: no Wails backend connected');
+    loading.set(false);
+    return;
+  }
+  try {
+    await RefreshAlerts();
+  } catch (e) {
+    error.set(String(e));
+  }
+  await reloadFromStore();
 }
 
 export async function loadDisplayConfig(): Promise<void> {
@@ -468,7 +488,11 @@ export function initEventListeners(): void {
   if (!isWails()) return; // no event bridge in plain browser
   EventsOn('alerts:updated', (diff?: AlertsUpdatedDiff) => {
     handleResolvedAlerts(diff);
-    refreshAlerts();
+    // The poll engine has already updated the store for the source that just
+    // finished — read that snapshot rather than forcing a fresh sequential
+    // re-fetch of every source. This is what lets each source appear as soon
+    // as it completes instead of waiting on the slowest one.
+    void reloadFromStore();
   });
   EventsOn('config:reloaded', () => {
     loadSeverityConfig();

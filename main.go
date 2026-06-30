@@ -176,6 +176,7 @@ func main() {
 				notifier := notify.New(nextCfg.Notifications, severities)
 				pollEng := poll.New(store, nextCfg.Sources, nil)
 				diffCh := pollEng.Start(bgCtx)
+				app.setRefreshTrigger(pollEng.RefreshNow)
 
 				go func(localCtx context.Context, localDiffCh <-chan poll.DiffEvent, localNotifier *notify.Engine) {
 					for {

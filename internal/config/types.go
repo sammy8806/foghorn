@@ -49,6 +49,7 @@ type SourceConfig struct {
 	URL           string            `yaml:"url"`
 	Auth          AuthConfig        `yaml:"auth"`
 	PollInterval  time.Duration     `yaml:"poll_interval"`
+	Timeout       time.Duration     `yaml:"timeout"`
 	Filters       []string          `yaml:"filters"`
 	SeverityLabel string            `yaml:"severity_label"`
 	BetterStack   BetterStackConfig `yaml:"betterstack"`

@@ -17,6 +17,11 @@ sources:
       username: ${FOGHORN_AM_USER}
       password: ${FOGHORN_AM_PASS}
     poll_interval: 30s
+    # Max time for a single poll of this source (alerts + silences + on-call)
+    # before it is abandoned and recorded as failing. Sources are polled in
+    # parallel, so a slow or broken source never blocks the others; this bounds
+    # how long it shows as "loading". Defaults to 10s when omitted.
+    timeout: 10s
   # - name: grafana-alerting
   #   type: grafana
   #   # Grafana base URL. Foghorn appends /api/alertmanager/grafana/api/v2.

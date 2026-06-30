@@ -7,11 +7,18 @@ import (
 	"os/user"
 	"regexp"
 	"strings"
+	"time"
 
 	"foghorn/internal/duration"
 
 	"gopkg.in/yaml.v3"
 )
+
+// DefaultSourceTimeout bounds a single source's fetch (alerts + silences +
+// on-call) when a source does not set its own `timeout`. It matches the
+// providers' built-in HTTP client timeout so a slow/broken source cannot hang
+// a poll indefinitely.
+const DefaultSourceTimeout = 10 * time.Second
 
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
@@ -121,6 +128,9 @@ func validate(cfg *Config) error {
 		}
 		if src.PollInterval == 0 {
 			cfg.Sources[i].PollInterval = 30_000_000_000 // 30s default
+		}
+		if src.Timeout <= 0 {
+			cfg.Sources[i].Timeout = DefaultSourceTimeout
 		}
 		if strings.TrimSpace(src.SeverityLabel) == "" {
 			cfg.Sources[i].SeverityLabel = "severity"
