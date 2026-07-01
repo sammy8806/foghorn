@@ -103,6 +103,13 @@ function haystack(alert: Alert): string {
   const parts = [alert.name, alert.source];
   for (const v of Object.values(alert.labels || {})) parts.push(v);
   for (const v of Object.values(alert.annotations || {})) parts.push(v);
+  // Text terms are never converted to silence matchers (only field terms are),
+  // so broadening the search haystack with resolved/display values has zero
+  // silence-fidelity impact — it only helps users find alerts via friendlier
+  // resolved text. matchesField below intentionally stays on raw labels/annotations.
+  for (const v of Object.values(alert.resolvedLabels || {})) parts.push(v);
+  for (const v of Object.values(alert.resolvedAnnotations || {})) parts.push(v);
+  for (const v of Object.values(alert.resolvedFields || {})) parts.push(v);
   return parts.join(' ').toLowerCase();
 }
 

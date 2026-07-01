@@ -57,6 +57,16 @@
   $: sourceCandidates = query
     ? sourcesWithMatches($alerts, allMatchers)
     : [];
+  // Query-mode matchers can change after the source picker's initial default is
+  // set (user edits matchers). If the current selection falls out of the
+  // recomputed candidate list, re-default to the top candidate rather than
+  // leaving a stale selection that no longer appears in the picker. Guarded to
+  // non-empty candidates so a transient zero-match edit doesn't clobber the
+  // pick to ''. Alert/edit modes never hit this since query is null there.
+  $: if (query && selectedSource && sourceCandidates.length &&
+         !sourceCandidates.some((c) => c.source === selectedSource)) {
+    selectedSource = sourceCandidates[0].source;
+  }
   // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
   // only while expanded and some visible matcher would collapse back out of the
   // whitelist. The two are mutually exclusive: expanding empties hiddenMatchers.

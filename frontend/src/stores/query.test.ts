@@ -144,6 +144,18 @@ describe('matchesQuery', () => {
   it('an invalid =~ regex matches nothing', () => {
     expect(matchesQuery(a, parseQuery('namespace=~('))).toBe(false);
   });
+
+  it('matches a bare word found only in resolved labels/annotations/fields', () => {
+    const resolved = mkAlert({
+      resolvedLabels: { cluster: 'shipping-euwest1' },
+      resolvedAnnotations: { runbook: 'see confluence page zephyr' },
+      resolvedFields: { owner: 'team-orion' },
+    });
+    expect(matchesQuery(resolved, parseQuery('shipping-euwest1'))).toBe(true);
+    expect(matchesQuery(resolved, parseQuery('zephyr'))).toBe(true);
+    expect(matchesQuery(resolved, parseQuery('team-orion'))).toBe(true);
+    expect(matchesQuery(resolved, parseQuery('nowhere'))).toBe(false);
+  });
 });
 
 describe('queryToMatchers', () => {
