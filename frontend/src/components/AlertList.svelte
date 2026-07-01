@@ -148,33 +148,18 @@
   function silenceFromSearch() {
     if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
   }
-  // While the search is expanded the view block shows captions only, so the
-  // expanded field has room without pushing controls off the row. Hide values
-  // immediately when opening, but wait for the search's collapse animation to
-  // finish before restoring them — otherwise the still-wide search and the
-  // re-expanded segments briefly overflow and wrap the row onto two lines.
-  const SEARCH_ANIM_MS = 180;
-  let searchAllowsValues = true;
-  let restoreValuesTimer: ReturnType<typeof setTimeout>;
-  $: {
-    clearTimeout(restoreValuesTimer);
-    if (searchOpen) {
-      searchAllowsValues = false;
-    } else {
-      restoreValuesTimer = setTimeout(() => { searchAllowsValues = true; }, SEARCH_ANIM_MS);
-    }
-  }
-
   // When the filter row would overflow, drop the segment values (captions only)
-  // to keep it on a single line — same treatment as when the search is open.
+  // to keep it on a single line.
   // Each pass re-evaluates from the *expanded* layout (show values, measure,
   // then hide only if they actually overflow) so it never latches compact.
   let filterBarEl: HTMLElement | null = null;
   let widthCompact = false;
   let measuring = false;
+  const SEARCH_ANIM_MS = 180;
+  let measureTimer: ReturnType<typeof setTimeout>;
   async function measureFilterBar() {
     const el = filterBarEl;
-    if (measuring || !el || searchOpen) return;
+    if (measuring || !el) return;
     measuring = true;
     try {
       if (widthCompact) { widthCompact = false; await tick(); }
@@ -185,18 +170,31 @@
     }
   }
 
-  $: showSegmentValues = searchAllowsValues && !widthCompact;
+  function queueFilterBarMeasure() {
+    void tick().then(() => {
+      requestAnimationFrame(() => { void measureFilterBar(); });
+    });
+    clearTimeout(measureTimer);
+    measureTimer = setTimeout(() => { void measureFilterBar(); }, SEARCH_ANIM_MS + 40);
+  }
+
+  $: showSegmentValues = !widthCompact;
 
   // Re-measure when the available width changes (ResizeObserver), when a
-  // segment is added/removed, or when the search finishes collapsing and the
-  // values are allowed back in.
-  $: { void $availableSources.length; void searchAllowsValues; if (filterBarEl) tick().then(measureFilterBar); }
+  // segment is added/removed, or when search opens/collapses.
+  $: { void $availableSources.length; void searchOpen; if (filterBarEl) queueFilterBarMeasure(); }
   onMount(() => {
     if (!filterBarEl || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => { void measureFilterBar(); });
+    const observer = new ResizeObserver(() => { queueFilterBarMeasure(); });
     observer.observe(filterBarEl);
     return () => observer.disconnect();
   });
+
+  function onSearchTransitionEnd(e: TransitionEvent) {
+    if (e.propertyName === 'width') {
+      queueFilterBarMeasure();
+    }
+  }
 
   async function openSearch() {
     searchExpanded = true;
@@ -420,6 +418,7 @@
       class:open={searchOpen}
       on:click={openSearch}
       on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
+      on:transitionend={onSearchTransitionEnd}
       role="button"
       aria-label="Filter alerts"
       tabindex={searchOpen ? -1 : 0}
