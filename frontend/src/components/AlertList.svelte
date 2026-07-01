@@ -870,7 +870,18 @@
     color: #7c8aa3;
   }
   .segment.filtered .segment-label { color: #9fc2f5; }
-  .segment-value { color: #f1f5f9; }
+  /* Reserve a stable width band so the block doesn't jump around as the
+     selected value changes: short values keep the min width, long ones
+     truncate with an ellipsis instead of stretching the segment. */
+  .segment-value {
+    color: #f1f5f9;
+    display: inline-block;
+    min-width: 4.5em;
+    max-width: 8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .segment.filtered .segment-value { color: #bcd9ff; }
   .segment-caret { fill: #64748b; }
   /* Anchor dropdowns to the block's right edge so the rightmost (Sort) menu
