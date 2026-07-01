@@ -140,16 +140,49 @@
   // finish before restoring them — otherwise the still-wide search and the
   // re-expanded segments briefly overflow and wrap the row onto two lines.
   const SEARCH_ANIM_MS = 180;
-  let showSegmentValues = true;
+  let searchAllowsValues = true;
   let restoreValuesTimer: ReturnType<typeof setTimeout>;
   $: {
     clearTimeout(restoreValuesTimer);
     if (searchOpen) {
-      showSegmentValues = false;
+      searchAllowsValues = false;
     } else {
-      restoreValuesTimer = setTimeout(() => { showSegmentValues = true; }, SEARCH_ANIM_MS);
+      restoreValuesTimer = setTimeout(() => { searchAllowsValues = true; }, SEARCH_ANIM_MS);
     }
   }
+
+  // When the filter row would overflow, drop the segment values (captions only)
+  // to keep it on a single line — same treatment as when the search is open.
+  // Each pass re-evaluates from the *expanded* layout (show values, measure,
+  // then hide only if they actually overflow) so it never latches compact.
+  let filterBarEl: HTMLElement | null = null;
+  let widthCompact = false;
+  let measuring = false;
+  async function measureFilterBar() {
+    const el = filterBarEl;
+    if (measuring || !el || searchOpen) return;
+    measuring = true;
+    try {
+      if (widthCompact) { widthCompact = false; await tick(); }
+      const overflow = el.scrollWidth > el.clientWidth + 1;
+      if (overflow !== widthCompact) { widthCompact = overflow; await tick(); }
+    } finally {
+      measuring = false;
+    }
+  }
+
+  $: showSegmentValues = searchAllowsValues && !widthCompact;
+
+  // Re-measure when the available width changes (ResizeObserver), when a
+  // segment is added/removed, or when the search finishes collapsing and the
+  // values are allowed back in.
+  $: { void $availableSources.length; void searchAllowsValues; if (filterBarEl) tick().then(measureFilterBar); }
+  onMount(() => {
+    if (!filterBarEl || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => { void measureFilterBar(); });
+    observer.observe(filterBarEl);
+    return () => observer.disconnect();
+  });
 
   async function openSearch() {
     searchExpanded = true;
@@ -235,10 +268,6 @@
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
-  $: latestPoll = $sourcesHealth.filter(h => !h.pending).reduce((latest, h) => {
-    const t = new Date(h.lastPoll);
-    return t > latest ? t : latest;
-  }, new Date(0));
   $: onCallSummary = $onCallStatus.map(status => {
     const names = status.users.map(user => user.name || user.email).filter(Boolean).join(', ') || 'nobody assigned';
     return $onCallStatus.length === 1 ? names : `${status.source}: ${names}`;
@@ -370,7 +399,7 @@
   {/if}
 
   <!-- Filter & view controls -->
-  <div class="filter-bar">
+  <div class="filter-bar" bind:this={filterBarEl}>
     <!-- Expanding search: collapsed to an icon, click to expand. -->
     <div
       class="search"
@@ -483,6 +512,7 @@
         <button
           class="segment"
           class:active={groupMenuOpen}
+          class:filtered={$activeGroupMode !== 'default'}
           on:click|stopPropagation={() => openMenu('group')}
           title="Change alert grouping"
         >
@@ -508,6 +538,7 @@
         <button
           class="segment"
           class:active={sortMenuOpen}
+          class:filtered={$activeSortMode !== 'default'}
           on:click|stopPropagation={() => openMenu('sort')}
           title="Change alert sort order"
         >
@@ -563,9 +594,6 @@
         class:refresh-fail={anySourceFailing && !refreshing}
         class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
       >●</span>
-      {#if !noHealthYet}
-        <span class="refresh-time">{formatTime(latestPoll)}</span>
-      {/if}
       <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
         <span class="refresh-icon" class:spinning={refreshing}>↻</span>
       </button>
@@ -688,6 +716,9 @@
     background: #0f172a;
     border-bottom: 1px solid #1b2740;
     flex-shrink: 0;
+    /* Stay on one line; when it would overflow we strip the segment values
+       (captions only) rather than wrapping onto a second row. */
+    flex-wrap: nowrap;
   }
 
   .filter-spacer {
@@ -854,9 +885,8 @@
     display: flex;
     align-items: center;
     align-content: center;
-    gap: 6px;
-    padding: 4px 10px;
-    min-height: 33px;
+    gap: 8px;
+    padding: 7px 10px;
     box-sizing: border-box;
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
@@ -864,7 +894,17 @@
     background: #0f172a;
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
-    flex-wrap: wrap;
+    /* Stay on one line: the on-call name truncates rather than wrapping the
+       clock/refresh onto a second row. */
+    flex-wrap: nowrap;
+  }
+  /* Everything on the status row keeps its size; only the on-call name gives. */
+  .status-count,
+  .status-chip,
+  .status-oncall-label,
+  .refresh-status,
+  .refresh-btn {
+    flex-shrink: 0;
   }
   .status-spacer {
     flex: 1;
@@ -878,7 +918,8 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     box-sizing: border-box;
-    color: #cbd5e1;
+    color: #e2e8f0;
+    font-size: calc(12.5px * var(--font-scale, 1));
     font-weight: 600;
     white-space: nowrap;
   }
@@ -936,7 +977,11 @@
     align-items: center;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    color: #94a3b8;
+    color: #cbd5e1;
+    font-size: calc(12px * var(--font-scale, 1));
+    font-weight: 600;
+    flex: 0 1 auto;
+    min-width: 0;
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -992,14 +1037,6 @@
   .refresh-ok { color: #22c55e; }
   .refresh-fail { color: #ef4444; }
   .refresh-pending { color: #f59e0b; }
-  .refresh-time {
-    display: inline-flex;
-    align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    color: #94a3b8;
-    font-size: calc(10px * var(--font-scale, 1));
-  }
 
   .refresh-btn {
     appearance: none;
@@ -1053,9 +1090,4 @@
     -webkit-user-drag: none;
   }
 
-  @media (max-width: 640px) {
-    .filter-bar {
-      flex-wrap: wrap;
-    }
-  }
 </style>
