@@ -127,6 +127,47 @@
   let groupMenuOpen = false;
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
+
+  // Expanding search: collapsed to a single icon; click expands into a field,
+  // and it stays open while it holds text (collapses on blur when empty).
+  let searchExpanded = false;
+  let searchInputEl: HTMLInputElement | null = null;
+  $: hasSearchText = $filter.text.trim().length > 0;
+  $: searchOpen = searchExpanded || hasSearchText;
+  // While the search is expanded the view block shows captions only, so the
+  // expanded field has room without pushing controls off the row. Hide values
+  // immediately when opening, but wait for the search's collapse animation to
+  // finish before restoring them — otherwise the still-wide search and the
+  // re-expanded segments briefly overflow and wrap the row onto two lines.
+  const SEARCH_ANIM_MS = 180;
+  let showSegmentValues = true;
+  let restoreValuesTimer: ReturnType<typeof setTimeout>;
+  $: {
+    clearTimeout(restoreValuesTimer);
+    if (searchOpen) {
+      showSegmentValues = false;
+    } else {
+      restoreValuesTimer = setTimeout(() => { showSegmentValues = true; }, SEARCH_ANIM_MS);
+    }
+  }
+
+  async function openSearch() {
+    searchExpanded = true;
+    await tick();
+    searchInputEl?.focus();
+  }
+
+  function onSearchBlur() {
+    if (!hasSearchText) searchExpanded = false;
+  }
+
+  async function clearSearch() {
+    filter.update(f => ({ ...f, text: '' }));
+    searchExpanded = true;
+    await tick();
+    searchInputEl?.focus();
+  }
+
   async function handleRefresh() {
     refreshing = true;
     await refreshAlerts();
@@ -330,167 +371,163 @@
 
   <!-- Filter & view controls -->
   <div class="filter-bar">
-    <input
-      class="filter-input"
-      type="search"
-      placeholder="Filter alerts…"
-      bind:value={$filter.text}
-    />
-
-    <div class="filter-toggle-wrap">
-      <button
-        class="filter-toggle"
-        class:active={severityMenuOpen}
-        class:filtered={$filter.severity !== 'all'}
-        on:click|stopPropagation={() => openMenu('severity')}
-        title="Filter by severity"
-      >
-        <span class="filter-toggle-label">Severity</span>
-        <span class="filter-toggle-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
-        <span class="filter-toggle-caret">▾</span>
-      </button>
-      {#if severityMenuOpen}
-        <div class="filter-menu">
-          <button
-            class="filter-menu-option"
-            class:selected={$filter.severity === 'all'}
-            on:click|stopPropagation={() => setSeverityFilter('all')}
-          >
-            <span>All severities</span>
-            {#if $filter.severity === 'all'}
-              <span class="filter-menu-check">✓</span>
-            {/if}
-          </button>
-          {#each $severityConfig.levels as level}
-            <button
-              class="filter-menu-option"
-              class:selected={$filter.severity === level.name}
-              on:click|stopPropagation={() => setSeverityFilter(level.name)}
-            >
-              <span>{severityLabel(level.name)}</span>
-              {#if $filter.severity === level.name}
-                <span class="filter-menu-check">✓</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
+    <!-- Expanding search: collapsed to an icon, click to expand. -->
+    <div
+      class="search"
+      class:open={searchOpen}
+      on:click={openSearch}
+      on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
+      role="button"
+      aria-label="Filter alerts"
+      tabindex={searchOpen ? -1 : 0}
+    >
+      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Filter alerts…"
+        bind:this={searchInputEl}
+        bind:value={$filter.text}
+        on:blur={onSearchBlur}
+      />
+      {#if hasSearchText}
+        <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
       {/if}
     </div>
 
-    {#if $availableSources.length > 1}
-      <div class="filter-toggle-wrap">
+    <!-- Icon-button toggles -->
+    <button
+      class="icon-toggle"
+      class:active={$filter.showAll}
+      on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
+      title="Show all alerts (bypass filters, except text search)"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+    </button>
+    <button
+      class="icon-toggle"
+      class:active={$verbose}
+      on:click={() => verbose.update(v => !v)}
+      title="Toggle verbose display"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>
+    </button>
+
+    <div class="filter-spacer"></div>
+
+    <!-- Fused view block: Severity · [Source] · Group · Sort -->
+    <div class="view-block">
+      <div class="segment-wrap">
         <button
-          class="filter-toggle"
-          class:active={sourceMenuOpen}
-          class:filtered={$filter.source !== 'all'}
-          on:click|stopPropagation={() => openMenu('source')}
-          title="Filter by source"
+          class="segment"
+          class:active={severityMenuOpen}
+          class:filtered={$filter.severity !== 'all'}
+          on:click|stopPropagation={() => openMenu('severity')}
+          title="Filter by severity"
         >
-          <span class="filter-toggle-label">Source</span>
-          <span class="filter-toggle-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
-          <span class="filter-toggle-caret">▾</span>
+          <span class="segment-label">Severity</span>
+          {#if showSegmentValues}
+            <span class="segment-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          {/if}
         </button>
-        {#if sourceMenuOpen}
+        {#if severityMenuOpen}
           <div class="filter-menu">
-            <button
-              class="filter-menu-option"
-              class:selected={$filter.source === 'all'}
-              on:click|stopPropagation={() => setSourceFilter('all')}
-            >
-              <span>All sources</span>
-              {#if $filter.source === 'all'}
-                <span class="filter-menu-check">✓</span>
-              {/if}
+            <button class="filter-menu-option" class:selected={$filter.severity === 'all'} on:click|stopPropagation={() => setSeverityFilter('all')}>
+              <span>All severities</span>
+              {#if $filter.severity === 'all'}<span class="filter-menu-check">✓</span>{/if}
             </button>
-            {#each $availableSources as src}
-              <button
-                class="filter-menu-option"
-                class:selected={$filter.source === src}
-                on:click|stopPropagation={() => setSourceFilter(src)}
-              >
-                <span>{src}</span>
-                {#if $filter.source === src}
-                  <span class="filter-menu-check">✓</span>
-                {/if}
+            {#each $severityConfig.levels as level}
+              <button class="filter-menu-option" class:selected={$filter.severity === level.name} on:click|stopPropagation={() => setSeverityFilter(level.name)}>
+                <span>{severityLabel(level.name)}</span>
+                {#if $filter.severity === level.name}<span class="filter-menu-check">✓</span>{/if}
               </button>
             {/each}
           </div>
         {/if}
       </div>
-    {/if}
 
-    <button
-      class="filter-pill"
-      class:filter-pill-active={$filter.showAll}
-      on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title="Show all alerts (bypass filters, except text search)"
-    >Show all</button>
-
-    <button
-      class="filter-pill"
-      class:filter-pill-active={$verbose}
-      on:click={() => verbose.update(v => !v)}
-      title="Toggle verbose display"
-    >Verbose</button>
-
-    <div class="filter-spacer"></div>
-
-    <div class="filter-toggle-wrap">
-      <button
-        class="filter-toggle"
-        class:active={groupMenuOpen}
-        on:click|stopPropagation={() => openMenu('group')}
-        title="Change alert grouping"
-      >
-        <span class="filter-toggle-label">Group</span>
-        <span class="filter-toggle-value">{currentGroupLabel}</span>
-        <span class="filter-toggle-caret">▾</span>
-      </button>
-      {#if groupMenuOpen}
-        <div class="filter-menu">
-          {#each GROUP_PRESET_OPTIONS as option}
-            <button
-              class="filter-menu-option"
-              class:selected={$activeGroupMode === option.mode}
-              on:click|stopPropagation={() => setGroupMode(option.mode)}
-            >
-              <span>{option.label}</span>
-              {#if $activeGroupMode === option.mode}
-                <span class="filter-menu-check">✓</span>
-              {/if}
-            </button>
-          {/each}
+      {#if $availableSources.length > 1}
+        <div class="segment-wrap">
+          <button
+            class="segment"
+            class:active={sourceMenuOpen}
+            class:filtered={$filter.source !== 'all'}
+            on:click|stopPropagation={() => openMenu('source')}
+            title="Filter by source"
+          >
+            <span class="segment-label">Source</span>
+            {#if showSegmentValues}
+              <span class="segment-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
+              <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+            {/if}
+          </button>
+          {#if sourceMenuOpen}
+            <div class="filter-menu">
+              <button class="filter-menu-option" class:selected={$filter.source === 'all'} on:click|stopPropagation={() => setSourceFilter('all')}>
+                <span>All sources</span>
+                {#if $filter.source === 'all'}<span class="filter-menu-check">✓</span>{/if}
+              </button>
+              {#each $availableSources as src}
+                <button class="filter-menu-option" class:selected={$filter.source === src} on:click|stopPropagation={() => setSourceFilter(src)}>
+                  <span>{src}</span>
+                  {#if $filter.source === src}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/if}
-    </div>
 
-    <div class="filter-toggle-wrap">
-      <button
-        class="filter-toggle"
-        class:active={sortMenuOpen}
-        on:click|stopPropagation={() => openMenu('sort')}
-        title="Change alert sort order"
-      >
-        <span class="filter-toggle-label">Sort</span>
-        <span class="filter-toggle-value">{currentSortLabel}</span>
-        <span class="filter-toggle-caret">▾</span>
-      </button>
-      {#if sortMenuOpen}
-        <div class="filter-menu">
-          {#each SORT_PRESET_OPTIONS as option}
-            <button
-              class="filter-menu-option"
-              class:selected={$activeSortMode === option.mode}
-              on:click|stopPropagation={() => setSortMode(option.mode)}
-            >
-              <span>{option.label}</span>
-              {#if $activeSortMode === option.mode}
-                <span class="filter-menu-check">✓</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
-      {/if}
+      <div class="segment-wrap">
+        <button
+          class="segment"
+          class:active={groupMenuOpen}
+          on:click|stopPropagation={() => openMenu('group')}
+          title="Change alert grouping"
+        >
+          <span class="segment-label">Group</span>
+          {#if showSegmentValues}
+            <span class="segment-value">{currentGroupLabel}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          {/if}
+        </button>
+        {#if groupMenuOpen}
+          <div class="filter-menu">
+            {#each GROUP_PRESET_OPTIONS as option}
+              <button class="filter-menu-option" class:selected={$activeGroupMode === option.mode} on:click|stopPropagation={() => setGroupMode(option.mode)}>
+                <span>{option.label}</span>
+                {#if $activeGroupMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="segment-wrap">
+        <button
+          class="segment"
+          class:active={sortMenuOpen}
+          on:click|stopPropagation={() => openMenu('sort')}
+          title="Change alert sort order"
+        >
+          <span class="segment-label">Sort</span>
+          {#if showSegmentValues}
+            <span class="segment-value">{currentSortLabel}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          {/if}
+        </button>
+        {#if sortMenuOpen}
+          <div class="filter-menu">
+            {#each SORT_PRESET_OPTIONS as option}
+              <button class="filter-menu-option" class:selected={$activeSortMode === option.mode} on:click|stopPropagation={() => setSortMode(option.mode)}>
+                <span>{option.label}</span>
+                {#if $activeSortMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 
@@ -503,18 +540,17 @@
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
       {#if newVisibleCount > 0}
-        <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">{newVisibleCount} new</span>
+        <span class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click × to mark all as seen.">
+          <button class="status-chip-x" on:click={acknowledgeAllAlerts} title="Clear new">×</button>
+          {newVisibleCount} New
+        </span>
       {/if}
       {#if resolvedVisibleCount > 0}
-        <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">{resolvedVisibleCount} resolved</span>
+        <span class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click × to clear them now.">
+          <button class="status-chip-x" on:click={acknowledgeAllResolvedAlerts} title="Clear resolved">×</button>
+          {resolvedVisibleCount} Resolved
+        </span>
       {/if}
-      {#if newVisibleCount > 0}
-        <button class="status-action-btn" on:click={acknowledgeAllAlerts} title="Mark all new alerts as seen">Clear new</button>
-      {/if}
-      {#if resolvedVisibleCount > 0}
-        <button class="status-action-btn" on:click={acknowledgeAllResolvedAlerts} title="Mark all resolved alerts as seen">Clear resolved</button>
-      {/if}
-      {#if $verbose}<span class="status-verbose">Verbose</span>{/if}
 
       <div class="status-spacer"></div>
 
@@ -647,10 +683,10 @@
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 6px 8px;
+    gap: 8px;
+    padding: 8px 10px;
     background: #0f172a;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid #1b2740;
     flex-shrink: 0;
   }
 
@@ -658,21 +694,160 @@
     flex: 1;
   }
 
-  .filter-input {
-    flex: 1 1 180px;
-    min-width: 100px;
-    max-width: 280px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #e2e8f0;
-    font-size: calc(12px * var(--font-scale, 1));
-    padding: 5px 12px;
-    outline: none;
-    transition: border-color 0.15s;
+  /* Expanding search: collapsed to a 28px icon button; expands to a field. */
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    width: 28px;
+    box-sizing: border-box;
+    padding: 0 0 0 7px;
+    border-radius: 6px;
+    border: 1px solid #2a3650;
+    background: #162033;
+    overflow: hidden;
+    cursor: text;
+    flex-shrink: 0;
+    transition: width 0.18s cubic-bezier(0.2, 0, 0.2, 1), padding 0.18s;
   }
-  .filter-input:focus { border-color: #3b82f6; }
-  .filter-input::placeholder { color: #64748b; }
+  .search.open {
+    width: 200px;
+    padding-right: 6px;
+  }
+  .search:not(.open) {
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+  }
+  .search-icon {
+    stroke: #7c8aa3;
+    flex-shrink: 0;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 0;
+    width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: #e2e8f0;
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    padding: 0;
+  }
+  .search:not(.open) .search-input {
+    /* Keep the input mounted (so bind:value works) but out of the icon box. */
+    width: 0;
+    flex: 0;
+    padding: 0;
+  }
+  .search-input::placeholder { color: #5b6b83; }
+  .search-clear {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #2a3650;
+    color: #cbd5e1;
+    font-family: inherit;
+    font-size: calc(12px * var(--font-scale, 1));
+    line-height: 1;
+    cursor: pointer;
+  }
+  .search-clear:hover { background: #34425f; color: #f1f5f9; }
+
+  /* Square icon-button toggles (Show all, Verbose) */
+  .icon-toggle {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid #2a3650;
+    background: #162033;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .icon-toggle:hover {
+    color: #dbe4f0;
+    border-color: #3a496a;
+  }
+  .icon-toggle.active {
+    color: #bcd9ff;
+    background: rgba(47, 129, 247, 0.18);
+    border-color: rgba(47, 129, 247, 0.45);
+  }
+
+  /* Fused view block: Severity · [Source] · Group · Sort */
+  .view-block {
+    display: inline-flex;
+    height: 28px;
+    border: 1px solid #2a3650;
+    border-radius: 6px;
+    background: #162033;
+    flex-shrink: 0;
+  }
+  .segment-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .segment-wrap + .segment-wrap::before {
+    content: '';
+    width: 1px;
+    background: #2a3650;
+  }
+  .segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    padding: 0 10px;
+    background: transparent;
+    border: none;
+    color: #dbe4f0;
+    font-family: inherit;
+    font-size: calc(12px * var(--font-scale, 1));
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .segment-wrap:first-child .segment { border-radius: 5px 0 0 5px; }
+  .segment-wrap:last-child .segment { border-radius: 0 5px 5px 0; }
+  .segment:hover,
+  .segment.active {
+    background: rgba(47, 129, 247, 0.12);
+    color: #f1f5f9;
+  }
+  .segment.filtered {
+    background: rgba(47, 129, 247, 0.18);
+    color: #bcd9ff;
+  }
+  .segment-label {
+    font-size: calc(8.5px * var(--font-scale, 1));
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #7c8aa3;
+  }
+  .segment.filtered .segment-label { color: #9fc2f5; }
+  .segment-value { color: #f1f5f9; }
+  .segment.filtered .segment-value { color: #bcd9ff; }
+  .segment-caret { fill: #64748b; }
+  /* Anchor dropdowns to the block's right edge so the rightmost (Sort) menu
+     never overflows the popup's right edge. */
+  .view-block .filter-menu {
+    left: auto;
+    right: 0;
+  }
 
   .status-bar {
     --status-item-height: 20px;
@@ -686,42 +861,13 @@
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
     color: #475569;
-    background: #0d1117;
+    background: #0f172a;
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
     flex-wrap: wrap;
   }
   .status-spacer {
     flex: 1;
-  }
-
-  /* Toggle pill buttons (Show all, Verbose) */
-  .filter-pill {
-    background: rgba(30, 41, 59, 0.5);
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #94a3b8;
-    cursor: pointer;
-    font-size: calc(11px * var(--font-scale, 1));
-    line-height: 1;
-    padding: 5px 10px;
-    white-space: nowrap;
-    transition: all 0.15s;
-    user-select: none;
-  }
-  .filter-pill:hover {
-    color: #e2e8f0;
-    border-color: #475569;
-    background: rgba(36, 50, 71, 0.92);
-  }
-  .filter-pill-active {
-    color: #f0f9ff;
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.4);
-  }
-  .filter-pill-active:hover {
-    background: rgba(59, 130, 246, 0.28);
-    border-color: rgba(59, 130, 246, 0.5);
   }
 
   .status-error { color: #ef4444; }
@@ -736,70 +882,53 @@
     font-weight: 600;
     white-space: nowrap;
   }
-  .status-verbose {
+  /* Self-clearing status chips (New / Resolved) with a left-side × */
+  .status-chip {
     display: inline-flex;
     align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    font-size: calc(10px * var(--font-scale, 1));
-    line-height: 1.1;
-    font-weight: 600;
-    color: #fbbf24;
-    background: rgba(245, 158, 11, 0.14);
-    border: 1px solid rgba(245, 158, 11, 0.28);
-    border-radius: 999px;
-    padding: 0 7px;
+    gap: 4px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: calc(10.5px * var(--font-scale, 1));
+    line-height: 1;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     white-space: nowrap;
   }
-  .status-new {
+  .status-chip-x {
     display: inline-flex;
     align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    font-size: calc(10px * var(--font-scale, 1));
-    line-height: 1.1;
-    font-weight: 700;
-    color: #111827;
-    background: #facc15;
-    border-radius: 999px;
-    padding: 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
-    white-space: nowrap;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: calc(12px * var(--font-scale, 1));
+    line-height: 1;
+    cursor: pointer;
   }
-  .status-resolved {
-    display: inline-flex;
-    align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    font-size: calc(10px * var(--font-scale, 1));
-    line-height: 1.1;
-    font-weight: 700;
+  .status-chip-new {
+    color: #1a1300;
+    background: #f5c518;
+  }
+  .status-chip-new .status-chip-x { color: rgba(26, 19, 0, 0.5); }
+  .status-chip-new .status-chip-x:hover { color: #1a1300; }
+  .status-chip-resolved {
     color: #dbeafe;
     background: #1d4ed8;
-    border-radius: 999px;
-    padding: 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    box-shadow: 0 0 14px rgba(59, 130, 246, 0.2);
-    white-space: nowrap;
   }
+  .status-chip-resolved .status-chip-x { color: rgba(219, 234, 254, 0.7); }
+  .status-chip-resolved .status-chip-x:hover { color: #ffffff; }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    color: #7dd3fc;
-    font-size: calc(10px * var(--font-scale, 1));
-    font-weight: 600;
+    color: #5f9fd0;
+    font-size: calc(9px * var(--font-scale, 1));
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     white-space: nowrap;
   }
   .status-oncall {
@@ -812,85 +941,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .status-action-btn {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(30, 41, 59, 0.88);
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #cbd5e1;
-    cursor: pointer;
-    font-size: calc(11px * var(--font-scale, 1));
-    line-height: 1.1;
-    font-weight: 600;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    padding: 0 9px;
-    white-space: nowrap;
-  }
-  .status-action-btn:hover {
-    background: #243247;
-    border-color: #475569;
-    color: #f8fafc;
-  }
-  /* Dropdown toggle buttons (Severity, Source, Group, Sort) */
-  .filter-toggle-wrap {
-    position: relative;
-  }
-
-  .filter-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(30, 41, 59, 0.72);
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #cbd5e1;
-    cursor: pointer;
-    font-size: calc(11px * var(--font-scale, 1));
-    line-height: 1;
-    padding: 5px 10px;
-    white-space: nowrap;
-    transition: all 0.15s;
-  }
-  .filter-toggle:hover,
-  .filter-toggle.active {
-    color: #e2e8f0;
-    border-color: #475569;
-    background: rgba(36, 50, 71, 0.92);
-  }
-  .filter-toggle.filtered {
-    color: #f0f9ff;
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.4);
-  }
-  .filter-toggle.filtered:hover,
-  .filter-toggle.filtered.active {
-    background: rgba(59, 130, 246, 0.28);
-    border-color: rgba(59, 130, 246, 0.5);
-  }
-  .filter-toggle-label {
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: calc(9px * var(--font-scale, 1));
-    font-weight: 700;
-  }
-  .filter-toggle.filtered .filter-toggle-label {
-    color: #93c5fd;
-  }
-  .filter-toggle-value {
-    color: #f8fafc;
-    font-weight: 600;
-  }
-  .filter-toggle-caret {
-    color: #64748b;
-    font-size: calc(10px * var(--font-scale, 1));
   }
 
   .filter-menu {
