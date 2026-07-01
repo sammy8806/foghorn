@@ -778,6 +778,7 @@
   }
   .search:not(.open) {
     justify-content: center;
+    gap: 0;
     padding: 0;
     cursor: pointer;
   }
