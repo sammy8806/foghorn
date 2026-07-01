@@ -84,6 +84,9 @@ export type AlertRefMode = 'raw' | 'resolved' | 'both';
 export interface AlertFieldDisplay {
   text: string;
   mode: AlertRefMode;
+  ref: string;
+  kind: 'field' | 'label' | 'annotation';
+  name: string;
   raw?: string;
   resolved?: string;
 }
@@ -686,22 +689,27 @@ export function alertMatchesBadgeRule(alert: Alert, rule: BadgeRule): boolean {
 export function resolveAlertFieldDisplay(alert: Alert, ref: string): AlertFieldDisplay | undefined {
   const parsed = parseAlertRef(ref);
   const { raw, resolved } = getAlertFieldValues(alert, parsed.ref);
+  const meta = {
+    ref: parsed.ref,
+    kind: parsed.kind,
+    name: parsed.name,
+  };
 
   switch (parsed.mode) {
     case 'raw':
-      if (raw) return { text: raw, mode: 'raw', raw, resolved };
-      if (resolved) return { text: resolved, mode: 'raw', raw, resolved };
+      if (raw) return { ...meta, text: raw, mode: 'raw', raw, resolved };
+      if (resolved) return { ...meta, text: resolved, mode: 'raw', raw, resolved };
       return undefined;
     case 'resolved':
-      if (resolved) return { text: resolved, mode: 'resolved', raw, resolved };
-      if (raw) return { text: raw, mode: 'resolved', raw, resolved };
+      if (resolved) return { ...meta, text: resolved, mode: 'resolved', raw, resolved };
+      if (raw) return { ...meta, text: raw, mode: 'resolved', raw, resolved };
       return undefined;
     case 'both':
       if (raw && resolved && raw !== resolved) {
-        return { text: `${raw} (${resolved})`, mode: 'both', raw, resolved };
+        return { ...meta, text: `${raw} (${resolved})`, mode: 'both', raw, resolved };
       }
-      if (raw) return { text: raw, mode: 'both', raw, resolved };
-      if (resolved) return { text: resolved, mode: 'both', raw, resolved };
+      if (raw) return { ...meta, text: raw, mode: 'both', raw, resolved };
+      if (resolved) return { ...meta, text: resolved, mode: 'both', raw, resolved };
       return undefined;
   }
 }

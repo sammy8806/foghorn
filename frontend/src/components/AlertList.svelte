@@ -673,6 +673,8 @@
   mode={$silenceEditor.mode}
   open={$silenceEditor.open}
   query={$silenceEditor.query}
+  seedMatchers={$silenceEditor.matchers}
+  preferredSource={$silenceEditor.source}
   on:close={closeSilenceEditor}
   on:silenced={() => refreshAlerts()}
 />

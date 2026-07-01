@@ -14,6 +14,8 @@
   export let mode: 'create' | 'edit' = 'create';
   export let open = false;
   export let query: ParsedQuery | null = null;
+  export let seedMatchers: Matcher[] | null = null;
+  export let preferredSource: string | null = null;
 
   const dispatch = createEventDispatcher<{ close: void; silenced: void }>();
 
@@ -51,7 +53,8 @@
   // Warn when the silence would catch nothing, or would catch every alert on the
   // source (likely too broad).
   $: previewWarn = previewValid && (previewMatchCount === 0 || (previewTotalOnSource > 0 && previewMatchCount === previewTotalOnSource));
-  $: isScratchCreate = !!query && query.terms.length === 0;
+  $: isAlertlessCreate = !!query || !!seedMatchers;
+  $: isScratchCreate = (!!query && query.terms.length === 0) || (!!seedMatchers && seedMatchers.length === 0);
   $: hasQuerySeedMatchers = !!query && queryToMatchers(query).matchers.length > 0;
 
   // Candidate sources for the picker. Search-seeded silences stay scoped to
@@ -59,8 +62,8 @@
   // sources so the user can add matchers from an empty editor. Text-only
   // searches behave like scratch creates because text terms cannot be turned
   // into Alertmanager matchers.
-  $: sourceCandidates = query
-    ? (void $sourceCapabilities, sourcesForQuery($alerts, allMatchers, !hasQuerySeedMatchers))
+  $: sourceCandidates = isAlertlessCreate
+    ? (void $sourceCapabilities, sourcesForQuery($alerts, allMatchers, !hasQuerySeedMatchers && !seedMatchers?.length))
     : [];
   // Query-mode matchers can change after the source picker's initial default is
   // set (user edits matchers). If the current selection falls out of the
@@ -68,10 +71,12 @@
   // leaving a stale selection that no longer appears in the picker. Guarded to
   // non-empty candidates so a transient zero-match edit doesn't clobber the
   // pick to ''. Alert/edit modes never hit this since query is null there.
-  $: if (query && !selectedSource && sourceCandidates.length) {
-    selectedSource = sourceCandidates[0].source;
+  $: if (isAlertlessCreate && !selectedSource && sourceCandidates.length) {
+    selectedSource = preferredSource && sourceCandidates.some((c) => c.source === preferredSource)
+      ? preferredSource
+      : sourceCandidates[0].source;
   }
-  $: if (query && selectedSource && sourceCandidates.length &&
+  $: if (isAlertlessCreate && selectedSource && sourceCandidates.length &&
          !sourceCandidates.some((c) => c.source === selectedSource)) {
     selectedSource = sourceCandidates[0].source;
   }
@@ -300,7 +305,17 @@
       duration = '2h';
       comment = '';
       createdBy = '';
-      selectedSource = defaultSourceForQuery(all);
+      selectedSource = preferredSource || defaultSourceForQuery(all);
+      void loadDefaultCreatedBy().then((v) => {
+        if (!createdBy) createdBy = v;
+      });
+    } else if (seedMatchers) {
+      all = seedMatchers.map((m) => ({ ...m }));
+      droppedTerms = [];
+      duration = '2h';
+      comment = '';
+      createdBy = '';
+      selectedSource = preferredSource || defaultSourceForQuery(all);
       void loadDefaultCreatedBy().then((v) => {
         if (!createdBy) createdBy = v;
       });
@@ -383,7 +398,7 @@
   }
 </script>
 
-{#if open && (alert || query)}
+{#if open && (alert || query || seedMatchers)}
   <div class="overlay" on:click={close} on:keydown={handleKeydown} role="presentation">
     <div
       class="dialog"
@@ -413,7 +428,7 @@
           </div>
         {/if}
 
-        {#if query}
+        {#if isAlertlessCreate}
           <div class="field">
             <span class="field-label">Target source</span>
             <select class="input" bind:value={selectedSource}>
