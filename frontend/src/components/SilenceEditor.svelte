@@ -41,6 +41,17 @@
   // In query mode the user picks it.
   $: activeSource = alert ? alert.source : selectedSource;
 
+  $: previewTotalOnSource = activeSource
+    ? $alerts.filter((a) => a.source === activeSource).length
+    : 0;
+  $: previewMatchCount = activeSource
+    ? $alerts.filter((a) => a.source === activeSource && matchesAllMatchers(a, allMatchers)).length
+    : 0;
+  $: previewValid = allMatchers.length > 0 && allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
+  // Warn when the silence would catch nothing, or would catch every alert on the
+  // source (likely too broad).
+  $: previewWarn = previewValid && (previewMatchCount === 0 || (previewTotalOnSource > 0 && previewMatchCount === previewTotalOnSource));
+
   // Candidate sources for the picker: sources that currently have at least one
   // alert matching the (possibly edited) matcher set, most matches first.
   $: sourceCandidates = query
@@ -449,6 +460,11 @@
 
       <div class="dialog-footer">
         <div class="footer-left">
+          {#if previewValid && activeSource}
+            <span class="match-preview" class:warn={previewWarn}>
+              Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
+            </span>
+          {/if}
           {#if mode === 'edit' && silence}
             {#if confirmExpire}
               <span class="expire-confirm-text">Expire now?</span>
@@ -626,6 +642,11 @@
   }
   .footer-left { display: flex; align-items: center; gap: 8px; }
   .footer-right { display: flex; align-items: center; gap: 8px; }
+  .match-preview {
+    font-size: calc(11px * var(--font-scale, 1));
+    color: #94a3b8;
+  }
+  .match-preview.warn { color: #fbbf24; }
   .expire-confirm-text {
     font-size: calc(12px * var(--font-scale, 1));
     color: #f87171;
