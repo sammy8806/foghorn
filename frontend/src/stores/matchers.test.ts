@@ -4,6 +4,7 @@ import {
   matchesAllMatchers,
   valuesToRegexMatcher,
   parseMatcherBlock,
+  formatMatcherBlock,
 } from './matchers';
 import type { Alert } from './alerts';
 
@@ -66,5 +67,35 @@ describe('parseMatcherBlock', () => {
   it('strips alertmanager-style quotes', () => {
     const { matchers } = parseMatcherBlock('severity="critical"');
     expect(matchers).toEqual([{ name: 'severity', value: 'critical', isRegex: false, isEqual: true }]);
+  });
+  it('keeps commas inside quoted values', () => {
+    const { matchers, skipped } = parseMatcherBlock('summary="a,b", severity=critical');
+    expect(skipped).toBe(0);
+    expect(matchers).toEqual([
+      { name: 'summary', value: 'a,b', isRegex: false, isEqual: true },
+      { name: 'severity', value: 'critical', isRegex: false, isEqual: true },
+    ]);
+  });
+});
+
+describe('formatMatcherBlock', () => {
+  it('formats matchers as paste-compatible lines', () => {
+    expect(formatMatcherBlock([
+      { name: 'namespace', value: 'prod', isRegex: false, isEqual: true },
+      { name: 'team', value: 'infra', isRegex: false, isEqual: false },
+      { name: 'app', value: 'api-.*', isRegex: true, isEqual: true },
+      { name: 'pod', value: 'job runner,1', isRegex: true, isEqual: false },
+    ])).toBe('namespace=prod\nteam!=infra\napp=~api-.*\npod!~"job runner,1"');
+  });
+
+  it('round-trips through parseMatcherBlock', () => {
+    const original = [
+      { name: 'namespace', value: 'prod', isRegex: false, isEqual: true },
+      { name: 'summary', value: 'disk full,node-1', isRegex: false, isEqual: true },
+      { name: 'message', value: 'node says "full"', isRegex: false, isEqual: true },
+    ];
+    const { matchers, skipped } = parseMatcherBlock(formatMatcherBlock(original));
+    expect(skipped).toBe(0);
+    expect(matchers).toEqual(original);
   });
 });

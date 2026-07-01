@@ -1,12 +1,16 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import { alerts, labelNamesForSource, labelValuesForSource, type Matcher } from '../stores/alerts';
-  import { parseMatcherBlock, valuesToRegexMatcher } from '../stores/matchers';
+  import { formatMatcherBlock, parseMatcherBlock } from '../stores/matchers';
   import LabelAutocomplete from './LabelAutocomplete.svelte';
 
   export let matchers: Matcher[] = [];
+  export let textMatchers: Matcher[] = matchers;
   export let source: string = '';
   export let revealedAfterIndex: number | null = null;
   export let revealedCount: number = 0;
+
+  const dispatch = createEventDispatcher<{ replaceAll: Matcher[] }>();
 
   type Op = '=' | '!=' | '=~' | '!~';
   const OPS: Op[] = ['=', '!=', '=~', '!~'];
@@ -72,39 +76,44 @@
   let showPaste = false;
   let pasteText = '';
   let pasteNote = '';
+  let pasteParseError = false;
+  let pasteFocused = false;
+  let pasteTextarea: HTMLTextAreaElement | null = null;
 
-  function applyPaste() {
+  function togglePaste() {
+    showPaste = !showPaste;
+    if (showPaste) {
+      pasteText = formatMatcherBlock(textMatchers);
+      pasteNote = '';
+      pasteParseError = false;
+    }
+  }
+
+  function syncFromPasteText() {
     const { matchers: parsed, skipped } = parseMatcherBlock(pasteText);
-    if (parsed.length > 0) {
-      matchers = [...matchers, ...parsed];
+    if (skipped > 0) {
+      pasteNote = `${skipped} line${skipped === 1 ? '' : 's'} skipped`;
+      pasteParseError = true;
+      return;
     }
-    pasteNote = skipped > 0 ? `${skipped} line${skipped === 1 ? '' : 's'} skipped` : '';
-    if (parsed.length > 0) {
-      pasteText = '';
-      showPaste = false;
+    dispatch('replaceAll', parsed);
+    pasteNote = pasteText.trim() ? `${parsed.length} matcher${parsed.length === 1 ? '' : 's'}` : '';
+    pasteParseError = false;
+  }
+
+  async function copyPasteText() {
+    try {
+      await navigator.clipboard.writeText(pasteText);
+      pasteNote = 'Copied';
+    } catch {
+      pasteTextarea?.select();
+      pasteNote = 'Text selected';
     }
   }
 
-  let showFromValues = false;
-  let fvName = '';
-  let fvSelected: Record<string, boolean> = {};
-
-  $: fvValues = fvName ? labelValuesForSource(source, (void $alerts, fvName)) : [];
-
-  function toggleFromValues() {
-    showFromValues = !showFromValues;
-    if (showFromValues) {
-      fvName = '';
-      fvSelected = {};
-    }
-  }
-
-  function applyFromValues() {
-    const chosen = fvValues.filter((v) => fvSelected[v]);
-    if (fvName && chosen.length > 0) {
-      matchers = [...matchers, valuesToRegexMatcher(fvName, chosen)];
-    }
-    showFromValues = false;
+  $: formattedMatchers = formatMatcherBlock(textMatchers);
+  $: if (showPaste && !pasteFocused && !pasteParseError && pasteText !== formattedMatchers) {
+    pasteText = formattedMatchers;
   }
 
   function isRevealed(i: number): boolean {
@@ -162,8 +171,7 @@
   {/each}
   <div class="matcher-footer">
     <button class="add" type="button" on:click={addBlank}>+ Add matcher</button>
-    <button class="add" type="button" on:click={() => (showPaste = !showPaste)}>Paste</button>
-    <button class="add" type="button" on:click={toggleFromValues}>From values…</button>
+    <button class="add" type="button" on:click={togglePaste}>Paste</button>
     <slot name="actions" />
   </div>
 
@@ -171,41 +179,18 @@
     <div class="paste-panel">
       <textarea
         class="paste-input"
+        bind:this={pasteTextarea}
         bind:value={pasteText}
+        on:focus={() => (pasteFocused = true)}
+        on:blur={() => (pasteFocused = false)}
+        on:input={syncFromPasteText}
         rows="4"
         placeholder={'ns=prod\napp=~api.*\nseverity="critical"'}
       />
       {#if pasteNote}<span class="paste-note">{pasteNote}</span>{/if}
       <div class="paste-actions">
-        <button class="add" type="button" on:click={applyPaste}>Add matchers</button>
-        <button class="add" type="button" on:click={() => { showPaste = false; pasteText = ''; pasteNote = ''; }}>Cancel</button>
-      </div>
-    </div>
-  {/if}
-
-  {#if showFromValues}
-    <div class="paste-panel">
-      <LabelAutocomplete
-        value={fvName}
-        suggestions={nameSuggestions}
-        placeholder="label name"
-        ariaLabel="Regex-from-values label name"
-        on:change={(e) => { fvName = e.detail; fvSelected = {}; }}
-      />
-      {#if fvName && fvValues.length > 0}
-        <div class="fv-values">
-          {#each fvValues as v}
-            <label class="fv-value">
-              <input type="checkbox" bind:checked={fvSelected[v]} /> {v}
-            </label>
-          {/each}
-        </div>
-      {:else if fvName}
-        <span class="paste-note">No observed values for “{fvName}”.</span>
-      {/if}
-      <div class="paste-actions">
-        <button class="add" type="button" on:click={applyFromValues}>Add regex matcher</button>
-        <button class="add" type="button" on:click={() => (showFromValues = false)}>Cancel</button>
+        <button class="add" type="button" on:click={copyPasteText}>Copy</button>
+        <button class="add" type="button" on:click={() => { showPaste = false; pasteNote = ''; pasteParseError = false; pasteFocused = false; }}>Done</button>
       </div>
     </div>
   {/if}
@@ -331,18 +316,4 @@
   }
   .paste-note { color: #fbbf24; font-size: calc(10px * var(--font-scale, 1)); }
   .paste-actions { display: flex; gap: 6px; }
-  .fv-values {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    max-height: 160px;
-    overflow-y: auto;
-  }
-  .fv-value {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: #cbd5e1;
-    font-size: calc(12px * var(--font-scale, 1));
-  }
 </style>

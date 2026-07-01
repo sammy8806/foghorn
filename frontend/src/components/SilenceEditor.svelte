@@ -3,7 +3,7 @@
   import { createEventDispatcher } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
-  import { alerts } from '../stores/alerts';
+  import { alerts, sourceCapabilities } from '../stores/alerts';
   import { filter } from '../stores/filter';
   import { queryToMatchers, type ParsedQuery, type DroppedTerm } from '../stores/query';
   import { matchesAllMatchers } from '../stores/matchers';
@@ -51,11 +51,16 @@
   // Warn when the silence would catch nothing, or would catch every alert on the
   // source (likely too broad).
   $: previewWarn = previewValid && (previewMatchCount === 0 || (previewTotalOnSource > 0 && previewMatchCount === previewTotalOnSource));
+  $: isScratchCreate = !!query && query.terms.length === 0;
+  $: hasQuerySeedMatchers = !!query && queryToMatchers(query).matchers.length > 0;
 
-  // Candidate sources for the picker: sources that currently have at least one
-  // alert matching the (possibly edited) matcher set, most matches first.
+  // Candidate sources for the picker. Search-seeded silences stay scoped to
+  // sources with matching alerts; scratch silences list all silence-capable
+  // sources so the user can add matchers from an empty editor. Text-only
+  // searches behave like scratch creates because text terms cannot be turned
+  // into Alertmanager matchers.
   $: sourceCandidates = query
-    ? sourcesWithMatches($alerts, allMatchers)
+    ? (void $sourceCapabilities, sourcesForQuery($alerts, allMatchers, !hasQuerySeedMatchers))
     : [];
   // Query-mode matchers can change after the source picker's initial default is
   // set (user edits matchers). If the current selection falls out of the
@@ -63,6 +68,9 @@
   // leaving a stale selection that no longer appears in the picker. Guarded to
   // non-empty candidates so a transient zero-match edit doesn't clobber the
   // pick to ''. Alert/edit modes never hit this since query is null there.
+  $: if (query && !selectedSource && sourceCandidates.length) {
+    selectedSource = sourceCandidates[0].source;
+  }
   $: if (query && selectedSource && sourceCandidates.length &&
          !sourceCandidates.some((c) => c.source === selectedSource)) {
     selectedSource = sourceCandidates[0].source;
@@ -87,9 +95,18 @@
     allMatchers.length > 0 &&
     allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
 
+  function silenceableSources(): string[] {
+    return Object.entries(get(sourceCapabilities))
+      .filter(([, capabilities]) => capabilities.supportsSilence)
+      .map(([source]) => source)
+      .sort();
+  }
+
   function sourcesWithMatches(all: Alert[], matchers: Matcher[]): { source: string; count: number }[] {
     const counts = new Map<string, number>();
+    const allowed = new Set(silenceableSources());
     for (const a of all) {
+      if (allowed.size > 0 && !allowed.has(a.source)) continue;
       if (matchers.length > 0 && !matchesAllMatchers(a, matchers)) continue;
       counts.set(a.source, (counts.get(a.source) ?? 0) + 1);
     }
@@ -98,9 +115,19 @@
       .sort((x, y) => y.count - x.count);
   }
 
+  function sourcesForQuery(all: Alert[], matchers: Matcher[], includeAllSilenceable: boolean): { source: string; count: number }[] {
+    const withMatches = sourcesWithMatches(all, matchers);
+    if (!includeAllSilenceable) return withMatches;
+
+    const countsBySource = new Map(withMatches.map((c) => [c.source, c.count]));
+    return silenceableSources()
+      .map((source) => ({ source, count: countsBySource.get(source) ?? 0 }))
+      .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+  }
+
   function defaultSourceForQuery(seeded: Matcher[]): string {
     const f = get(filter);
-    const candidates = sourcesWithMatches(get(alerts), seeded);
+    const candidates = sourcesForQuery(get(alerts), seeded, seeded.length === 0);
     if (f.source !== 'all' && candidates.some((c) => c.source === f.source)) {
       return f.source;
     }
@@ -185,6 +212,10 @@
     expanded = false;
     revealedAfterIndex = null;
     revealedCount = 0;
+  }
+
+  function replaceAllMatchers(e: CustomEvent<Matcher[]>) {
+    applyCollapse(e.detail);
   }
 
   function matchersFromAlertLabels(a: Alert): Matcher[] {
@@ -363,24 +394,24 @@
       aria-labelledby="silence-title"
     >
       <div class="dialog-header">
-        <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : 'Silence alert'}</h3>
+        <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : isScratchCreate ? 'New silence' : 'Silence alert'}</h3>
         <button class="btn-close" on:click={close} aria-label="Close">✕</button>
       </div>
 
       <div class="dialog-body">
-        <div class="context-strip">
-          {#if mode === 'edit' && silence}
+        {#if alert || mode === 'edit'}
+          <div class="context-strip">
+            {#if mode === 'edit' && silence}
             <span class="ctx-item"><strong>id:</strong> {silence.id.slice(0, 10)}…</span>
             <span class="ctx-item"><strong>started:</strong> {new Date(silence.startsAt).toLocaleString()}</span>
             <span class="ctx-item"><strong>by:</strong> {silence.createdBy}</span>
             <span class="ctx-item"><strong>expires in:</strong> {formatRemaining(silence.endsAt)}</span>
-          {:else if query}
-            <span class="alert-name">Silence from search</span>
-          {:else}
+            {:else if alert}
             <span class="alert-name">{alert.name}</span>
             <span class="alert-source">{alert.source}</span>
-          {/if}
-        </div>
+            {/if}
+          </div>
+        {/if}
 
         {#if query}
           <div class="field">
@@ -390,7 +421,7 @@
                 <option value={c.source}>{c.source} ({c.count})</option>
               {/each}
               {#if sourceCandidates.length === 0}
-                <option value="" disabled>No matching alerts</option>
+                <option value="" disabled>No silence-capable sources</option>
               {/if}
             </select>
           </div>
@@ -400,9 +431,11 @@
           <span class="field-label">Matchers ({allMatchers.length})</span>
           <MatcherEditor
             bind:matchers={editorMatchers}
+            textMatchers={allMatchers}
             source={activeSource}
             revealedAfterIndex={revealedAfterIndex}
             revealedCount={revealedCount}
+            on:replaceAll={replaceAllMatchers}
           >
             <svelte:fragment slot="actions">
               {#if canExpand}

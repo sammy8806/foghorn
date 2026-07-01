@@ -25,6 +25,7 @@
     SORT_PRESET_OPTIONS,
     GROUP_PRESET_OPTIONS,
     sortByCriteria,
+    sourceCapabilities,
     isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources, parsedQuery } from '../stores/filter';
@@ -136,10 +137,16 @@
   $: hasSearchText = $filter.text.trim().length > 0;
   $: searchOpen = searchExpanded || hasSearchText;
   $: silenceableMatchers = queryToMatchers($parsedQuery).matchers;
-  $: canSilenceFromSearch = silenceableMatchers.length > 0;
+  $: hasSilenceableSources = Object.values($sourceCapabilities).some(c => c.supportsSilence);
+  $: canOpenSilenceEditor = hasSilenceableSources;
+  $: silenceFromSearchTitle = canOpenSilenceEditor
+    ? silenceableMatchers.length > 0
+      ? 'Create a silence from this search'
+      : 'Create a new silence'
+    : 'No configured source supports silences';
 
   function silenceFromSearch() {
-    if (canSilenceFromSearch) openSilenceFromQuery($parsedQuery);
+    if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
   }
   // While the search is expanded the view block shows captions only, so the
   // expanded field has room without pushing controls off the row. Hide values
@@ -431,14 +438,12 @@
       {/if}
     </div>
 
-    <!-- Silence everything matching the current search (needs ≥1 label term). -->
+    <!-- Create a silence from the current search, or start one from scratch. -->
     <button
       class="icon-toggle"
-      disabled={!canSilenceFromSearch}
+      disabled={!canOpenSilenceEditor}
       on:click={silenceFromSearch}
-      title={canSilenceFromSearch
-        ? 'Create a silence from this search'
-        : 'Add a label term (e.g. namespace=prod) to silence from search'}
+      title={silenceFromSearchTitle}
       aria-label="Silence from search"
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>
