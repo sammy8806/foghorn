@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseQuery, parseFieldTerm, matchesQuery, anchoredRegex } from './query';
+import { parseQuery, parseFieldTerm, matchesQuery, anchoredRegex, queryToMatchers } from './query';
 import type { Alert } from './alerts';
 
 describe('parseQuery', () => {
@@ -143,5 +143,32 @@ describe('matchesQuery', () => {
 
   it('an invalid =~ regex matches nothing', () => {
     expect(matchesQuery(a, parseQuery('namespace=~('))).toBe(false);
+  });
+});
+
+describe('queryToMatchers', () => {
+  it('converts label terms and drops text + annotation terms', () => {
+    const { matchers, dropped } = queryToMatchers(
+      parseQuery('critical namespace=prod team!=infra app=~api-.* annotation:summary=~disk'),
+    );
+    expect(matchers).toEqual([
+      { name: 'namespace', value: 'prod', isRegex: false, isEqual: true },
+      { name: 'team', value: 'infra', isRegex: false, isEqual: false },
+      { name: 'app', value: 'api-.*', isRegex: true, isEqual: true },
+    ]);
+    expect(dropped).toEqual([
+      { label: 'critical', reason: 'text' },
+      { label: 'annotation:summary', reason: 'annotation' },
+    ]);
+  });
+
+  it('maps !~ to a negated regex matcher', () => {
+    const { matchers } = queryToMatchers(parseQuery('env!~dev.*'));
+    expect(matchers).toEqual([{ name: 'env', value: 'dev.*', isRegex: true, isEqual: false }]);
+  });
+
+  it('prefixes a negated text term with a dash in the dropped label', () => {
+    const { dropped } = queryToMatchers(parseQuery('-noise'));
+    expect(dropped).toEqual([{ label: '-noise', reason: 'text' }]);
   });
 });

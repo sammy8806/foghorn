@@ -135,3 +135,35 @@ export function matchesQuery(alert: Alert, parsed: ParsedQuery): boolean {
     term.kind === 'text' ? matchesText(alert, term) : matchesField(alert, term),
   );
 }
+
+export interface DroppedTerm {
+  label: string;
+  reason: 'text' | 'annotation';
+}
+
+function fieldTermToMatcher(t: FieldTerm): Matcher {
+  return {
+    name: t.key,
+    value: t.value,
+    isRegex: t.op === '=~' || t.op === '!~',
+    isEqual: t.op === '=' || t.op === '=~',
+  };
+}
+
+export function queryToMatchers(parsed: ParsedQuery): {
+  matchers: Matcher[];
+  dropped: DroppedTerm[];
+} {
+  const matchers: Matcher[] = [];
+  const dropped: DroppedTerm[] = [];
+  for (const t of parsed.terms) {
+    if (t.kind === 'text') {
+      dropped.push({ label: t.negated ? `-${t.value}` : t.value, reason: 'text' });
+    } else if (t.scope === 'annotation') {
+      dropped.push({ label: `annotation:${t.key}`, reason: 'annotation' });
+    } else {
+      matchers.push(fieldTermToMatcher(t));
+    }
+  }
+  return { matchers, dropped };
+}
