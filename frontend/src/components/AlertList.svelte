@@ -341,6 +341,38 @@
   $: currentSortLabel = SORT_PRESET_OPTIONS.find(o => o.mode === $activeSortMode)?.label ?? 'Custom';
   $: currentGroupLabel = GROUP_PRESET_OPTIONS.find(o => o.mode === $activeGroupMode)?.label ?? 'Custom';
 
+  // The value column tracks the width of the *currently selected* label —
+  // small by default, growing only when a longer value is actually picked —
+  // clamped to each field's realistic min/max so the animation stays bounded
+  // and a stray long value (e.g. a long source name) just ellipsizes instead
+  // of blowing out the box.
+  function widthChFor(text: string, minCh: number, maxCh: number): number {
+    return Math.min(maxCh, Math.max(minCh, text.length)) + 0.6;
+  }
+
+  const groupLabelLengths = GROUP_PRESET_OPTIONS.map(o => o.label.length);
+  const groupMinCh = Math.min(...groupLabelLengths);
+  const groupMaxCh = Math.max(...groupLabelLengths);
+  $: groupValueWidthCh = widthChFor(currentGroupLabel, groupMinCh, groupMaxCh);
+
+  const sortLabelLengths = SORT_PRESET_OPTIONS.map(o => o.label.length);
+  const sortMinCh = Math.min(...sortLabelLengths);
+  const sortMaxCh = Math.max(...sortLabelLengths);
+  $: sortValueWidthCh = widthChFor(currentSortLabel, sortMinCh, sortMaxCh);
+
+  $: severityText = $filter.severity === 'all' ? 'All' : severityLabel($filter.severity);
+  $: severityLabelLengths = ['All', ...$severityConfig.levels.map(l => severityLabel(l.name))].map(l => l.length);
+  $: severityMinCh = Math.min(...severityLabelLengths);
+  $: severityMaxCh = Math.max(...severityLabelLengths);
+  $: severityValueWidthCh = widthChFor(severityText, severityMinCh, severityMaxCh);
+
+  // Source names are free text (not a fixed option list), so cap the growth
+  // instead of deriving a max from every possible value.
+  const sourceMinCh = 'All'.length;
+  const sourceMaxCh = 16;
+  $: sourceText = $filter.source === 'all' ? 'All' : $filter.source;
+  $: sourceValueWidthCh = widthChFor(sourceText, sourceMinCh, sourceMaxCh);
+
   async function layoutPopup(): Promise<void> {
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
@@ -504,7 +536,7 @@
           title="Filter by severity"
         >
           <span class="segment-label">Severity</span>
-          <span class="segment-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
+          <span class="segment-value" style="--value-w: {severityValueWidthCh}">{severityText}</span>
           <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
         {#if severityMenuOpen}
@@ -533,7 +565,7 @@
             title="Filter by source"
           >
             <span class="segment-label">Source</span>
-            <span class="segment-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
+            <span class="segment-value" style="--value-w: {sourceValueWidthCh}">{sourceText}</span>
             <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
           </button>
           {#if sourceMenuOpen}
@@ -562,7 +594,7 @@
           title="Change alert grouping"
         >
           <span class="segment-label">Group</span>
-          <span class="segment-value">{currentGroupLabel}</span>
+          <span class="segment-value" style="--value-w: {groupValueWidthCh}">{currentGroupLabel}</span>
           <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
         {#if groupMenuOpen}
@@ -586,7 +618,7 @@
           title="Change alert sort order"
         >
           <span class="segment-label">Sort</span>
-          <span class="segment-value">{currentSortLabel}</span>
+          <span class="segment-value" style="--value-w: {sortValueWidthCh}">{currentSortLabel}</span>
           <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
         {#if sortMenuOpen}
@@ -924,26 +956,24 @@
     color: #7c8aa3;
   }
   .segment.filtered .segment-label { color: #9fc2f5; }
-  /* Reserve a stable width band so the block doesn't jump around as the
-     selected value changes: short values keep the min width, long ones
-     truncate with an ellipsis instead of stretching the segment. */
+  /* Width tracks the current value's length (via --value-w, in ch), clamped
+     per-field to a realistic min/max — small by default, animating wider
+     only when a longer value is actually selected. */
   .segment-value {
     color: #f1f5f9;
     display: inline-block;
-    min-width: 4.5em;
-    max-width: 8em;
+    width: calc(var(--value-w, 7) * 1ch);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: left;
     opacity: 1;
     transition:
-      max-width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
-      min-width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+      width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
       opacity 0.12s ease;
   }
   .view-block.compact .segment-value {
-    min-width: 0;
-    max-width: 0;
+    width: 0;
     opacity: 0;
   }
   .segment.filtered .segment-value { color: #bcd9ff; }
