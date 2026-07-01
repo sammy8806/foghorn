@@ -11,6 +11,9 @@
 sources:
   - name: local-alertmanager
     type: alertmanager
+    # Optional. Defaults to true; set false to keep this source in config but
+    # skip polling it and remove it from the UI.
+    enabled: true
     url: http://localhost:9093
     auth:
       type: basic

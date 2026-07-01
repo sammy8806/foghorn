@@ -46,6 +46,7 @@ type HideRule struct {
 type SourceConfig struct {
 	Name          string            `yaml:"name"`
 	Type          string            `yaml:"type"`
+	Enabled       *bool             `yaml:"enabled"`
 	URL           string            `yaml:"url"`
 	Auth          AuthConfig        `yaml:"auth"`
 	PollInterval  time.Duration     `yaml:"poll_interval"`

@@ -113,7 +113,11 @@ func validate(cfg *Config) error {
 		})
 	}
 
+	enabledSources := make([]SourceConfig, 0, len(cfg.Sources))
 	for i, src := range cfg.Sources {
+		if src.Enabled != nil && !*src.Enabled {
+			continue
+		}
 		if src.Name == "" {
 			return fmt.Errorf("source[%d]: name is required", i)
 		}
@@ -124,18 +128,20 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("source[%d] %q: url is required", i, src.Name)
 		}
 		if src.URL == "" && strings.EqualFold(src.Type, "betterstack") {
-			cfg.Sources[i].URL = "https://uptime.betterstack.com"
+			src.URL = "https://uptime.betterstack.com"
 		}
 		if src.PollInterval == 0 {
-			cfg.Sources[i].PollInterval = 30_000_000_000 // 30s default
+			src.PollInterval = 30_000_000_000 // 30s default
 		}
 		if src.Timeout <= 0 {
-			cfg.Sources[i].Timeout = DefaultSourceTimeout
+			src.Timeout = DefaultSourceTimeout
 		}
 		if strings.TrimSpace(src.SeverityLabel) == "" {
-			cfg.Sources[i].SeverityLabel = "severity"
+			src.SeverityLabel = "severity"
 		}
+		enabledSources = append(enabledSources, src)
 	}
+	cfg.Sources = enabledSources
 	if cfg.UI.PopupWidth == 0 {
 		cfg.UI.PopupWidth = 800
 	}

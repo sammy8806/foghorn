@@ -472,6 +472,7 @@ export namespace config {
 	export class SourceConfig {
 	    Name: string;
 	    Type: string;
+	    Enabled?: boolean;
 	    URL: string;
 	    Auth: AuthConfig;
 	    PollInterval: number;
@@ -488,6 +489,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Name = source["Name"];
 	        this.Type = source["Type"];
+	        this.Enabled = source["Enabled"];
 	        this.URL = source["URL"];
 	        this.Auth = this.convertValues(source["Auth"], AuthConfig);
 	        this.PollInterval = source["PollInterval"];

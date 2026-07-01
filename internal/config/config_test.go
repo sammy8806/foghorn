@@ -194,6 +194,61 @@ ui:
 	}
 }
 
+func TestLoadConfigFiltersDisabledSources(t *testing.T) {
+	yaml := `
+sources:
+  - name: enabled-by-default
+    type: alertmanager
+    url: http://localhost:9093
+  - name: explicitly-enabled
+    type: alertmanager
+    enabled: true
+    url: http://localhost:9094
+  - name: disabled
+    type: alertmanager
+    enabled: false
+    url: http://localhost:9095
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := len(cfg.Sources); got != 2 {
+		t.Fatalf("expected 2 enabled sources, got %d", got)
+	}
+	if cfg.Sources[0].Name != "enabled-by-default" {
+		t.Fatalf("expected omitted enabled source to stay enabled, got %q", cfg.Sources[0].Name)
+	}
+	if cfg.Sources[1].Name != "explicitly-enabled" {
+		t.Fatalf("expected explicitly enabled source, got %q", cfg.Sources[1].Name)
+	}
+}
+
 func TestLoadConfigDefaultsSeverityLabel(t *testing.T) {
 	yaml := `
 sources:
