@@ -27,14 +27,15 @@
     sortByCriteria,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources } from '../stores/filter';
+  import { filteredAlerts, filter, availableSources, parsedQuery } from '../stores/filter';
+  import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
-  import { silenceEditor, closeSilenceEditor } from '../stores/silenceEditor';
+  import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
   const popupHorizontalMargin = 8;
@@ -134,6 +135,12 @@
   let searchInputEl: HTMLInputElement | null = null;
   $: hasSearchText = $filter.text.trim().length > 0;
   $: searchOpen = searchExpanded || hasSearchText;
+  $: silenceableMatchers = queryToMatchers($parsedQuery).matchers;
+  $: canSilenceFromSearch = silenceableMatchers.length > 0;
+
+  function silenceFromSearch() {
+    if (canSilenceFromSearch) openSilenceFromQuery($parsedQuery);
+  }
   // While the search is expanded the view block shows captions only, so the
   // expanded field has room without pushing controls off the row. Hide values
   // immediately when opening, but wait for the search's collapse animation to
@@ -423,6 +430,19 @@
         <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
       {/if}
     </div>
+
+    <!-- Silence everything matching the current search (needs ≥1 label term). -->
+    <button
+      class="icon-toggle"
+      disabled={!canSilenceFromSearch}
+      on:click={silenceFromSearch}
+      title={canSilenceFromSearch
+        ? 'Create a silence from this search'
+        : 'Add a label term (e.g. namespace=prod) to silence from search'}
+      aria-label="Silence from search"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>
+    </button>
 
     <!-- Icon-button toggles -->
     <button
@@ -819,6 +839,10 @@
     color: #bcd9ff;
     background: rgba(47, 129, 247, 0.18);
     border-color: rgba(47, 129, 247, 0.45);
+  }
+  .icon-toggle:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   /* Fused view block: Severity · [Source] · Group · Sort */
