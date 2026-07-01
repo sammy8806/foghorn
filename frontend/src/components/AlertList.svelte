@@ -612,16 +612,16 @@
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
       {#if newVisibleCount > 0}
-        <span class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click × to mark all as seen.">
-          <button class="status-chip-x" on:click={acknowledgeAllAlerts} title="Clear new">×</button>
+        <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
+          <span class="status-chip-x" aria-hidden="true">×</span>
           {newVisibleCount} New
-        </span>
+        </button>
       {/if}
       {#if resolvedVisibleCount > 0}
-        <span class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click × to clear them now.">
-          <button class="status-chip-x" on:click={acknowledgeAllResolvedAlerts} title="Clear resolved">×</button>
+        <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
+          <span class="status-chip-x" aria-hidden="true">×</span>
           {resolvedVisibleCount} Resolved
-        </span>
+        </button>
       {/if}
 
       <div class="status-spacer"></div>
@@ -1015,37 +1015,39 @@
     align-items: center;
     gap: 4px;
     padding: 3px 6px;
-    border-radius: 4px;
+    border-radius: 10px;
     font-size: calc(10.5px * var(--font-scale, 1));
     line-height: 1;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
     white-space: nowrap;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .status-chip:hover {
+    filter: brightness(1.05);
   }
   .status-chip-x {
     display: inline-flex;
     align-items: center;
     padding: 0;
-    border: none;
-    background: none;
-    font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
     line-height: 1;
-    cursor: pointer;
   }
   .status-chip-new {
-    color: #1a1300;
-    background: #f5c518;
+    color: #1f2937;
+    background: #facc15;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.28);
   }
-  .status-chip-new .status-chip-x { color: rgba(26, 19, 0, 0.5); }
-  .status-chip-new .status-chip-x:hover { color: #1a1300; }
+  .status-chip-new .status-chip-x { color: #1f2937; }
   .status-chip-resolved {
-    color: #dbeafe;
-    background: #1d4ed8;
+    color: #052e16;
+    background: #22c55e;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
-  .status-chip-resolved .status-chip-x { color: rgba(219, 234, 254, 0.7); }
-  .status-chip-resolved .status-chip-x:hover { color: #ffffff; }
+  .status-chip-resolved .status-chip-x { color: #052e16; }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;
