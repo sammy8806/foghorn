@@ -156,15 +156,32 @@
   let widthCompact = false;
   let measuring = false;
   const SEARCH_ANIM_MS = 180;
+  const COLLAPSED_SEARCH_WIDTH = 28;
+  const EXPANDED_SEARCH_WIDTH = 200;
   let measureTimer: ReturnType<typeof setTimeout>;
-  async function measureFilterBar() {
+
+  function fullFilterBarWouldOverflow(el: HTMLElement): boolean {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.position = 'fixed';
+    clone.style.left = '-10000px';
+    clone.style.top = '0';
+    clone.style.width = `${el.clientWidth}px`;
+    clone.style.visibility = 'hidden';
+    clone.style.pointerEvents = 'none';
+    clone.querySelector('.view-block')?.classList.remove('compact');
+    document.body.appendChild(clone);
+    const overflow = clone.scrollWidth > clone.clientWidth + 1;
+    clone.remove();
+    return overflow;
+  }
+
+  function measureFilterBar() {
     const el = filterBarEl;
     if (measuring || !el) return;
     measuring = true;
     try {
-      if (widthCompact) { widthCompact = false; await tick(); }
-      const overflow = el.scrollWidth > el.clientWidth + 1;
-      if (overflow !== widthCompact) { widthCompact = overflow; await tick(); }
+      const overflow = fullFilterBarWouldOverflow(el);
+      if (overflow !== widthCompact) widthCompact = overflow;
     } finally {
       measuring = false;
     }
@@ -177,8 +194,6 @@
     clearTimeout(measureTimer);
     measureTimer = setTimeout(() => { void measureFilterBar(); }, SEARCH_ANIM_MS + 40);
   }
-
-  $: showSegmentValues = !widthCompact;
 
   // Re-measure when the available width changes (ResizeObserver), when a
   // segment is added/removed, or when search opens/collapses.
@@ -196,7 +211,17 @@
     }
   }
 
+  function compactBeforeSearchExpansion() {
+    const el = filterBarEl;
+    if (!el || searchOpen || widthCompact) return;
+    const expandedSearchDelta = EXPANDED_SEARCH_WIDTH - COLLAPSED_SEARCH_WIDTH;
+    if (el.scrollWidth + expandedSearchDelta > el.clientWidth + 1) {
+      widthCompact = true;
+    }
+  }
+
   async function openSearch() {
+    compactBeforeSearchExpansion();
     searchExpanded = true;
     await tick();
     searchInputEl?.focus();
@@ -469,7 +494,7 @@
     <div class="filter-spacer"></div>
 
     <!-- Fused view block: Severity · [Source] · Group · Sort -->
-    <div class="view-block">
+    <div class="view-block" class:compact={widthCompact}>
       <div class="segment-wrap">
         <button
           class="segment"
@@ -479,10 +504,8 @@
           title="Filter by severity"
         >
           <span class="segment-label">Severity</span>
-          {#if showSegmentValues}
-            <span class="segment-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
-            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-          {/if}
+          <span class="segment-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
+          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
         {#if severityMenuOpen}
           <div class="filter-menu">
@@ -510,10 +533,8 @@
             title="Filter by source"
           >
             <span class="segment-label">Source</span>
-            {#if showSegmentValues}
-              <span class="segment-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
-              <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-            {/if}
+            <span class="segment-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
           </button>
           {#if sourceMenuOpen}
             <div class="filter-menu">
@@ -541,10 +562,8 @@
           title="Change alert grouping"
         >
           <span class="segment-label">Group</span>
-          {#if showSegmentValues}
-            <span class="segment-value">{currentGroupLabel}</span>
-            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-          {/if}
+          <span class="segment-value">{currentGroupLabel}</span>
+          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
         {#if groupMenuOpen}
           <div class="filter-menu">
@@ -567,10 +586,8 @@
           title="Change alert sort order"
         >
           <span class="segment-label">Sort</span>
-          {#if showSegmentValues}
-            <span class="segment-value">{currentSortLabel}</span>
-            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-          {/if}
+          <span class="segment-value">{currentSortLabel}</span>
+          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
         {#if sortMenuOpen}
           <div class="filter-menu">
@@ -861,6 +878,9 @@
     background: #162033;
     flex-shrink: 0;
   }
+  .view-block.compact .segment {
+    gap: 0;
+  }
   .segment-wrap {
     position: relative;
     display: inline-flex;
@@ -915,9 +935,30 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    opacity: 1;
+    transition:
+      max-width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+      min-width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+      opacity 0.12s ease;
+  }
+  .view-block.compact .segment-value {
+    min-width: 0;
+    max-width: 0;
+    opacity: 0;
   }
   .segment.filtered .segment-value { color: #bcd9ff; }
-  .segment-caret { fill: #64748b; }
+  .segment-caret {
+    fill: #64748b;
+    width: 9px;
+    opacity: 1;
+    transition:
+      width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+      opacity 0.12s ease;
+  }
+  .view-block.compact .segment-caret {
+    width: 0;
+    opacity: 0;
+  }
   /* Anchor dropdowns to the block's right edge so the rightmost (Sort) menu
      never overflows the popup's right edge. */
   .view-block .filter-menu {
