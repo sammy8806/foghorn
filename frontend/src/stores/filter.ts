@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
-import { alerts, resolveAlertField } from './alerts';
+import { alerts } from './alerts';
 import type { Alert } from './alerts';
+import { parseQuery, matchesQuery, type ParsedQuery } from './query';
 
 export interface FilterState {
   text: string;
@@ -18,23 +19,19 @@ export const filter = writable<FilterState>({
   showAll: false,
 });
 
-export const filteredAlerts = derived([alerts, filter], ([$alerts, $filter]) => {
-  return $alerts.filter(alert => matchesFilter(alert, $filter));
-});
+// parsedQuery is the single parse of the search box, reused by the list filter
+// and by "silence from search" (AlertList).
+export const parsedQuery = derived(filter, ($filter) => parseQuery($filter.text));
 
-function matchesFilter(alert: Alert, f: FilterState): boolean {
-  // Text search always applies, even when showAll is active, so users can
-  // search within silenced/otherwise-hidden alerts.
-  if (f.text) {
-    const q = f.text.toLowerCase();
-    const haystack = [
-      alert.name,
-      alert.source,
-      ...Object.keys(alert.labels || {}).map(key => resolveAlertField(alert, `label:${key}`) ?? ''),
-      ...Object.keys(alert.annotations || {}).map(key => resolveAlertField(alert, `annotation:${key}`) ?? ''),
-    ].join(' ').toLowerCase();
-    if (!haystack.includes(q)) return false;
-  }
+export const filteredAlerts = derived(
+  [alerts, filter, parsedQuery],
+  ([$alerts, $filter, $parsed]) => $alerts.filter((alert) => matchesFilter(alert, $filter, $parsed)),
+);
+
+function matchesFilter(alert: Alert, f: FilterState, parsed: ParsedQuery): boolean {
+  // Text/structured search always applies, even when showAll is active, so users
+  // can search within silenced/otherwise-hidden alerts.
+  if (parsed.terms.length > 0 && !matchesQuery(alert, parsed)) return false;
 
   if (f.showAll) return true;
   if (alert.hiddenBy && alert.hiddenBy.length > 0) return false;
@@ -46,5 +43,5 @@ function matchesFilter(alert: Alert, f: FilterState): boolean {
 }
 
 export const availableSources = derived(alerts, ($alerts) => {
-  return [...new Set($alerts.map(a => a.source))].sort();
+  return [...new Set($alerts.map((a) => a.source))].sort();
 });
