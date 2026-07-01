@@ -90,3 +90,48 @@ export function parseQuery(text: string): ParsedQuery {
   }
   return { terms, raw: text };
 }
+
+export function anchoredRegex(pattern: string): RegExp | null {
+  try {
+    return new RegExp(`^(?:${pattern})$`);
+  } catch {
+    return null;
+  }
+}
+
+function haystack(alert: Alert): string {
+  const parts = [alert.name, alert.source];
+  for (const v of Object.values(alert.labels || {})) parts.push(v);
+  for (const v of Object.values(alert.annotations || {})) parts.push(v);
+  return parts.join(' ').toLowerCase();
+}
+
+function matchesText(alert: Alert, t: TextTerm): boolean {
+  const hit = haystack(alert).includes(t.value.toLowerCase());
+  return t.negated ? !hit : hit;
+}
+
+function matchesField(alert: Alert, t: FieldTerm): boolean {
+  const bag = t.scope === 'annotation' ? alert.annotations : alert.labels;
+  const val = (bag && bag[t.key]) ?? '';
+  switch (t.op) {
+    case '=':
+      return val === t.value;
+    case '!=':
+      return val !== t.value;
+    case '=~': {
+      const re = anchoredRegex(t.value);
+      return re ? re.test(val) : false;
+    }
+    case '!~': {
+      const re = anchoredRegex(t.value);
+      return re ? !re.test(val) : false;
+    }
+  }
+}
+
+export function matchesQuery(alert: Alert, parsed: ParsedQuery): boolean {
+  return parsed.terms.every((term) =>
+    term.kind === 'text' ? matchesText(alert, term) : matchesField(alert, term),
+  );
+}
