@@ -1,13 +1,19 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
   import { createEventDispatcher } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
+  import { alerts } from '../stores/alerts';
+  import { filter } from '../stores/filter';
+  import { queryToMatchers, type ParsedQuery, type DroppedTerm } from '../stores/query';
+  import { matchesAllMatchers } from '../stores/matchers';
   import MatcherEditor from './MatcherEditor.svelte';
 
   export let alert: Alert | null = null;
   export let silence: SilenceInfo | null = null;
   export let mode: 'create' | 'edit' = 'create';
   export let open = false;
+  export let query: ParsedQuery | null = null;
 
   const dispatch = createEventDispatcher<{ close: void; silenced: void }>();
 
@@ -25,9 +31,21 @@
   let error = '';
   let confirmExpire = false;
   let initializedForOpen = false;
+  let droppedTerms: DroppedTerm[] = [];
+  let selectedSource = '';
 
   // Combined source of truth: hidden matchers are always part of the silence.
   $: allMatchers = [...editorMatchers, ...hiddenMatchers];
+
+  // In alert-seeded / edit modes the source is fixed to the alert's source.
+  // In query mode the user picks it.
+  $: activeSource = alert ? alert.source : selectedSource;
+
+  // Candidate sources for the picker: sources that currently have at least one
+  // alert matching the (possibly edited) matcher set, most matches first.
+  $: sourceCandidates = query
+    ? sourcesWithMatches($alerts, allMatchers)
+    : [];
   // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
   // only while expanded and some visible matcher would collapse back out of the
   // whitelist. The two are mutually exclusive: expanding empties hiddenMatchers.
@@ -44,8 +62,29 @@
     !loading &&
     !!duration &&
     !!createdBy.trim() &&
+    !!activeSource &&
     allMatchers.length > 0 &&
     allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
+
+  function sourcesWithMatches(all: Alert[], matchers: Matcher[]): { source: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const a of all) {
+      if (matchers.length > 0 && !matchesAllMatchers(a, matchers)) continue;
+      counts.set(a.source, (counts.get(a.source) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([source, count]) => ({ source, count }))
+      .sort((x, y) => y.count - x.count);
+  }
+
+  function defaultSourceForQuery(seeded: Matcher[]): string {
+    const f = get(filter);
+    const candidates = sourcesWithMatches(get(alerts), seeded);
+    if (f.source !== 'all' && candidates.some((c) => c.source === f.source)) {
+      return f.source;
+    }
+    return candidates.length ? candidates[0].source : '';
+  }
 
   function regexValid(m: Matcher): boolean {
     if (!m.isRegex) return true;
@@ -201,8 +240,21 @@
       if (duration === '0s') duration = '1m';
       comment = silence.comment || '';
       createdBy = (silence.createdBy || '').trim();
+      droppedTerms = [];
+    } else if (query) {
+      const { matchers, dropped } = queryToMatchers(query);
+      all = matchers.map((m) => ({ ...m }));
+      droppedTerms = dropped;
+      duration = '2h';
+      comment = '';
+      createdBy = '';
+      selectedSource = defaultSourceForQuery(all);
+      void loadDefaultCreatedBy().then((v) => {
+        if (!createdBy) createdBy = v;
+      });
     } else {
       all = alert ? matchersFromAlertLabels(alert) : [];
+      droppedTerms = [];
       duration = '2h';
       comment = '';
       createdBy = '';
@@ -231,14 +283,14 @@
   }
 
   async function submit() {
-    if (!alert || !canSubmit) return;
+    if (!activeSource || !canSubmit) return;
     loading = true;
     error = '';
     try {
-      if (mode === 'edit' && silence) {
+      if (mode === 'edit' && silence && alert) {
         await UpdateSilence(alert.source, silence.id, allMatchers, duration, createdBy, comment);
       } else {
-        await CreateSilence(alert.source, allMatchers, duration, createdBy, comment);
+        await CreateSilence(activeSource, allMatchers, duration, createdBy, comment);
       }
       dispatch('silenced');
       dispatch('close');
@@ -279,7 +331,7 @@
   }
 </script>
 
-{#if open && alert}
+{#if open && (alert || query)}
   <div class="overlay" on:click={close} on:keydown={handleKeydown} role="presentation">
     <div
       class="dialog"
@@ -301,17 +353,33 @@
             <span class="ctx-item"><strong>started:</strong> {new Date(silence.startsAt).toLocaleString()}</span>
             <span class="ctx-item"><strong>by:</strong> {silence.createdBy}</span>
             <span class="ctx-item"><strong>expires in:</strong> {formatRemaining(silence.endsAt)}</span>
+          {:else if query}
+            <span class="alert-name">Silence from search</span>
           {:else}
             <span class="alert-name">{alert.name}</span>
             <span class="alert-source">{alert.source}</span>
           {/if}
         </div>
 
+        {#if query}
+          <div class="field">
+            <span class="field-label">Target source</span>
+            <select class="input" bind:value={selectedSource}>
+              {#each sourceCandidates as c}
+                <option value={c.source}>{c.source} ({c.count})</option>
+              {/each}
+              {#if sourceCandidates.length === 0}
+                <option value="" disabled>No matching alerts</option>
+              {/if}
+            </select>
+          </div>
+        {/if}
+
         <div class="field">
           <span class="field-label">Matchers ({allMatchers.length})</span>
           <MatcherEditor
             bind:matchers={editorMatchers}
-            source={alert.source}
+            source={activeSource}
             revealedAfterIndex={revealedAfterIndex}
             revealedCount={revealedCount}
           >
@@ -327,6 +395,14 @@
               {/if}
             </svelte:fragment>
           </MatcherEditor>
+          {#if droppedTerms.length > 0}
+            <p class="dropped-note">
+              Not included in silence:
+              {#each droppedTerms as d, i}
+                <code>{d.label}</code><span class="dropped-reason"> ({d.reason})</span>{i < droppedTerms.length - 1 ? ', ' : ''}
+              {/each}
+            </p>
+          {/if}
         </div>
 
         <div class="field">
@@ -526,6 +602,19 @@
     font-size: calc(12px * var(--font-scale, 1));
     margin: 8px 0 0;
   }
+
+  .dropped-note {
+    font-size: calc(11px * var(--font-scale, 1));
+    color: #94a3b8;
+    margin: 6px 0 0;
+  }
+  .dropped-note code {
+    background: #0f172a;
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: #cbd5e1;
+  }
+  .dropped-reason { color: #64748b; }
 
   .dialog-footer {
     display: flex;

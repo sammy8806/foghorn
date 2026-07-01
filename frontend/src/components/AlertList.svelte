@@ -647,6 +647,7 @@
   silence={$silenceEditor.silence}
   mode={$silenceEditor.mode}
   open={$silenceEditor.open}
+  query={$silenceEditor.query}
   on:close={closeSilenceEditor}
   on:silenced={() => refreshAlerts()}
 />
