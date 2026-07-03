@@ -15,7 +15,7 @@
 - **Multiple alert sources** — poll Alertmanager, Grafana Alerting, Prometheus, and Better Stack side by side.
 - **Silences** — view, create, edit, and expire Alertmanager silences directly from the app.
 - **On-call at a glance** — show the current Better Stack on-call person in the status bar, with direct links into incidents.
-- **Filter and group** — severity, source, and free-text filters; configurable grouping and sorting.
+- **Filter and group** — severity, source, and a query-syntax search bar (free text, negation, `key=value`/`key=~regex` label matchers); configurable grouping and sorting.
 - **Desktop notifications** — native notifications on macOS, Linux, and Windows.
 - **Optional system tray** — opt-in tray support on Linux (AppIndicator); always-on on macOS and Windows.
 - **Configurable** — YAML configuration with `${ENV_VAR}` interpolation for secrets.
@@ -207,6 +207,8 @@ See `config.example.yaml` for the full reference, including severity mapping, di
 The `ui.scale` block can enlarge the app for accessibility. Use `mode: fonts` to scale text only, or `mode: interface` to scale the full web UI. `factor` accepts `0.75` through `2.0`; when `mode: interface`, `apply_to_popup: true` also resizes the popup window.
 
 For how the **Sort** selector's presets work — what each one orders by, where `startsAt`/`updatedAt` come from, and the provider-specific caveats — see [`docs/sorting.md`](docs/sorting.md).
+
+For the search bar's query syntax — field matchers, negation, regex anchoring, and how a query becomes a silence — see [`docs/search.md`](docs/search.md).
 
 ## Development
 
