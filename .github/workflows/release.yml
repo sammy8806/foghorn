@@ -169,6 +169,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Resolve release tag
         id: tag
         env:
@@ -181,6 +185,23 @@ jobs:
           else
             echo "name=v$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Build release notes from tag annotation
+        id: notes
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          BODY_FILE="${RUNNER_TEMP}/release-notes.md"
+          # Use the annotated tag message body (everything after the subject line)
+          # as the release notes; fall back to auto-generated notes if the tag
+          # is lightweight or carries no message (e.g. a dev workflow_dispatch).
+          if git for-each-ref "refs/tags/${TAG}" --format='%(contents:body)' > "$BODY_FILE" && [ -s "$BODY_FILE" ]; then
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            : > "$BODY_FILE"
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "path=$BODY_FILE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
@@ -203,6 +224,7 @@ jobs:
             artifacts/foghorn-*-amd64-installer.exe
           overwrite_files: true
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.generate }}
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.name, '-') }}
