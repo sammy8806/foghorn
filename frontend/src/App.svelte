@@ -5,6 +5,7 @@
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
   import { initUIScale, uiScale } from './stores/uiScale';
+  import { initTheme } from './stores/theme';
 
   let view: 'list' | 'about' = 'list';
 
@@ -20,6 +21,7 @@
     if (!isWails()) return;
 
     const unlistenScale = initUIScale();
+    const unlistenTheme = initTheme();
     const unlisten = EventsOn('about:show', () => {
       view = 'about';
     });
@@ -37,6 +39,7 @@
 
     return () => {
       unlistenScale();
+      unlistenTheme();
       unlisten();
       document.removeEventListener('click', onClick);
     };
@@ -60,8 +63,8 @@
     margin: 0;
     padding: 0;
     height: 100%;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--color-bg);
+    color: var(--color-text);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: calc(13px * var(--font-scale, 1));
   }

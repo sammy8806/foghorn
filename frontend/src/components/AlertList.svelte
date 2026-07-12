@@ -1062,8 +1062,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 10px;
-    background: #0f172a;
-    border-bottom: 1px solid #1b2740;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-shrink: 0;
     /* Stay on one line; when it would overflow we strip the segment values
        (captions only) rather than wrapping onto a second row. */
@@ -1084,8 +1084,8 @@
     box-sizing: border-box;
     padding: 0 0 0 7px;
     border-radius: 6px;
-    border: 1px solid #2a3650;
-    background: #162033;
+    border: 1px solid var(--color-control-border);
+    background: var(--color-control-bg);
     overflow: hidden;
     cursor: text;
     flex-shrink: 0;
@@ -1112,7 +1112,7 @@
     border: none;
     background: transparent;
     outline: none;
-    color: #e2e8f0;
+    color: var(--color-text);
     font-family: inherit;
     font-size: calc(12.5px * var(--font-scale, 1));
     padding: 0;
@@ -1134,7 +1134,7 @@
     padding: 0;
     border: none;
     border-radius: 50%;
-    background: #2a3650;
+    background: var(--color-control-border);
     color: #cbd5e1;
     font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
@@ -1177,9 +1177,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    border: 1px solid #2a3650;
-    background: #162033;
-    color: #94a3b8;
+    border: 1px solid var(--color-control-border);
+    background: var(--color-control-bg);
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.15s;
   }
@@ -1218,9 +1218,9 @@
   .view-block {
     display: inline-flex;
     height: 28px;
-    border: 1px solid #2a3650;
+    border: 1px solid var(--color-control-border);
     border-radius: 6px;
-    background: #162033;
+    background: var(--color-control-bg);
     flex-shrink: 0;
   }
   .view-block.compact .segment {
@@ -1233,7 +1233,7 @@
   .segment-wrap + .segment-wrap::before {
     content: '';
     width: 1px;
-    background: #2a3650;
+    background: var(--color-control-border);
   }
   .segment {
     display: inline-flex;
@@ -1319,9 +1319,9 @@
     box-sizing: border-box;
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
-    color: #475569;
-    background: #0f172a;
-    border-bottom: 1px solid #1e293b;
+    color: var(--color-text-faint);
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-shrink: 0;
     /* Stay on one line: the on-call name truncates rather than wrapping the
        clock/refresh onto a second row. */
@@ -1347,7 +1347,7 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     box-sizing: border-box;
-    color: #e2e8f0;
+    color: var(--color-text);
     font-size: calc(12.5px * var(--font-scale, 1));
     font-weight: 600;
     white-space: nowrap;
@@ -1476,7 +1476,7 @@
     justify-content: center;
     background: none;
     border: none;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     font-size: calc(14px * var(--font-scale, 1));
     line-height: 1;
     height: var(--status-item-height);
