@@ -37,6 +37,7 @@
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
+  import { hasPersistedUIPrefs } from '../stores/uiPrefs';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
   const popupHorizontalMargin = 8;
@@ -73,7 +74,9 @@
       const uiConfig = await GetUIConfig();
       filter.update(current => ({
         ...current,
-        showSilenced: uiConfig.show_silenced ?? current.showSilenced,
+        showSilenced: hasPersistedUIPrefs()
+          ? current.showSilenced
+          : (uiConfig.show_silenced ?? current.showSilenced),
       }));
       idleImage = uiConfig.idle_image || defaultIdleImage;
     };

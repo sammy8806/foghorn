@@ -5,6 +5,7 @@
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
   import { initUIScale, uiScale } from './stores/uiScale';
+  import { initUIPrefsPersistence } from './stores/uiPrefs';
 
   let view: 'list' | 'about' = 'list';
 
@@ -17,7 +18,9 @@
   }
 
   onMount(() => {
-    if (!isWails()) return;
+    const unlistenPrefs = initUIPrefsPersistence();
+
+    if (!isWails()) return unlistenPrefs;
 
     const unlistenScale = initUIScale();
     const unlisten = EventsOn('about:show', () => {
@@ -36,6 +39,7 @@
     document.addEventListener('click', onClick);
 
     return () => {
+      unlistenPrefs();
       unlistenScale();
       unlisten();
       document.removeEventListener('click', onClick);
