@@ -822,6 +822,26 @@
   }
   .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
 
+  .btn-action {
+    background: transparent;
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: calc(11px * var(--font-scale, 1));
+    cursor: pointer;
+  }
+
+  .btn-action:hover:not(:disabled) {
+    border-color: #60a5fa;
+    color: #93c5fd;
+  }
+
+  .btn-action:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   .action-status {
     font-size: calc(11px * var(--font-scale, 1));
     color: #94a3b8;
