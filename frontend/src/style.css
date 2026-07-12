@@ -3,14 +3,89 @@
 :root {
   --font-scale: 1;
   --ui-scale: 1;
+
+  /* Dark theme (default) */
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-raised: #334155;
+  --color-border: #334155;
+  --color-border-subtle: #1e293b;
+  --color-text: #e2e8f0;
+  --color-text-muted: #94a3b8;
+  --color-text-faint: #64748b;
+  --color-accent: #93c5fd;
+  --color-input-bg: #0f172a;
+  --color-control-bg: #162033;
+  --color-control-border: #2a3650;
+  --color-scrollbar: #334155;
+  --color-scrollbar-hover: #475569;
+  --card-bg: #1e293b;
+}
+
+[data-theme='light'] {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f1f5f9;
+  --color-border: #cbd5e1;
+  --color-border-subtle: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-faint: #64748b;
+  --color-accent: #2563eb;
+  --color-input-bg: #ffffff;
+  --color-control-bg: #f1f5f9;
+  --color-control-border: #cbd5e1;
+  --color-scrollbar: #cbd5e1;
+  --color-scrollbar-hover: #94a3b8;
+  --card-bg: #ffffff;
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme='system'] {
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-surface-raised: #f1f5f9;
+    --color-border: #cbd5e1;
+    --color-border-subtle: #e2e8f0;
+    --color-text: #0f172a;
+    --color-text-muted: #475569;
+    --color-text-faint: #64748b;
+    --color-accent: #2563eb;
+    --color-input-bg: #ffffff;
+    --color-control-bg: #f1f5f9;
+    --color-control-border: #cbd5e1;
+    --color-scrollbar: #cbd5e1;
+    --color-scrollbar-hover: #94a3b8;
+    --card-bg: #ffffff;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme='system'] {
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-surface-raised: #334155;
+    --color-border: #334155;
+    --color-border-subtle: #1e293b;
+    --color-text: #e2e8f0;
+    --color-text-muted: #94a3b8;
+    --color-text-faint: #64748b;
+    --color-accent: #93c5fd;
+    --color-input-bg: #0f172a;
+    --color-control-bg: #162033;
+    --color-control-border: #2a3650;
+    --color-scrollbar: #334155;
+    --color-scrollbar-hover: #475569;
+    --card-bg: #1e293b;
+  }
 }
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: calc(13px * var(--font-scale, 1));
   -webkit-font-smoothing: antialiased;
@@ -24,5 +99,5 @@ html, body {
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #475569; }
+::-webkit-scrollbar-thumb { background: var(--color-scrollbar); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-scrollbar-hover); }

@@ -45,7 +45,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    color: #e2e8f0;
+    color: var(--color-text);
   }
 
   header {
