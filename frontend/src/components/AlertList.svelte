@@ -283,7 +283,9 @@
   // A pending source (first poll still in flight) is neither OK nor failing, so
   // it must not turn the status bubble red.
   $: anySourcePending = $sourcesHealth.some(h => h.pending);
-  $: anySourceFailing = $sourcesHealth.some(h => !h.ok && !h.pending);
+  $: failingSources = $sourcesHealth.filter(h => !h.ok && !h.pending);
+  $: anySourceFailing = failingSources.length > 0;
+  $: showHealthBanner = anySourceFailing && !$loading;
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
   $: isMacOSDevMode = environmentPlatform === 'darwin' && (
     normalizedBuildType === 'dev' ||
@@ -463,6 +465,34 @@
       </div>
       <button class="info-card-action" on:click={handleOpenNotificationSettings}>
         Open Notification Settings
+      </button>
+    </div>
+  {/if}
+
+  {#if showHealthBanner}
+    <div class="info-card info-card-error">
+      <div class="info-card-copy">
+        <div class="info-card-title">
+          {failingSources.length === 1 ? '1 alert source is failing' : `${failingSources.length} alert sources are failing`}
+        </div>
+        <ul class="health-error-list">
+          {#each failingSources as health}
+            <li>
+              <strong>{health.source}</strong>
+              {#if health.lastError}
+                — {health.lastError}
+              {:else}
+                — poll failed
+              {/if}
+              {#if health.consecFails > 1}
+                <span class="health-fail-count">({health.consecFails} consecutive failures)</span>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
+      <button class="info-card-action info-card-action-error" on:click={handleRefresh} disabled={refreshing}>
+        {refreshing ? 'Refreshing…' : 'Retry now'}
       </button>
     </div>
   {/if}
@@ -784,6 +814,41 @@
 
   .info-card-action:hover {
     background: rgba(251, 146, 60, 0.2);
+  }
+
+  .info-card-error {
+    border-color: #991b1b;
+    background: linear-gradient(135deg, rgba(127, 29, 29, 0.22), rgba(30, 41, 59, 0.92));
+  }
+
+  .info-card-error .info-card-title {
+    color: #fecaca;
+  }
+
+  .health-error-list {
+    margin: 4px 0 0;
+    padding-left: 16px;
+    color: #fca5a5;
+    font-size: calc(11px * var(--font-scale, 1));
+  }
+
+  .health-error-list li {
+    margin-top: 2px;
+  }
+
+  .health-fail-count {
+    color: #f87171;
+    opacity: 0.85;
+  }
+
+  .info-card-action-error {
+    border-color: #f87171;
+    background: rgba(248, 113, 113, 0.12);
+    color: #fee2e2;
+  }
+
+  .info-card-action-error:hover {
+    background: rgba(248, 113, 113, 0.2);
   }
 
   .filter-bar {
