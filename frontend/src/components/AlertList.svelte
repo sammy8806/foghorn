@@ -45,6 +45,7 @@
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
+  import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
@@ -149,6 +150,7 @@
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
   let filtersBeforeShowAll: FilterState | null = null;
+  let searchHelpOpen = false;
 
   // Expanding search: collapsed to a single icon; click expands into a field,
   // and it stays open while it holds text (collapses on blur when empty).
@@ -587,6 +589,15 @@
       {/if}
     </div>
 
+    <button
+      class="icon-toggle search-help-btn"
+      class:active={searchHelpOpen}
+      on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
+      title="Search syntax help"
+      aria-label="Search syntax help"
+      aria-expanded={searchHelpOpen}
+    >?</button>
+
     <!-- Create a silence from the current search, or start one from scratch. -->
     <button
       class="icon-toggle"
@@ -821,6 +832,8 @@
     {/if}
   </div>
 </div>
+
+<SearchHelpPopover open={searchHelpOpen} on:close={() => searchHelpOpen = false} />
 
 <!-- Single top-level silence editor, driven by the silenceEditor store. Lives
      outside the alert list so it stays open across refreshes/regrouping/sorting
@@ -1117,6 +1130,11 @@
     cursor: pointer;
   }
   .search-clear:hover { background: #34425f; color: #f1f5f9; }
+
+  .search-help-btn {
+    font-size: calc(13px * var(--font-scale, 1));
+    font-weight: 700;
+  }
 
   /* Square icon-button toggles (Show all, Verbose) */
   .icon-toggle {
