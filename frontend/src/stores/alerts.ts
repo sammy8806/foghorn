@@ -258,6 +258,8 @@ export interface SourceCapabilities {
 }
 
 export const verbose = writable(false);
+// When true, resolved alerts stay visible until acknowledged instead of auto-hiding after 30s.
+export const showResolved = writable(false);
 export const loading = writable(true);
 export const error = writable<string | null>(null);
 export const sourcesHealth = writable<SourceHealth[]>([]);
@@ -632,11 +634,23 @@ function handleResolvedAlerts(diff?: AlertsUpdatedDiff): void {
 
     const existingTimer = resolvedAlertTimers.get(key);
     if (existingTimer) clearTimeout(existingTimer);
-    resolvedAlertTimers.set(key, setTimeout(() => {
-      clearResolvedFlash(key);
-      alerts.update(current => current.filter(item => item.source + ':' + item.id !== key));
-    }, RESOLVED_FLASH_MS));
+    if (!get(showResolved)) {
+      resolvedAlertTimers.set(key, setTimeout(() => {
+        clearResolvedFlash(key);
+        alerts.update(current => current.filter(item => item.source + ':' + item.id !== key));
+      }, RESOLVED_FLASH_MS));
+    }
   }
+}
+
+/** Apply ui.show_resolved from config; clears auto-hide timers when enabled. */
+export function applyShowResolved(enabled: boolean): void {
+  showResolved.set(enabled);
+  if (!enabled) return;
+  for (const timer of resolvedAlertTimers.values()) {
+    clearTimeout(timer);
+  }
+  resolvedAlertTimers.clear();
 }
 
 function clearResolvedFlash(key: string): void {

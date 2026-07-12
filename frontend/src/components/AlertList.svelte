@@ -12,6 +12,7 @@
     resolvedAlertKeys,
     acknowledgeAllAlerts,
     acknowledgeAllResolvedAlerts,
+    applyShowResolved,
     refreshAlerts,
     loadDisplayConfig,
     loadSeverityConfig,
@@ -26,6 +27,7 @@
     GROUP_PRESET_OPTIONS,
     sortByCriteria,
     sourceCapabilities,
+    showResolved,
     isWails,
   } from '../stores/alerts';
   import { filteredAlerts, filter, availableSources, parsedQuery } from '../stores/filter';
@@ -75,6 +77,7 @@
         ...current,
         showSilenced: uiConfig.show_silenced ?? current.showSilenced,
       }));
+      applyShowResolved(uiConfig.show_resolved ?? false);
       idleImage = uiConfig.idle_image || defaultIdleImage;
     };
 
@@ -511,8 +514,18 @@
       class:active={$filter.showAll}
       on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
       title="Show all alerts (bypass filters, except text search)"
+      aria-label="Show all alerts"
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+    </button>
+    <button
+      class="icon-toggle"
+      class:active={$filter.showSilenced}
+      on:click={() => filter.update(f => ({ ...f, showSilenced: !f.showSilenced }))}
+      title={$filter.showSilenced ? 'Hide silenced alerts' : 'Show silenced alerts'}
+      aria-label={$filter.showSilenced ? 'Hide silenced alerts' : 'Show silenced alerts'}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>{#if !$filter.showSilenced}<line x1="1" y1="1" x2="23" y2="23"></line>{/if}</svg>
     </button>
     <button
       class="icon-toggle"
@@ -650,7 +663,7 @@
         </button>
       {/if}
       {#if resolvedVisibleCount > 0}
-        <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
+        <button class="status-chip status-chip-resolved" title={$showResolved ? 'Resolved alerts stay visible until you mark them seen. Click to clear them now.' : 'Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now.'} on:click={acknowledgeAllResolvedAlerts}>
           <span class="status-chip-x" aria-hidden="true">×</span>
           {resolvedVisibleCount} Resolved
         </button>
