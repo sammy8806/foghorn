@@ -4,6 +4,7 @@
     groupedAlerts,
     loading,
     error,
+    alerts,
     displayConfig,
     verbose,
     sourcesHealth,
@@ -120,6 +121,13 @@
 
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
+  $: hiddenByFiltersCount = Math.max(0, $alerts.length - $filteredAlerts.length);
+  $: filtersHideAlerts = hiddenByFiltersCount > 0;
+  $: hasActiveFilters = $filter.text.trim().length > 0
+    || $filter.severity !== 'all'
+    || $filter.source !== 'all'
+    || !$filter.showSilenced
+    || $filter.showAll;
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
@@ -147,6 +155,17 @@
 
   function silenceFromSearch() {
     if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
+  }
+
+  function clearAllFilters() {
+    filter.update(f => ({
+      ...f,
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showAll: false,
+    }));
+    searchExpanded = false;
   }
   // When the filter row would overflow, drop the segment values (captions only)
   // to keep it on a single line.
@@ -643,6 +662,12 @@
       <span class="status-error">Error: {$error}</span>
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+      {#if filtersHideAlerts && totalCount > 0}
+        <button class="status-chip status-chip-hidden" title="{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's' : ''} hidden by filters. Click to clear filters." on:click={clearAllFilters}>
+          <span class="status-chip-x" aria-hidden="true">×</span>
+          {hiddenByFiltersCount} hidden
+        </button>
+      {/if}
       {#if newVisibleCount > 0}
         <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
           <span class="status-chip-x" aria-hidden="true">×</span>
@@ -681,10 +706,19 @@
       <div class="empty-state">Loading alerts…</div>
     {:else if totalCount === 0}
       <div class="empty-state">
-        {#if idleImage && !($filteredAlerts.length === 0 && $filter.text)}
+        {#if idleImage && !hasActiveFilters}
           <img class="idle-image" src={idleImage} alt="No active alerts" />
         {/if}
-        <p>{$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}</p>
+        {#if filtersHideAlerts}
+          <p>No alerts match the current filters.</p>
+          <p class="empty-state-hint">{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's are' : ' is'} hidden.</p>
+          <button class="empty-state-action" on:click={clearAllFilters}>Clear filters</button>
+        {:else if $filter.text.trim().length > 0}
+          <p>No alerts match filter</p>
+          <button class="empty-state-action" on:click={clearAllFilters}>Clear search</button>
+        {:else}
+          <p>No active alerts</p>
+        {/if}
       </div>
     {:else if hasGroups}
       {#each $groupedAlerts as group}
@@ -1078,6 +1112,12 @@
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
   .status-chip-resolved .status-chip-x { color: #052e16; }
+  .status-chip-hidden {
+    color: #e2e8f0;
+    background: #475569;
+    box-shadow: 0 0 8px rgba(71, 85, 105, 0.3);
+  }
+  .status-chip-hidden .status-chip-x { color: #e2e8f0; }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;
@@ -1197,6 +1237,26 @@
 
   .empty-state p {
     margin: 0;
+  }
+
+  .empty-state-hint {
+    color: #64748b;
+    font-size: calc(12px * var(--font-scale, 1));
+  }
+
+  .empty-state-action {
+    margin-top: 4px;
+    border: 1px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.12);
+    color: #bfdbfe;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: calc(12px * var(--font-scale, 1));
+    cursor: pointer;
+  }
+
+  .empty-state-action:hover {
+    background: rgba(59, 130, 246, 0.22);
   }
 
   .idle-image {
