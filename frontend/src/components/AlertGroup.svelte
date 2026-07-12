@@ -80,7 +80,12 @@
     on:contextmenu={openMenu}
     role="button"
     tabindex="0"
-    on:keydown={e => e.key === 'Enter' && (collapsed = !collapsed)}
+    on:keydown={e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        collapsed = !collapsed;
+      }
+    }}
   >
     <span class="group-dot" style="background: {severityColor(maxSeverity)}" />
     <span class="group-name">
