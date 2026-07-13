@@ -4,7 +4,6 @@
     groupedAlerts,
     loading,
     error,
-    alerts,
     displayConfig,
     verbose,
     sourcesHealth,
@@ -29,7 +28,7 @@
     sourceCapabilities,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources, parsedQuery, bypassableHiddenCount } from '../stores/filter';
+  import { filteredAlerts, filter, availableSources, parsedQuery, hiddenCount } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
@@ -121,17 +120,13 @@
 
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
-  $: hiddenByFiltersCount = Math.max(0, $alerts.length - $filteredAlerts.length);
+  $: hiddenByFiltersCount = $hiddenCount;
   $: filtersHideAlerts = hiddenByFiltersCount > 0;
-  $: showAllHiddenCount = $bypassableHiddenCount;
-  $: showAllTitle = showAllHiddenCount > 0
-    ? `Show all alerts (${showAllHiddenCount} hidden by filters)`
-    : 'Show all alerts (bypass filters, except text search)';
-  $: hasActiveFilters = $filter.text.trim().length > 0
+  $: hasRestrictiveFilters = $filter.text.trim().length > 0
     || $filter.severity !== 'all'
     || $filter.source !== 'all'
-    || !$filter.showSilenced
-    || $filter.showAll;
+    || !$filter.showSilenced;
+  $: hasActiveFilters = hasRestrictiveFilters || $filter.showAll;
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
@@ -517,6 +512,18 @@
       {/if}
     </div>
 
+    {#if hasRestrictiveFilters && hiddenByFiltersCount > 0}
+      <button
+        class="filter-reset"
+        title="{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's' : ''} hidden by filters. Click to clear all filters."
+        aria-label="Clear all filters, {hiddenByFiltersCount} hidden"
+        on:click={clearAllFilters}
+      >
+        <span class="filter-reset-count">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
+        <span class="filter-reset-x" aria-hidden="true">×</span>
+      </button>
+    {/if}
+
     <!-- Create a silence from the current search, or start one from scratch. -->
     <button
       class="icon-toggle"
@@ -533,13 +540,10 @@
       class="icon-toggle"
       class:active={$filter.showAll}
       on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title={showAllTitle}
-      aria-label={showAllHiddenCount > 0 ? `Show all alerts, ${showAllHiddenCount} hidden` : 'Show all alerts'}
+      title="Show all alerts (bypass filters, except text search)"
+      aria-label="Show all alerts"
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-      {#if showAllHiddenCount > 0}
-        <span class="icon-toggle-badge">{showAllHiddenCount > 99 ? '99+' : showAllHiddenCount}</span>
-      {/if}
     </button>
     <button
       class="icon-toggle"
@@ -908,9 +912,41 @@
   }
   .search-clear:hover { background: #34425f; color: #f1f5f9; }
 
+  .filter-reset {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid #3a496a;
+    background: rgba(59, 130, 246, 0.12);
+    color: #bfdbfe;
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-reset:hover {
+    background: rgba(59, 130, 246, 0.22);
+    border-color: #3b82f6;
+    color: #dbeafe;
+  }
+  .filter-reset-count {
+    min-width: 1ch;
+    text-align: center;
+  }
+  .filter-reset-x {
+    font-size: calc(14px * var(--font-scale, 1));
+    line-height: 1;
+    opacity: 0.85;
+  }
+
   /* Square icon-button toggles (Show all, Verbose) */
   .icon-toggle {
-    position: relative;
     width: 28px;
     height: 28px;
     flex-shrink: 0;
@@ -936,27 +972,6 @@
   .icon-toggle:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-  }
-  .icon-toggle-badge {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-    border-radius: 7px;
-    background: #64748b;
-    color: #f8fafc;
-    font-size: calc(9px * var(--font-scale, 1));
-    font-weight: 600;
-    line-height: 14px;
-    text-align: center;
-    pointer-events: none;
-    box-shadow: 0 0 0 1px #162033;
-  }
-  .icon-toggle.active .icon-toggle-badge {
-    background: #3b82f6;
-    box-shadow: 0 0 0 1px rgba(47, 129, 247, 0.45);
   }
 
   /* Fused view block: Severity · [Source] · Group · Sort */

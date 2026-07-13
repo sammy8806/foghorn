@@ -28,6 +28,11 @@ export const filteredAlerts = derived(
   ([$alerts, $filter, $parsed]) => $alerts.filter((alert) => matchesFilter(alert, $filter, $parsed)),
 );
 
+export const hiddenCount = derived(
+  [alerts, filteredAlerts],
+  ([$alerts, $filtered]) => Math.max(0, $alerts.length - $filtered.length),
+);
+
 // Alerts hidden by filters that "Show all" bypasses (severity, source, silenced, hidden rules).
 // Text search still applies when show all is on, so text-only mismatches are excluded.
 export const bypassableHiddenCount = derived(

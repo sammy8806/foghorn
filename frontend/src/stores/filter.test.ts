@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { filter, filteredAlerts, parsedQuery, bypassableHiddenCount } from './filter';
+import { filter, filteredAlerts, parsedQuery, bypassableHiddenCount, hiddenCount } from './filter';
 import { alerts } from './alerts';
 import type { Alert } from './alerts';
 
@@ -66,5 +66,17 @@ describe('bypassableHiddenCount', () => {
     alerts.set([mkAlert({ name: 'Hidden', severity: 'warning' })]);
     filter.set({ text: '', severity: 'critical', source: 'all', showSilenced: true, showAll: true });
     expect(get(bypassableHiddenCount)).toBe(0);
+  });
+});
+
+describe('hiddenCount', () => {
+  it('counts alerts excluded by any active filter', () => {
+    alerts.set([
+      mkAlert({ name: 'Visible', severity: 'critical' }),
+      mkAlert({ name: 'Hidden', severity: 'warning' }),
+      mkAlert({ name: 'NoMatch', severity: 'critical', labels: { job: 'db' } }),
+    ]);
+    filter.set({ text: 'visible', severity: 'all', source: 'all', showSilenced: true, showAll: false });
+    expect(get(hiddenCount)).toBe(2);
   });
 });
