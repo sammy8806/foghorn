@@ -19,6 +19,17 @@ export const filter = writable<FilterState>({
   showAll: false,
 });
 
+export function showAllFilterState(current: FilterState): FilterState {
+  return {
+    ...current,
+    text: '',
+    severity: 'all',
+    source: 'all',
+    showSilenced: true,
+    showAll: true,
+  };
+}
+
 // parsedQuery is the single parse of the search box, reused by the list filter
 // and by "silence from search" (AlertList).
 export const parsedQuery = derived(filter, ($filter) => parseQuery($filter.text));

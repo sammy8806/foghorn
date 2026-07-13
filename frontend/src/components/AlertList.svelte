@@ -28,7 +28,15 @@
     sourceCapabilities,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources, parsedQuery, hiddenCount } from '../stores/filter';
+  import {
+    filteredAlerts,
+    filter,
+    availableSources,
+    parsedQuery,
+    hiddenCount,
+    showAllFilterState,
+    type FilterState,
+  } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
@@ -141,6 +149,7 @@
   let groupMenuOpen = false;
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
+  let filtersBeforeShowAll: FilterState | null = null;
 
   // Expanding search: collapsed to a single icon; click expands into a field,
   // and it stays open while it holds text (collapses on blur when empty).
@@ -162,6 +171,7 @@
   }
 
   function clearAllFilters() {
+    filtersBeforeShowAll = null;
     filter.update(f => ({
       ...f,
       text: '',
@@ -174,16 +184,16 @@
   }
 
   function toggleShowAll() {
-    filter.update(f => f.showAll
-      ? { ...f, showAll: false }
-      : {
-        ...f,
-        text: '',
-        severity: 'all',
-        source: 'all',
-        showSilenced: true,
-        showAll: true,
-      });
+    filter.update(f => {
+      if (f.showAll) {
+        const previous = filtersBeforeShowAll;
+        filtersBeforeShowAll = null;
+        return previous ?? { ...f, showAll: false };
+      }
+
+      filtersBeforeShowAll = { ...f };
+      return showAllFilterState(f);
+    });
     searchExpanded = false;
   }
   // When the filter row would overflow, drop the segment values (captions only)
