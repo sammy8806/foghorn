@@ -127,9 +127,11 @@
     || $filter.source !== 'all'
     || !$filter.showSilenced;
   $: hasActiveFilters = hasRestrictiveFilters || $filter.showAll;
-  $: showAllTitle = hiddenByFiltersCount > 0
-    ? `Show all alerts (${hiddenByFiltersCount} hidden). Click to clear filters.`
-    : 'Show all alerts';
+  $: showAllTitle = $filter.showAll
+    ? 'Showing all alerts. Click to return to the default view.'
+    : hiddenByFiltersCount > 0
+      ? `Show all alerts (${hiddenByFiltersCount} hidden).`
+      : 'Show all alerts';
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
@@ -168,6 +170,20 @@
       showSilenced: true,
       showAll: false,
     }));
+    searchExpanded = false;
+  }
+
+  function toggleShowAll() {
+    filter.update(f => f.showAll
+      ? { ...f, showAll: false }
+      : {
+        ...f,
+        text: '',
+        severity: 'all',
+        source: 'all',
+        showSilenced: true,
+        showAll: true,
+      });
     searchExpanded = false;
   }
   // When the filter row would overflow, drop the segment values (captions only)
@@ -530,9 +546,14 @@
     <!-- Icon-button toggles -->
     <button
       class="icon-toggle"
-      on:click={clearAllFilters}
+      class:active={$filter.showAll}
+      on:click={toggleShowAll}
       title={showAllTitle}
-      aria-label={hiddenByFiltersCount > 0 ? `Show all alerts, ${hiddenByFiltersCount} hidden` : 'Show all alerts'}
+      aria-label={$filter.showAll
+        ? 'Showing all alerts; return to default view'
+        : hiddenByFiltersCount > 0
+          ? `Show all alerts, ${hiddenByFiltersCount} hidden`
+          : 'Show all alerts'}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
       {#if hiddenByFiltersCount > 0}
@@ -712,7 +733,7 @@
         {#if filtersHideAlerts}
           <p>No alerts match the current filters.</p>
           <p class="empty-state-hint">{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's are' : ' is'} hidden.</p>
-          <button class="empty-state-action" on:click={clearAllFilters}>Clear filters</button>
+          <button class="empty-state-action" on:click={toggleShowAll}>Show all alerts</button>
         {:else if $filter.text.trim().length > 0}
           <p>No alerts match filter</p>
           <button class="empty-state-action" on:click={clearAllFilters}>Clear search</button>
