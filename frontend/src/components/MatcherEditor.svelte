@@ -207,41 +207,41 @@
     grid-template-columns: 1fr 56px 1fr auto;
     gap: 4px;
     align-items: center;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--color-input-bg);
+    border: 1px solid var(--color-control-border);
     border-radius: 3px;
     padding: 4px 6px;
   }
   .chip.invalid {
-    border-color: #f87171;
+    border-color: var(--color-danger);
   }
   .chip-field {
     min-width: 0;
   }
   .op {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--color-input-bg);
+    border: 1px solid var(--color-control-border);
     border-radius: 3px;
-    color: #e2e8f0;
+    color: var(--color-text);
     font-size: calc(12px * var(--font-scale, 1));
     padding: 3px 4px;
     font-family: monospace;
     outline: none;
     text-align: center;
   }
-  .op:focus { border-color: #3b82f6; }
+  .op:focus { border-color: var(--color-focus); }
   .remove {
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--color-text-faint);
     font-size: calc(13px * var(--font-scale, 1));
     cursor: pointer;
     padding: 0 4px;
   }
-  .remove:hover { color: #f87171; }
+  .remove:hover { color: var(--color-danger); }
   .chip-error {
     grid-column: 1 / -1;
-    color: #f87171;
+    color: var(--color-danger);
     font-size: calc(10px * var(--font-scale, 1));
   }
   .matcher-footer {
@@ -253,16 +253,16 @@
   .add {
     align-self: flex-start;
     background: none;
-    border: 1px dashed #334155;
+    border: 1px dashed var(--color-control-border);
     border-radius: 3px;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     font-size: calc(11px * var(--font-scale, 1));
     padding: 3px 8px;
     cursor: pointer;
   }
   .add:hover {
-    border-color: #3b82f6;
-    color: #e2e8f0;
+    border-color: var(--color-focus);
+    color: var(--color-text);
   }
   .revealed-separator {
     display: flex;
@@ -276,18 +276,18 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: #334155;
+    background: var(--color-border);
   }
   .revealed-separator span {
-    color: #475569;
+    color: var(--color-text-faint);
     font-size: calc(10px * var(--font-scale, 1));
     letter-spacing: 0.05em;
     white-space: nowrap;
   }
   @keyframes revealed-fade {
-    0%   { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
-    70%  { background: #1e3a5f; box-shadow: -2px 0 0 #3b82f6; }
-    100% { background: #0f172a; box-shadow: none; }
+    0%   { background: var(--color-interactive-bg); box-shadow: -2px 0 0 var(--color-focus); }
+    70%  { background: var(--color-interactive-bg); box-shadow: -2px 0 0 var(--color-focus); }
+    100% { background: var(--color-input-bg); box-shadow: none; }
   }
 
   .chip.was-collapsed {
@@ -300,20 +300,20 @@
     gap: 6px;
     margin-top: 6px;
     padding: 8px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--color-input-bg);
+    border: 1px solid var(--color-control-border);
     border-radius: 3px;
   }
   .paste-input {
-    background: #0b1220;
-    border: 1px solid #334155;
+    background: var(--color-control-bg);
+    border: 1px solid var(--color-control-border);
     border-radius: 3px;
-    color: #e2e8f0;
+    color: var(--color-text);
     font-family: monospace;
     font-size: calc(12px * var(--font-scale, 1));
     padding: 6px;
     resize: vertical;
   }
-  .paste-note { color: #fbbf24; font-size: calc(10px * var(--font-scale, 1)); }
+  .paste-note { color: var(--color-warning); font-size: calc(10px * var(--font-scale, 1)); }
   .paste-actions { display: flex; gap: 6px; }
 </style>

@@ -426,7 +426,7 @@
     overflow: hidden;
     transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   }
-  .silenced { opacity: 0.6; }
+  .silenced { border-left-style: dashed; }
   .alert-new {
     border-left-width: 8px;
     box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.35), 0 0 0 1px rgba(250, 204, 21, 0.2);
@@ -479,7 +479,7 @@
     user-select: none;
     min-height: 0;
   }
-  .alert-header:hover { background: rgba(255,255,255,0.05); }
+  .alert-header:hover { background: var(--color-hover); }
 
   .severity-dot {
     width: 6px;
@@ -497,7 +497,7 @@
 
   .alert-subtitle {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #64748b;
+    color: var(--color-text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -506,18 +506,18 @@
   }
   .alert-subtitle::before {
     content: '— ';
-    color: #475569;
+    color: var(--color-text-faint);
   }
 
   .alert-source {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 
   .alert-duration {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #64748b;
+    color: var(--color-text-faint);
     white-space: nowrap;
   }
 
@@ -540,7 +540,7 @@
     letter-spacing: 0.08em;
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
-  .badge-silenced { background: #334155; color: #94a3b8; }
+  .badge-silenced { background: #334155; color: #e2e8f0; }
   .badge-inhibited { background: #292524; color: #a8a29e; }
   .badge-hidden { background: #3f3f46; color: #d4d4d8; }
   .badge-custom {
@@ -549,48 +549,48 @@
     border: 1px solid rgba(94, 234, 212, 0.25);
   }
 
-  .chevron { font-size: calc(10px * var(--font-scale, 1)); color: #64748b; }
+  .chevron { font-size: calc(10px * var(--font-scale, 1)); color: var(--color-text-faint); }
 
   .alert-body {
     padding: 6px 10px 8px 22px;
-    border-top: 1px solid rgba(255,255,255,0.05);
+    border-top: 1px solid var(--color-card-border);
   }
 
   .annotation {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #cbd5e1;
+    color: var(--color-text);
     margin: 2px 0;
   }
-  .annotation--muted { color: #64748b; font-size: calc(10px * var(--font-scale, 1)); }
+  .annotation--muted { color: var(--color-text-muted); font-size: calc(10px * var(--font-scale, 1)); }
   .annotation--pull {
     font-size: calc(12px * var(--font-scale, 1));
     padding: 5px 8px;
-    border-left: 3px solid #334155;
-    background: rgba(0, 0, 0, 0.25);
+    border-left: 3px solid var(--color-border);
+    background: var(--color-overlay-subtle);
     border-radius: 3px;
     margin: 4px 0;
   }
-  .annotation--danger { border-left-color: #ef4444; color: #ef4444; }
-  .annotation--warning { border-left-color: #f59e0b; color: #f59e0b; }
-  .annotation--info { border-left-color: #3b82f6; color: #3b82f6; }
+  .annotation--danger { border-left-color: var(--color-danger); color: var(--color-danger); }
+  .annotation--warning { border-left-color: var(--color-warning); color: var(--color-warning); }
+  .annotation--info { border-left-color: var(--color-info); color: var(--color-info); }
 
   .chip--muted { opacity: 0.65; }
-  .chip--danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-  .chip--warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-  .chip--info { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+  .chip--danger { background: rgba(239, 68, 68, 0.15); color: var(--color-danger); }
+  .chip--warning { background: rgba(245, 158, 11, 0.15); color: var(--color-warning); }
+  .chip--info { background: rgba(59, 130, 246, 0.15); color: var(--color-info); }
   /* .chip--pull is intentionally not styled — pull is an annotation-only treatment. */
   .comments-section {
     margin: 4px 0;
   }
   .comments-label {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #cbd5e1;
+    color: var(--color-text);
     display: block;
     margin-bottom: 4px;
   }
   .comment-card {
-    background: rgba(0, 0, 0, 0.25);
-    border-left: 2px solid #334155;
+    background: var(--color-overlay-subtle);
+    border-left: 2px solid var(--color-border);
     border-radius: 2px;
     padding: 5px 8px;
     margin-bottom: 4px;
@@ -607,7 +607,7 @@
     gap: 8px;
   }
   .comment-author {
-    color: #60a5fa;
+    color: var(--color-interactive);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -615,19 +615,19 @@
     min-width: 0;
   }
   .comment-time {
-    color: #64748b;
+    color: var(--color-text-muted);
     font-size: calc(10px * var(--font-scale, 1));
     white-space: nowrap;
     flex-shrink: 0;
   }
   .comment-body {
-    color: #cbd5e1;
+    color: var(--color-text);
     white-space: pre-wrap;
     line-height: 1.4;
   }
   .comment-mention {
     display: inline;
-    color: #bfdbfe;
+    color: var(--color-interactive-strong);
     font-weight: 700;
   }
 
@@ -652,17 +652,17 @@
     gap: 8px;
   }
   .silence-author {
-    color: #f59e0b;
+    color: var(--color-warning);
     font-weight: 600;
   }
   .silence-expiry {
-    color: #64748b;
+    color: var(--color-text-muted);
     font-size: calc(10px * var(--font-scale, 1));
     white-space: nowrap;
     flex-shrink: 0;
   }
   .silence-comment {
-    color: #cbd5e1;
+    color: var(--color-text);
     margin-top: 3px;
     white-space: pre-wrap;
     line-height: 1.4;
@@ -683,18 +683,18 @@
     padding: 1px 4px;
     border-radius: 3px;
   }
-  .btn-link-edit { color: #60a5fa; }
+  .btn-link-edit { color: var(--color-interactive); }
   .btn-link-edit:hover:not(:disabled) { background: rgba(96, 165, 250, 0.15); }
-  .btn-link-expire { color: #f87171; }
+  .btn-link-expire { color: var(--color-danger); }
   .btn-link-expire:hover:not(:disabled) { background: rgba(248, 113, 113, 0.15); }
   .btn-link-edit:disabled, .btn-link-expire:disabled { opacity: 0.5; cursor: default; }
   .expire-confirm-label {
-    color: #f87171;
+    color: var(--color-danger);
     font-size: calc(10px * var(--font-scale, 1));
     margin-right: 2px;
   }
   .silence-error {
-    color: #f87171;
+    color: var(--color-danger);
     font-size: calc(10px * var(--font-scale, 1));
     margin-top: 2px;
   }
@@ -708,16 +708,16 @@
 
   .chip {
     font-size: calc(11px * var(--font-scale, 1));
-    background: #0f172a;
-    border: 1px solid #1e293b;
+    background: var(--color-input-bg);
+    border: 1px solid var(--color-border);
     padding: 2px 6px;
     border-radius: 3px;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     font-family: monospace;
   }
 
   .chip-resolved {
-    color: #64748b;
+    color: var(--color-text-faint);
     margin-left: 0.35rem;
   }
 
@@ -727,13 +727,13 @@
     gap: 3px 10px;
     margin-top: 6px;
     padding: 4px 6px;
-    background: rgba(0,0,0,0.2);
+    background: var(--color-overlay-subtle);
     border-radius: 3px;
     font-size: calc(11px * var(--font-scale, 1));
     font-family: monospace;
-    color: #64748b;
+    color: var(--color-text-muted);
   }
-  .meta-item strong { color: #94a3b8; }
+  .meta-item strong { color: var(--color-text); }
 
   .alert-actions {
     display: flex;
@@ -744,29 +744,30 @@
 
   .annotation-link, .generator-link {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #60a5fa;
-    text-decoration: none;
+    color: var(--color-interactive);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   .annotation-link:hover, .generator-link:hover { text-decoration: underline; }
 
   .btn-silence {
     background: none;
-    border: 1px solid #334155;
+    border: 1px solid var(--color-control-border);
     border-radius: 3px;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     cursor: pointer;
     font-size: calc(11px * var(--font-scale, 1));
     padding: 2px 8px;
   }
   .btn-silence:disabled {
-    color: #64748b;
+    color: var(--color-text-faint);
     cursor: default;
   }
-  .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
+  .btn-silence:hover { border-color: var(--color-warning); color: var(--color-warning); }
 
   .action-status {
     font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 </style>
