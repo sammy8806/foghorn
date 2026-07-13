@@ -485,8 +485,9 @@
         aria-controls="health-banner-details"
       >
         <span class="health-banner-heading">
-        <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
+          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
         </span>
+        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
         <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
@@ -852,6 +853,7 @@
   .health-banner-summary {
     display: flex;
     align-items: center;
+    flex: 1;
     min-width: 0;
     gap: 6px;
     padding: 0;
@@ -869,9 +871,20 @@
   .health-banner-heading {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     color: #fecaca;
     font-size: calc(11px * var(--font-scale, 1));
     font-weight: 700;
+  }
+
+  .health-banner-source-list {
+    min-width: 0;
+    overflow: hidden;
+    color: #fda4af;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: calc(10px * var(--font-scale, 1));
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .health-banner-chevron {
