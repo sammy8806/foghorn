@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
+import { access, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { buildBridgeInit, sampleAlerts } from './mock-bridge.mjs';
+import { buildBridgeInit } from './mock-bridge.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
@@ -50,7 +50,6 @@ async function startPreview() {
     const proc = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4173'], {
       cwd: FRONTEND,
       stdio: 'inherit',
-      detached: true,
     });
     let settled = false;
     const finish = (fn, value) => {
@@ -64,12 +63,7 @@ async function startPreview() {
       try {
         await waitForPreview(PREVIEW_URL);
         finish(resolve, () => {
-          try {
-            if (proc.pid && proc.pid > 0) process.kill(-proc.pid);
-            else proc.kill();
-          } catch {
-            try { proc.kill(); } catch { /* already stopped */ }
-          }
+          try { proc.kill(); } catch { /* already stopped */ }
         });
       } catch (err) {
         try { proc.kill(); } catch { /* ignore */ }
@@ -223,6 +217,15 @@ const shots = {
   ],
 };
 
+async function ensureFrontendDeps() {
+  try {
+    await access(path.join(FRONTEND, 'node_modules'));
+  } catch {
+    console.error('Missing frontend dependencies. Run: cd frontend && npm install');
+    process.exit(1);
+  }
+}
+
 async function main() {
   const branchKey = process.argv[2];
   if (!branchKey || !shots[branchKey]) {
@@ -231,19 +234,39 @@ async function main() {
     process.exit(1);
   }
 
+  await ensureFrontendDeps();
   await mkdir(OUT, { recursive: true });
   await run('npm', ['run', 'build'], FRONTEND);
-  const stop = await startPreview();
 
-  const browser = await chromium.launch({ headless: true });
+  let stopPreview;
+  let browser;
+  let cleaning = false;
+
+  const cleanup = async () => {
+    if (cleaning) return;
+    cleaning = true;
+    try {
+      if (browser) await browser.close();
+    } catch { /* ignore */ }
+    try {
+      if (stopPreview) stopPreview();
+    } catch { /* ignore */ }
+  };
+
+  const onSignal = signal => {
+    cleanup().finally(() => process.exit(signal === 'SIGINT' ? 130 : 143));
+  };
+  process.once('SIGINT', () => onSignal('SIGINT'));
+  process.once('SIGTERM', () => onSignal('SIGTERM'));
 
   try {
+    stopPreview = await startPreview();
+    browser = await chromium.launch({ headless: true });
     for (const shot of shots[branchKey]) {
       await capture(browser, shot.file, shot.scenario, shot.action);
     }
   } finally {
-    await browser.close();
-    stop();
+    await cleanup();
   }
 }
 

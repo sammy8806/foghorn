@@ -5,7 +5,8 @@ Headless Playwright captures for Foghorn PR descriptions.
 ## Setup
 
 ```bash
-cd scripts/pr-screenshots
+cd frontend && npm install
+cd ../scripts/pr-screenshots
 npm install
 npx playwright install chromium
 ```
