@@ -29,7 +29,7 @@
     sourceCapabilities,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources, parsedQuery } from '../stores/filter';
+  import { filteredAlerts, filter, availableSources, parsedQuery, bypassableHiddenCount } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
@@ -123,6 +123,10 @@
   $: totalCount = $filteredAlerts.length;
   $: hiddenByFiltersCount = Math.max(0, $alerts.length - $filteredAlerts.length);
   $: filtersHideAlerts = hiddenByFiltersCount > 0;
+  $: showAllHiddenCount = $bypassableHiddenCount;
+  $: showAllTitle = showAllHiddenCount > 0
+    ? `Show all alerts (${showAllHiddenCount} hidden by filters)`
+    : 'Show all alerts (bypass filters, except text search)';
   $: hasActiveFilters = $filter.text.trim().length > 0
     || $filter.severity !== 'all'
     || $filter.source !== 'all'
@@ -529,9 +533,13 @@
       class="icon-toggle"
       class:active={$filter.showAll}
       on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title="Show all alerts (bypass filters, except text search)"
+      title={showAllTitle}
+      aria-label={showAllHiddenCount > 0 ? `Show all alerts, ${showAllHiddenCount} hidden` : 'Show all alerts'}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      {#if showAllHiddenCount > 0}
+        <span class="icon-toggle-badge">{showAllHiddenCount > 99 ? '99+' : showAllHiddenCount}</span>
+      {/if}
     </button>
     <button
       class="icon-toggle"
@@ -662,12 +670,6 @@
       <span class="status-error">Error: {$error}</span>
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
-      {#if filtersHideAlerts && totalCount > 0}
-        <button class="status-chip status-chip-hidden" title="{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's' : ''} hidden by filters. Click to clear filters." on:click={clearAllFilters}>
-          <span class="status-chip-x" aria-hidden="true">×</span>
-          {hiddenByFiltersCount} hidden
-        </button>
-      {/if}
       {#if newVisibleCount > 0}
         <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
           <span class="status-chip-x" aria-hidden="true">×</span>
@@ -908,6 +910,7 @@
 
   /* Square icon-button toggles (Show all, Verbose) */
   .icon-toggle {
+    position: relative;
     width: 28px;
     height: 28px;
     flex-shrink: 0;
@@ -933,6 +936,27 @@
   .icon-toggle:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  .icon-toggle-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #64748b;
+    color: #f8fafc;
+    font-size: calc(9px * var(--font-scale, 1));
+    font-weight: 600;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px #162033;
+  }
+  .icon-toggle.active .icon-toggle-badge {
+    background: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(47, 129, 247, 0.45);
   }
 
   /* Fused view block: Severity · [Source] · Group · Sort */
@@ -1112,12 +1136,6 @@
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
   .status-chip-resolved .status-chip-x { color: #052e16; }
-  .status-chip-hidden {
-    color: #e2e8f0;
-    background: #475569;
-    box-shadow: 0 0 8px rgba(71, 85, 105, 0.3);
-  }
-  .status-chip-hidden .status-chip-x { color: #e2e8f0; }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;

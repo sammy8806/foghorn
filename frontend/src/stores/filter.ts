@@ -28,6 +28,19 @@ export const filteredAlerts = derived(
   ([$alerts, $filter, $parsed]) => $alerts.filter((alert) => matchesFilter(alert, $filter, $parsed)),
 );
 
+// Alerts hidden by filters that "Show all" bypasses (severity, source, silenced, hidden rules).
+// Text search still applies when show all is on, so text-only mismatches are excluded.
+export const bypassableHiddenCount = derived(
+  [alerts, filter, parsedQuery],
+  ([$alerts, $filter, $parsed]) => {
+    if ($filter.showAll) return 0;
+    const withShowAll = { ...$filter, showAll: true };
+    return $alerts.filter(
+      (alert) => matchesFilter(alert, withShowAll, $parsed) && !matchesFilter(alert, $filter, $parsed),
+    ).length;
+  },
+);
+
 function matchesFilter(alert: Alert, f: FilterState, parsed: ParsedQuery): boolean {
   // Text/structured search always applies, even when showAll is active, so users
   // can search within silenced/otherwise-hidden alerts.

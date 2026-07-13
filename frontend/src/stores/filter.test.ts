@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { filter, filteredAlerts, parsedQuery } from './filter';
+import { filter, filteredAlerts, parsedQuery, bypassableHiddenCount } from './filter';
 import { alerts } from './alerts';
 import type { Alert } from './alerts';
 
@@ -38,5 +38,33 @@ describe('filteredAlerts with query grammar', () => {
     expect(get(parsedQuery).terms).toEqual([
       { kind: 'field', scope: 'label', key: 'x', op: '=', value: '1' },
     ]);
+  });
+});
+
+describe('bypassableHiddenCount', () => {
+  it('ignores alerts hidden only by text search', () => {
+    alerts.set([
+      mkAlert({ name: 'Visible', severity: 'critical' }),
+      mkAlert({ name: 'SeverityHidden', severity: 'warning' }),
+      mkAlert({ name: 'TextHidden', severity: 'critical', labels: { job: 'api' } }),
+    ]);
+    filter.set({ text: 'visible', severity: 'critical', source: 'all', showSilenced: true, showAll: false });
+    expect(get(bypassableHiddenCount)).toBe(0);
+  });
+
+  it('counts alerts that show all would reveal', () => {
+    alerts.set([
+      mkAlert({ name: 'VisibleCritical', severity: 'critical' }),
+      mkAlert({ name: 'VisibleWarning', severity: 'warning' }),
+      mkAlert({ name: 'Silenced', severity: 'critical', silencedBy: ['s1'] }),
+    ]);
+    filter.set({ text: 'visible', severity: 'critical', source: 'all', showSilenced: false, showAll: false });
+    expect(get(bypassableHiddenCount)).toBe(1);
+  });
+
+  it('returns zero when show all is already active', () => {
+    alerts.set([mkAlert({ name: 'Hidden', severity: 'warning' })]);
+    filter.set({ text: '', severity: 'critical', source: 'all', showSilenced: true, showAll: true });
+    expect(get(bypassableHiddenCount)).toBe(0);
   });
 });
