@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { filter, filteredAlerts, parsedQuery, hiddenCount, showAllFilterState } from './filter';
+import {
+  filter,
+  filteredAlerts,
+  parsedQuery,
+  hiddenCount,
+  showAllFilterState,
+  hasContentFilters,
+} from './filter';
 import { alerts } from './alerts';
 import type { Alert } from './alerts';
 
@@ -76,5 +83,41 @@ describe('Show all filter state', () => {
 
     filter.set(previous);
     expect(get(filteredAlerts).map((a) => a.name)).toEqual(['Visible']);
+  });
+});
+
+describe('hasContentFilters', () => {
+  it('does not treat the configured silenced-alert preference as a content filter', () => {
+    expect(hasContentFilters({
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showSilenced: false,
+      showAll: false,
+    })).toBe(false);
+  });
+
+  it('detects search, severity, and source filters', () => {
+    expect(hasContentFilters({
+      text: 'database',
+      severity: 'all',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    })).toBe(true);
+    expect(hasContentFilters({
+      text: '',
+      severity: 'warning',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    })).toBe(true);
+    expect(hasContentFilters({
+      text: '',
+      severity: 'all',
+      source: 'prometheus',
+      showSilenced: true,
+      showAll: false,
+    })).toBe(true);
   });
 });

@@ -35,6 +35,7 @@
     parsedQuery,
     hiddenCount,
     showAllFilterState,
+    hasContentFilters,
     type FilterState,
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
@@ -130,11 +131,8 @@
   $: totalCount = $filteredAlerts.length;
   $: hiddenByFiltersCount = $hiddenCount;
   $: filtersHideAlerts = hiddenByFiltersCount > 0;
-  $: hasRestrictiveFilters = $filter.text.trim().length > 0
-    || $filter.severity !== 'all'
-    || $filter.source !== 'all'
-    || !$filter.showSilenced;
-  $: hasActiveFilters = hasRestrictiveFilters || $filter.showAll;
+  $: hasExplicitContentFilters = hasContentFilters($filter);
+  $: contentFiltersHideAlerts = hasExplicitContentFilters && filtersHideAlerts;
   $: showAllTitle = $filter.showAll
     ? 'Showing all alerts. Click to return to the default view.'
     : hiddenByFiltersCount > 0
@@ -737,10 +735,10 @@
       <div class="empty-state">Loading alerts…</div>
     {:else if totalCount === 0}
       <div class="empty-state">
-        {#if idleImage && !hasActiveFilters}
+        {#if idleImage && !hasExplicitContentFilters}
           <img class="idle-image" src={idleImage} alt="No active alerts" />
         {/if}
-        {#if filtersHideAlerts}
+        {#if contentFiltersHideAlerts}
           <p>No alerts match the current filters.</p>
           <p class="empty-state-hint">{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's are' : ' is'} hidden.</p>
           <button class="empty-state-action" on:click={toggleShowAll}>Show all alerts</button>

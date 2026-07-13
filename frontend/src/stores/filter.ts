@@ -30,6 +30,14 @@ export function showAllFilterState(current: FilterState): FilterState {
   };
 }
 
+// Silenced visibility is a display preference, often configured as the default.
+// Only these controls represent an explicit content-filtered view.
+export function hasContentFilters(current: FilterState): boolean {
+  return current.text.trim().length > 0
+    || current.severity !== 'all'
+    || current.source !== 'all';
+}
+
 // parsedQuery is the single parse of the search box, reused by the list filter
 // and by "silence from search" (AlertList).
 export const parsedQuery = derived(filter, ($filter) => parseQuery($filter.text));
