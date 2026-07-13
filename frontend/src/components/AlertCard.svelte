@@ -244,8 +244,15 @@
   class:alert-resolved={isResolved}
   on:pointerenter={scheduleAcknowledge}
   on:pointerleave={cancelAcknowledge}
+  on:focusin={scheduleAcknowledge}
+  on:focusout={cancelAcknowledge}
 >
-  <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => e.key === 'Enter' && (expanded = !expanded)}>
+  <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      expanded = !expanded;
+    }
+  }}>
     <span class="severity-dot" style="background: {severityColor(alert.severity)}" />
     {#if isNew}
       <span class="badge badge-new" title="New alert. Hover for a moment to mark as seen.">NEW</span>
@@ -467,6 +474,18 @@
       background:
         linear-gradient(90deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.06) 28%, rgba(15, 23, 42, 0) 60%),
         var(--card-bg, #1e293b);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .alert-new,
+    .alert-resolved {
+      animation: none;
+      transition: none;
+    }
+    .alert-new:hover,
+    .alert-resolved:hover {
+      transform: none;
     }
   }
 
