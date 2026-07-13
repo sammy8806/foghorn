@@ -50,6 +50,7 @@
   let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
+  let healthBannerExpanded = false;
 
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
@@ -476,25 +477,39 @@
   {/if}
 
   {#if showHealthBanner}
-    <div class="health-banner" role="alert">
-      <div class="health-banner-heading">
-        <span class="health-banner-indicator" aria-hidden="true"></span>
+    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
+      <button
+        class="health-banner-summary"
+        on:click={() => healthBannerExpanded = !healthBannerExpanded}
+        aria-expanded={healthBannerExpanded}
+        aria-controls="health-banner-details"
+      >
+        <span class="health-banner-heading">
         <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
-      </div>
-      <div class="health-banner-sources">
+        </span>
+        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
+        {refreshing ? 'Retrying…' : 'Retry'}
+      </button>
+      {#if healthBannerExpanded}
+        <div class="health-banner-sources" id="health-banner-details">
         {#each failingSources as health}
           <div class="health-banner-source">
-            <span class="health-banner-source-name">{health.source}</span>
-            <span class="health-banner-source-error">{health.lastError || 'Poll failed'}</span>
+            <div class="health-banner-source-title">
+              <span class="health-banner-source-name">{health.source}</span>
+              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
+            </div>
+            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
             <span class="health-banner-source-meta">
-              {#if health.consecFails > 1}{health.consecFails} failed · {/if}{formatHealthLastPoll(health)}
+              {formatHealthLastPoll(health)}
             </span>
           </div>
         {/each}
       </div>
-      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
-        {refreshing ? 'Retrying…' : 'Retry'}
-      </button>
+      {/if}
     </div>
   {/if}
 
@@ -828,22 +843,45 @@
     background: #1e1821;
   }
 
+  .health-banner.expanded {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 10px;
+  }
+
+  .health-banner-summary {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .health-banner-summary:hover .health-banner-heading {
+    color: #fff1f2;
+  }
+
   .health-banner-heading {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
     color: #fecaca;
     font-size: calc(11px * var(--font-scale, 1));
     font-weight: 700;
   }
 
-  .health-banner-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
+  .health-banner-chevron {
+    flex-shrink: 0;
+    color: #f87171;
+    transition: transform 120ms ease;
+  }
+
+  .health-banner.expanded .health-banner-chevron {
+    transform: rotate(180deg);
   }
 
   .health-banner-action {
@@ -870,37 +908,52 @@
   }
 
   .health-banner-sources {
+    grid-column: 1 / -1;
     display: flex;
-    flex: 1;
-    min-width: 0;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(248, 113, 113, 0.2);
   }
 
   .health-banner-source {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    gap: 6px;
-    color: #fecaca;
+    padding: 6px 7px;
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(248, 113, 113, 0.12);
     font-size: calc(10px * var(--font-scale, 1));
   }
 
+  .health-banner-source-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   .health-banner-source-name {
-    flex-shrink: 0;
     color: #fda4af;
     font-weight: 700;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
+  .health-banner-fail-count {
+    flex-shrink: 0;
+    color: #94a3b8;
+    font-size: calc(9px * var(--font-scale, 1));
+  }
+
   .health-banner-source-error {
-    overflow: hidden;
     color: #fca5a5;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-top: 3px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .health-banner-source-meta {
-    flex-shrink: 0;
+    display: block;
     color: #94a3b8;
+    margin-top: 3px;
   }
 
   .filter-bar {
