@@ -19,7 +19,7 @@
       <h2 id="search-help-title">Search syntax</h2>
       <button class="help-close" type="button" aria-label="Close search help" on:click={close}>✕</button>
     </div>
-    <p class="help-intro">Terms are ANDed together. Use these patterns in the filter bar:</p>
+    <p class="help-intro">Terms are ANDed together. Use these patterns in the search field:</p>
     <table class="help-table">
       <thead>
         <tr><th>Form</th><th>Meaning</th><th>Example</th></tr>

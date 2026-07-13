@@ -280,6 +280,8 @@
     if (!hasSearchText) searchExpanded = false;
   }
 
+  $: if (!searchOpen) searchHelpOpen = false;
+
   async function clearSearch() {
     filter.update(f => ({ ...f, text: '' }));
     searchExpanded = true;
@@ -584,19 +586,22 @@
         bind:value={$filter.text}
         on:blur={onSearchBlur}
       />
+      {#if searchOpen}
+        <button
+          class="search-help"
+          type="button"
+          class:active={searchHelpOpen}
+          on:mousedown|stopPropagation={(e) => e.preventDefault()}
+          on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
+          title="Search syntax help"
+          aria-label="Search syntax help"
+          aria-expanded={searchHelpOpen}
+        >?</button>
+      {/if}
       {#if hasSearchText}
         <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
       {/if}
     </div>
-
-    <button
-      class="icon-toggle search-help-btn"
-      class:active={searchHelpOpen}
-      on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
-      title="Search syntax help"
-      aria-label="Search syntax help"
-      aria-expanded={searchHelpOpen}
-    >?</button>
 
     <!-- Create a silence from the current search, or start one from scratch. -->
     <button
@@ -1081,7 +1086,7 @@
   }
   .search.open {
     width: 200px;
-    padding-right: 6px;
+    padding-right: 4px;
   }
   .search:not(.open) {
     justify-content: center;
@@ -1131,9 +1136,28 @@
   }
   .search-clear:hover { background: #34425f; color: #f1f5f9; }
 
-  .search-help-btn {
-    font-size: calc(13px * var(--font-scale, 1));
+  .search-help {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #64748b;
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
     font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .search-help:hover,
+  .search-help.active {
+    background: #2a3650;
+    color: #93c5fd;
   }
 
   /* Square icon-button toggles (Show all, Verbose) */
