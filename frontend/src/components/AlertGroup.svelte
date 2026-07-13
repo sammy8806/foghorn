@@ -146,13 +146,13 @@
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    background: rgba(255,255,255,0.04);
+    background: var(--color-surface-raised);
     border-radius: 4px;
     cursor: pointer;
     user-select: none;
     margin-bottom: 4px;
   }
-  .group-header:hover { background: rgba(255,255,255,0.07); }
+  .group-header:hover { background: var(--color-hover); }
 
   .group-dot {
     width: 8px;
@@ -164,14 +164,14 @@
   .group-name {
     font-size: calc(12px * var(--font-scale, 1));
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--color-text-muted);
     flex: 1;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
 
   .group-resolved {
-    color: #64748b;
+    color: var(--color-text-faint);
     margin-left: 0.35rem;
     font-weight: 500;
     text-transform: none;
@@ -179,18 +179,18 @@
   }
 
   .group-separator {
-    color: #475569;
+    color: var(--color-text-faint);
   }
 
   .group-count {
     font-size: calc(11px * var(--font-scale, 1));
-    background: #1e293b;
+    background: var(--color-surface);
     padding: 1px 7px;
     border-radius: 10px;
-    color: #64748b;
+    color: var(--color-text-muted);
   }
 
-  .chevron { font-size: calc(10px * var(--font-scale, 1)); color: #475569; }
+  .chevron { font-size: calc(10px * var(--font-scale, 1)); color: var(--color-text-faint); }
 
   .group-alerts { padding-left: 8px; }
 
@@ -199,8 +199,8 @@
     z-index: 1100;
     min-width: 150px;
     padding: 4px;
-    background: #111827;
-    border: 1px solid #334155;
+    background: var(--color-surface);
+    border: 1px solid var(--color-control-border);
     border-radius: 6px;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
   }
@@ -211,7 +211,7 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: #dbe4f0;
+    color: var(--color-text);
     font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
     text-align: left;
@@ -219,12 +219,12 @@
   }
 
   .group-menu-item:hover:not(:disabled) {
-    background: rgba(47, 129, 247, 0.18);
-    color: #f8fafc;
+    background: var(--color-interactive-bg);
+    color: var(--color-interactive-strong);
   }
 
   .group-menu-item:disabled {
-    color: #64748b;
+    color: var(--color-text-faint);
     cursor: not-allowed;
   }
 </style>
