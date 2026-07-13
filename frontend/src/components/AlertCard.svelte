@@ -540,7 +540,7 @@
     letter-spacing: 0.08em;
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
-  .badge-silenced { background: #334155; color: #94a3b8; }
+  .badge-silenced { background: #334155; color: #e2e8f0; }
   .badge-inhibited { background: #292524; color: #a8a29e; }
   .badge-hidden { background: #3f3f46; color: #d4d4d8; }
   .badge-custom {
