@@ -13,23 +13,70 @@ const OUT = process.env.SCREENSHOT_OUT || '/opt/cursor/artifacts/pr-screenshots'
 
 const VIEWPORT = { width: 520, height: 760 };
 
+const PREVIEW_URL = 'http://127.0.0.1:4173/';
+
 async function run(cmd, args, cwd = ROOT) {
   await new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd, stdio: 'inherit', shell: false });
-    child.on('exit', code => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`))));
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    };
+    child.once('error', err => finish(reject, err));
+    child.once('exit', code =>
+      finish(code === 0 ? resolve : reject, code === 0 ? undefined : new Error(`${cmd} exited ${code}`)),
+    );
   });
 }
 
+async function waitForPreview(url, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // server not ready yet
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  throw new Error(`Preview server not ready at ${url} within ${timeoutMs}ms`);
+}
+
 async function startPreview() {
-  const proc = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4173'], {
-    cwd: FRONTEND,
-    stdio: 'ignore',
-    detached: true,
+  return new Promise((resolve, reject) => {
+    const proc = spawn('npm', ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4173'], {
+      cwd: FRONTEND,
+      stdio: 'inherit',
+      detached: true,
+    });
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    };
+
+    proc.once('error', err => finish(reject, err));
+    proc.once('spawn', async () => {
+      try {
+        await waitForPreview(PREVIEW_URL);
+        finish(resolve, () => {
+          try {
+            if (proc.pid && proc.pid > 0) process.kill(-proc.pid);
+            else proc.kill();
+          } catch {
+            try { proc.kill(); } catch { /* already stopped */ }
+          }
+        });
+      } catch (err) {
+        try { proc.kill(); } catch { /* ignore */ }
+        finish(reject, err);
+      }
+    });
   });
-  await new Promise(r => setTimeout(r, 2500));
-  return () => {
-    try { process.kill(-proc.pid); } catch { proc.kill(); }
-  };
 }
 
 async function waitForAppReady(page) {
@@ -46,22 +93,27 @@ async function openSearch(page) {
   await page.waitForSelector('.search.open input.search-input, .search-input', { state: 'visible', timeout: 5000 });
 }
 
-async function capture(page, name, scenario, action) {
-  await page.addInitScript(buildBridgeInit(scenario));
-  if (scenario.localStorage) {
-    await page.addInitScript(storage => {
-      for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
-    }, scenario.localStorage);
+async function capture(browser, name, scenario, action) {
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  const page = await context.newPage();
+  try {
+    await page.addInitScript(buildBridgeInit(scenario));
+    if (scenario.localStorage) {
+      await page.addInitScript(storage => {
+        for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
+      }, scenario.localStorage);
+    }
+    await page.goto(PREVIEW_URL, { waitUntil: 'networkidle' });
+    await waitForAppReady(page);
+    if (action) await action(page);
+    await page.waitForTimeout(400);
+    const file = path.join(OUT, `${name}.png`);
+    await page.screenshot({ path: file, fullPage: false });
+    console.log('saved', file);
+    return file;
+  } finally {
+    await context.close();
   }
-  await page.setViewportSize(VIEWPORT);
-  await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
-  await waitForAppReady(page);
-  if (action) await action(page);
-  await page.waitForTimeout(400);
-  const file = path.join(OUT, `${name}.png`);
-  await page.screenshot({ path: file, fullPage: false });
-  console.log('saved', file);
-  return file;
 }
 
 const shots = {
@@ -184,11 +236,10 @@ async function main() {
   const stop = await startPreview();
 
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
 
   try {
     for (const shot of shots[branchKey]) {
-      await capture(page, shot.file, shot.scenario, shot.action);
+      await capture(browser, shot.file, shot.scenario, shot.action);
     }
   } finally {
     await browser.close();

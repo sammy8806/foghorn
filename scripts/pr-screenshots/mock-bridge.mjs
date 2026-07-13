@@ -103,6 +103,7 @@ export function buildBridgeInit(scenario) {
   };
 
   const actions = scenario.actions || [];
+  const actionsForAll = scenario.actionsForAll ?? false;
   const health = scenario.health === 'failing' ? failingSources() : healthySources();
 
   return `
@@ -138,9 +139,10 @@ export function buildBridgeInit(scenario) {
           GetUIScale: async () => ({ factor: 1, mode: 'fonts', apply_to_popup: true }),
           GetNotificationPermissionStatus: async () => 'authorized',
           GetActionsForAlert: async (id, source) => {
-            const actions = ${JSON.stringify([])};
-            const configured = ${JSON.stringify([{ Name: 'Open runbook', Match: {}, Action: { Type: 'url', Template: 'https://wiki.example/runbooks/disk' }, Icon: '' }])};
-            return (id === '1' && source === 'prod-am') ? configured : actions;
+            const scenarioActions = ${JSON.stringify(actions)};
+            const forAll = ${JSON.stringify(actionsForAll)};
+            if (forAll) return scenarioActions;
+            return (id === '1' && source === 'prod-am') ? scenarioActions : [];
           },
           ExecuteAction: async (name) => 'opened runbook URL',
           RefreshAlerts: async () => {},
