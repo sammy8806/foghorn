@@ -28,7 +28,16 @@
     sourceCapabilities,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources, parsedQuery } from '../stores/filter';
+  import {
+    filteredAlerts,
+    filter,
+    availableSources,
+    parsedQuery,
+    hiddenCount,
+    showAllFilterState,
+    hasContentFilters,
+    type FilterState,
+  } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
@@ -121,6 +130,15 @@
 
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
+  $: hiddenByFiltersCount = $hiddenCount;
+  $: filtersHideAlerts = hiddenByFiltersCount > 0;
+  $: hasExplicitContentFilters = hasContentFilters($filter);
+  $: contentFiltersHideAlerts = hasExplicitContentFilters && filtersHideAlerts;
+  $: showAllTitle = $filter.showAll
+    ? 'Showing all alerts. Click to return to the default view.'
+    : hiddenByFiltersCount > 0
+      ? `Show all alerts (${hiddenByFiltersCount} hidden).`
+      : 'Show all alerts';
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
@@ -130,6 +148,7 @@
   let groupMenuOpen = false;
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
+  let filtersBeforeShowAll: FilterState | null = null;
 
   // Expanding search: collapsed to a single icon; click expands into a field,
   // and it stays open while it holds text (collapses on blur when empty).
@@ -148,6 +167,33 @@
 
   function silenceFromSearch() {
     if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
+  }
+
+  function clearAllFilters() {
+    filtersBeforeShowAll = null;
+    filter.update(f => ({
+      ...f,
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    }));
+    searchExpanded = false;
+  }
+
+  function toggleShowAll() {
+    filter.update(f => {
+      if (f.showAll) {
+        const previous = filtersBeforeShowAll;
+        filtersBeforeShowAll = null;
+        return previous ?? { ...f, showAll: false };
+      }
+
+      filtersBeforeShowAll = { ...f };
+      return showAllFilterState(f);
+    });
+    searchExpanded = false;
   }
   // When the filter row would overflow, drop the segment values (captions only)
   // to keep it on a single line.
@@ -556,10 +602,18 @@
     <button
       class="icon-toggle"
       class:active={$filter.showAll}
-      on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title="Show all alerts (bypass filters, except text search)"
+      on:click={toggleShowAll}
+      title={showAllTitle}
+      aria-label={$filter.showAll
+        ? 'Showing all alerts; return to default view'
+        : hiddenByFiltersCount > 0
+          ? `Show all alerts, ${hiddenByFiltersCount} hidden`
+          : 'Show all alerts'}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      {#if hiddenByFiltersCount > 0}
+        <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
+      {/if}
     </button>
     <button
       class="icon-toggle"
@@ -728,10 +782,19 @@
       <div class="empty-state">Loading alerts…</div>
     {:else if totalCount === 0}
       <div class="empty-state">
-        {#if idleImage && !($filteredAlerts.length === 0 && $filter.text)}
+        {#if idleImage && !hasExplicitContentFilters}
           <img class="idle-image" src={idleImage} alt="No active alerts" />
         {/if}
-        <p>{$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}</p>
+        {#if contentFiltersHideAlerts}
+          <p>No alerts match the current filters.</p>
+          <p class="empty-state-hint">{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's are' : ' is'} hidden.</p>
+          <button class="empty-state-action" on:click={toggleShowAll}>Show all alerts</button>
+        {:else if $filter.text.trim().length > 0}
+          <p>No alerts match filter</p>
+          <button class="empty-state-action" on:click={clearAllFilters}>Clear search</button>
+        {:else}
+          <p>No active alerts</p>
+        {/if}
       </div>
     {:else if hasGroups}
       {#each $groupedAlerts as group}
@@ -1057,6 +1120,7 @@
 
   /* Square icon-button toggles (Show all, Verbose) */
   .icon-toggle {
+    position: relative;
     width: 28px;
     height: 28px;
     flex-shrink: 0;
@@ -1082,6 +1146,23 @@
   .icon-toggle:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  .icon-toggle-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #3b82f6;
+    color: #eff6ff;
+    font-size: calc(9px * var(--font-scale, 1));
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px #0f172a;
   }
 
   /* Fused view block: Severity · [Source] · Group · Sort */
@@ -1380,6 +1461,26 @@
 
   .empty-state p {
     margin: 0;
+  }
+
+  .empty-state-hint {
+    color: #64748b;
+    font-size: calc(12px * var(--font-scale, 1));
+  }
+
+  .empty-state-action {
+    margin-top: 4px;
+    border: 1px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.12);
+    color: #bfdbfe;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: calc(12px * var(--font-scale, 1));
+    cursor: pointer;
+  }
+
+  .empty-state-action:hover {
+    background: rgba(59, 130, 246, 0.22);
   }
 
   .idle-image {
