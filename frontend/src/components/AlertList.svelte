@@ -28,7 +28,16 @@
     sourceCapabilities,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources, parsedQuery } from '../stores/filter';
+  import {
+    filteredAlerts,
+    filter,
+    availableSources,
+    parsedQuery,
+    hiddenCount,
+    showAllFilterState,
+    hasContentFilters,
+    type FilterState,
+  } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
@@ -50,6 +59,7 @@
   let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
+  let healthBannerExpanded = false;
 
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
@@ -120,6 +130,15 @@
 
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
+  $: hiddenByFiltersCount = $hiddenCount;
+  $: filtersHideAlerts = hiddenByFiltersCount > 0;
+  $: hasExplicitContentFilters = hasContentFilters($filter);
+  $: contentFiltersHideAlerts = hasExplicitContentFilters && filtersHideAlerts;
+  $: showAllTitle = $filter.showAll
+    ? 'Showing all alerts. Click to return to the default view.'
+    : hiddenByFiltersCount > 0
+      ? `Show all alerts (${hiddenByFiltersCount} hidden).`
+      : 'Show all alerts';
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
@@ -129,6 +148,7 @@
   let groupMenuOpen = false;
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
+  let filtersBeforeShowAll: FilterState | null = null;
 
   // Expanding search: collapsed to a single icon; click expands into a field,
   // and it stays open while it holds text (collapses on blur when empty).
@@ -147,6 +167,33 @@
 
   function silenceFromSearch() {
     if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
+  }
+
+  function clearAllFilters() {
+    filtersBeforeShowAll = null;
+    filter.update(f => ({
+      ...f,
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    }));
+    searchExpanded = false;
+  }
+
+  function toggleShowAll() {
+    filter.update(f => {
+      if (f.showAll) {
+        const previous = filtersBeforeShowAll;
+        filtersBeforeShowAll = null;
+        return previous ?? { ...f, showAll: false };
+      }
+
+      filtersBeforeShowAll = { ...f };
+      return showAllFilterState(f);
+    });
+    searchExpanded = false;
   }
   // When the filter row would overflow, drop the segment values (captions only)
   // to keep it on a single line.
@@ -283,7 +330,9 @@
   // A pending source (first poll still in flight) is neither OK nor failing, so
   // it must not turn the status bubble red.
   $: anySourcePending = $sourcesHealth.some(h => h.pending);
-  $: anySourceFailing = $sourcesHealth.some(h => !h.ok && !h.pending);
+  $: failingSources = $sourcesHealth.filter(h => !h.ok && !h.pending);
+  $: anySourceFailing = failingSources.length > 0;
+  $: showHealthBanner = anySourceFailing && !$loading;
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
   $: isMacOSDevMode = environmentPlatform === 'darwin' && (
     normalizedBuildType === 'dev' ||
@@ -319,6 +368,12 @@
   function formatTime(d: Date): string {
     if (d.getTime() === 0) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function formatHealthLastPoll(health: { pending: boolean; lastPoll: string }): string {
+    if (health.pending) return 'waiting for first poll';
+    if (!health.lastPoll) return 'never polled';
+    return `last poll ${formatTime(new Date(health.lastPoll))}`;
   }
 
   function formatHealthLine(health: {
@@ -458,12 +513,50 @@
         <div class="info-card-title">{notificationInfoTitle}</div>
         <div class="info-card-text">{notificationInfoText}</div>
         {#if notificationSettingsError}
-          <div class="info-card-error">{notificationSettingsError}</div>
+          <div class="info-card-detail-error">{notificationSettingsError}</div>
         {/if}
       </div>
       <button class="info-card-action" on:click={handleOpenNotificationSettings}>
         Open Notification Settings
       </button>
+    </div>
+  {/if}
+
+  {#if showHealthBanner}
+    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
+      <button
+        class="health-banner-summary"
+        on:click={() => healthBannerExpanded = !healthBannerExpanded}
+        aria-expanded={healthBannerExpanded}
+        aria-controls="health-banner-details"
+      >
+        <span class="health-banner-heading">
+          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
+        </span>
+        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
+        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
+        {refreshing ? 'Retrying…' : 'Retry'}
+      </button>
+      {#if healthBannerExpanded}
+        <div class="health-banner-sources" id="health-banner-details">
+        {#each failingSources as health}
+          <div class="health-banner-source">
+            <div class="health-banner-source-title">
+              <span class="health-banner-source-name">{health.source}</span>
+              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
+            </div>
+            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
+            <span class="health-banner-source-meta">
+              {formatHealthLastPoll(health)}
+            </span>
+          </div>
+        {/each}
+      </div>
+      {/if}
     </div>
   {/if}
 
@@ -509,10 +602,18 @@
     <button
       class="icon-toggle"
       class:active={$filter.showAll}
-      on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title="Show all alerts (bypass filters, except text search)"
+      on:click={toggleShowAll}
+      title={showAllTitle}
+      aria-label={$filter.showAll
+        ? 'Showing all alerts; return to default view'
+        : hiddenByFiltersCount > 0
+          ? `Show all alerts, ${hiddenByFiltersCount} hidden`
+          : 'Show all alerts'}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      {#if hiddenByFiltersCount > 0}
+        <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
+      {/if}
     </button>
     <button
       class="icon-toggle"
@@ -681,10 +782,19 @@
       <div class="empty-state">Loading alerts…</div>
     {:else if totalCount === 0}
       <div class="empty-state">
-        {#if idleImage && !($filteredAlerts.length === 0 && $filter.text)}
+        {#if idleImage && !hasExplicitContentFilters}
           <img class="idle-image" src={idleImage} alt="No active alerts" />
         {/if}
-        <p>{$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}</p>
+        {#if contentFiltersHideAlerts}
+          <p>No alerts match the current filters.</p>
+          <p class="empty-state-hint">{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's are' : ' is'} hidden.</p>
+          <button class="empty-state-action" on:click={toggleShowAll}>Show all alerts</button>
+        {:else if $filter.text.trim().length > 0}
+          <p>No alerts match filter</p>
+          <button class="empty-state-action" on:click={clearAllFilters}>Clear search</button>
+        {:else}
+          <p>No active alerts</p>
+        {/if}
       </div>
     {:else if hasGroups}
       {#each $groupedAlerts as group}
@@ -764,7 +874,7 @@
     margin-top: 2px;
   }
 
-  .info-card-error {
+  .info-card-detail-error {
     color: #fecaca;
     font-size: calc(11px * var(--font-scale, 1));
     margin-top: 4px;
@@ -784,6 +894,142 @@
 
   .info-card-action:hover {
     background: rgba(251, 146, 60, 0.2);
+  }
+
+  .health-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 8px 0;
+    padding: 7px 9px;
+    border: 1px solid #7f1d1d;
+    border-radius: 6px;
+    background: #1e1821;
+  }
+
+  .health-banner.expanded {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 10px;
+  }
+
+  .health-banner-summary {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .health-banner-summary:hover .health-banner-heading {
+    color: #fff1f2;
+  }
+
+  .health-banner-heading {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: #fecaca;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 700;
+  }
+
+  .health-banner-source-list {
+    min-width: 0;
+    overflow: hidden;
+    color: #fda4af;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: calc(10px * var(--font-scale, 1));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .health-banner-chevron {
+    flex-shrink: 0;
+    color: #f87171;
+    transition: transform 120ms ease;
+  }
+
+  .health-banner.expanded .health-banner-chevron {
+    transform: rotate(180deg);
+  }
+
+  .health-banner-action {
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 4px;
+    padding: 3px 5px;
+    background: transparent;
+    color: #fca5a5;
+    font-size: calc(10px * var(--font-scale, 1));
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .health-banner-action:hover:not(:disabled) {
+    color: #fff1f2;
+    background: rgba(248, 113, 113, 0.16);
+  }
+
+  .health-banner-action:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .health-banner-sources {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(248, 113, 113, 0.2);
+  }
+
+  .health-banner-source {
+    padding: 6px 7px;
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(248, 113, 113, 0.12);
+    font-size: calc(10px * var(--font-scale, 1));
+  }
+
+  .health-banner-source-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .health-banner-source-name {
+    color: #fda4af;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  .health-banner-fail-count {
+    flex-shrink: 0;
+    color: #94a3b8;
+    font-size: calc(9px * var(--font-scale, 1));
+  }
+
+  .health-banner-source-error {
+    color: #fca5a5;
+    margin-top: 3px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .health-banner-source-meta {
+    display: block;
+    color: #94a3b8;
+    margin-top: 3px;
   }
 
   .filter-bar {
@@ -874,6 +1120,7 @@
 
   /* Square icon-button toggles (Show all, Verbose) */
   .icon-toggle {
+    position: relative;
     width: 28px;
     height: 28px;
     flex-shrink: 0;
@@ -899,6 +1146,23 @@
   .icon-toggle:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  .icon-toggle-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #3b82f6;
+    color: #eff6ff;
+    font-size: calc(9px * var(--font-scale, 1));
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px #0f172a;
   }
 
   /* Fused view block: Severity · [Source] · Group · Sort */
@@ -1197,6 +1461,26 @@
 
   .empty-state p {
     margin: 0;
+  }
+
+  .empty-state-hint {
+    color: #64748b;
+    font-size: calc(12px * var(--font-scale, 1));
+  }
+
+  .empty-state-action {
+    margin-top: 4px;
+    border: 1px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.12);
+    color: #bfdbfe;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: calc(12px * var(--font-scale, 1));
+    cursor: pointer;
+  }
+
+  .empty-state-action:hover {
+    background: rgba(59, 130, 246, 0.22);
   }
 
   .idle-image {

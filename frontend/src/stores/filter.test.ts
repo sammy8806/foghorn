@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { filter, filteredAlerts, parsedQuery } from './filter';
+import {
+  filter,
+  filteredAlerts,
+  parsedQuery,
+  hiddenCount,
+  showAllFilterState,
+  hasContentFilters,
+} from './filter';
 import { alerts } from './alerts';
 import type { Alert } from './alerts';
 
@@ -38,5 +45,79 @@ describe('filteredAlerts with query grammar', () => {
     expect(get(parsedQuery).terms).toEqual([
       { kind: 'field', scope: 'label', key: 'x', op: '=', value: '1' },
     ]);
+  });
+});
+
+describe('hiddenCount', () => {
+  it('counts alerts excluded by any active filter', () => {
+    alerts.set([
+      mkAlert({ name: 'Visible', severity: 'critical' }),
+      mkAlert({ name: 'Hidden', severity: 'warning' }),
+      mkAlert({ name: 'NoMatch', severity: 'critical', labels: { job: 'db' } }),
+    ]);
+    filter.set({ text: 'visible', severity: 'all', source: 'all', showSilenced: true, showAll: false });
+    expect(get(hiddenCount)).toBe(2);
+  });
+});
+
+describe('Show all filter state', () => {
+  it('reveals every alert and restores the previous silenced setting', () => {
+    alerts.set([
+      mkAlert({ name: 'Visible' }),
+      mkAlert({ name: 'Silenced', silencedBy: ['silence-1'] }),
+      mkAlert({ name: 'RuleHidden', hiddenBy: ['hide-rule'] }),
+    ]);
+    const previous = {
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showSilenced: false,
+      showAll: false,
+    };
+
+    filter.set(previous);
+    expect(get(filteredAlerts).map((a) => a.name)).toEqual(['Visible']);
+
+    filter.set(showAllFilterState(previous));
+    expect(get(filteredAlerts).map((a) => a.name)).toEqual(['Visible', 'Silenced', 'RuleHidden']);
+
+    filter.set(previous);
+    expect(get(filteredAlerts).map((a) => a.name)).toEqual(['Visible']);
+  });
+});
+
+describe('hasContentFilters', () => {
+  it('does not treat the configured silenced-alert preference as a content filter', () => {
+    expect(hasContentFilters({
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showSilenced: false,
+      showAll: false,
+    })).toBe(false);
+  });
+
+  it('detects search, severity, and source filters', () => {
+    expect(hasContentFilters({
+      text: 'database',
+      severity: 'all',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    })).toBe(true);
+    expect(hasContentFilters({
+      text: '',
+      severity: 'warning',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    })).toBe(true);
+    expect(hasContentFilters({
+      text: '',
+      severity: 'all',
+      source: 'prometheus',
+      showSilenced: true,
+      showAll: false,
+    })).toBe(true);
   });
 });
