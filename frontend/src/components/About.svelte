@@ -50,13 +50,13 @@
 
   header {
     padding: 8px 12px;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--color-border);
   }
 
   .back {
     background: transparent;
     border: none;
-    color: #93c5fd;
+    color: var(--color-interactive);
     cursor: pointer;
     font-size: calc(13px * var(--font-scale, 1));
     padding: 0;
@@ -88,14 +88,14 @@
   }
 
   .version {
-    color: #94a3b8;
+    color: var(--color-text-muted);
     font-weight: 400;
     font-size: calc(14px * var(--font-scale, 1));
   }
 
   .description {
     margin: 0;
-    color: #cbd5e1;
+    color: var(--color-text);
     max-width: 260px;
   }
 
@@ -104,12 +104,13 @@
   }
 
   .links a {
-    color: #93c5fd;
+    color: var(--color-interactive);
+    text-underline-offset: 2px;
   }
 
   .copyright {
     margin: 8px 0 0;
-    color: #64748b;
+    color: var(--color-text-faint);
     font-size: calc(12px * var(--font-scale, 1));
   }
 </style>
