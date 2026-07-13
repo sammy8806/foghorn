@@ -477,51 +477,24 @@
 
   {#if showHealthBanner}
     <div class="health-banner" role="alert">
-      <div class="health-banner-accent" aria-hidden="true"></div>
-      <div class="health-banner-body">
-        <div class="health-banner-head">
-          <div class="health-banner-icon" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              <line x1="12" y1="9" x2="12" y2="13"></line>
-              <line x1="12" y1="17" x2="12.01" y2="17"></line>
-            </svg>
-          </div>
-          <div class="health-banner-copy">
-            <div class="health-banner-title">
-              {failingSources.length === 1 ? 'Source unreachable' : `${failingSources.length} sources unreachable`}
-            </div>
-            <div class="health-banner-subtitle">
-              Alert polling failed — new alerts from these sources may not appear.
-            </div>
-          </div>
-          <button
-            class="health-banner-action"
-            on:click={handleRefresh}
-            disabled={refreshing}
-          >
-            {refreshing ? 'Refreshing…' : 'Retry now'}
-          </button>
-        </div>
-        <div class="health-banner-sources">
-          {#each failingSources as health}
-            <div class="health-banner-source">
-              <div class="health-banner-source-top">
-                <span class="health-banner-source-name">{health.source}</span>
-                {#if health.consecFails > 1}
-                  <span class="health-banner-badge">{health.consecFails}× failed</span>
-                {/if}
-              </div>
-              <div class="health-banner-source-error">
-                {health.lastError || 'Poll failed'}
-              </div>
-              <div class="health-banner-source-meta">
-                {formatHealthLastPoll(health)}
-              </div>
-            </div>
-          {/each}
-        </div>
+      <div class="health-banner-heading">
+        <span class="health-banner-indicator" aria-hidden="true"></span>
+        <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
       </div>
+      <div class="health-banner-sources">
+        {#each failingSources as health}
+          <div class="health-banner-source">
+            <span class="health-banner-source-name">{health.source}</span>
+            <span class="health-banner-source-error">{health.lastError || 'Poll failed'}</span>
+            <span class="health-banner-source-meta">
+              {#if health.consecFails > 1}{health.consecFails} failed · {/if}{formatHealthLastPoll(health)}
+            </span>
+          </div>
+        {/each}
+      </div>
+      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
+        {refreshing ? 'Retrying…' : 'Retry'}
+      </button>
     </div>
   {/if}
 
@@ -846,140 +819,88 @@
 
   .health-banner {
     display: flex;
-    margin: 8px 8px 0;
-    border-radius: 10px;
-    border: 1px solid rgba(248, 113, 113, 0.35);
-    background:
-      linear-gradient(135deg, rgba(127, 29, 29, 0.28) 0%, rgba(15, 23, 42, 0.95) 55%),
-      #0f172a;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
-    overflow: hidden;
-  }
-
-  .health-banner-accent {
-    flex-shrink: 0;
-    width: 4px;
-    background: linear-gradient(180deg, #fca5a5 0%, #ef4444 55%, #b91c1c 100%);
-  }
-
-  .health-banner-body {
-    flex: 1;
-    min-width: 0;
-    padding: 10px 12px 11px;
-  }
-
-  .health-banner-head {
-    display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
+    margin: 8px 8px 0;
+    padding: 7px 9px;
+    border: 1px solid #7f1d1d;
+    border-radius: 6px;
+    background: #1e1821;
   }
 
-  .health-banner-icon {
+  .health-banner-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     flex-shrink: 0;
-    margin-top: 1px;
-    color: #f87171;
-    filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.35));
-  }
-
-  .health-banner-copy {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .health-banner-title {
-    color: #fee2e2;
-    font-size: calc(12px * var(--font-scale, 1));
-    font-weight: 700;
-    letter-spacing: 0.01em;
-  }
-
-  .health-banner-subtitle {
-    color: #fca5a5;
+    color: #fecaca;
     font-size: calc(11px * var(--font-scale, 1));
-    margin-top: 2px;
-    line-height: 1.35;
+    font-weight: 700;
+  }
+
+  .health-banner-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
   }
 
   .health-banner-action {
     flex-shrink: 0;
-    align-self: flex-start;
-    border: 1px solid rgba(248, 113, 113, 0.55);
-    background: rgba(248, 113, 113, 0.14);
-    color: #fff1f2;
-    border-radius: 7px;
-    padding: 6px 11px;
-    font-size: calc(11px * var(--font-scale, 1));
-    font-weight: 600;
+    border: 0;
+    border-radius: 4px;
+    padding: 3px 5px;
+    background: transparent;
+    color: #fca5a5;
+    font-size: calc(10px * var(--font-scale, 1));
+    font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 120ms ease, border-color 120ms ease;
   }
 
   .health-banner-action:hover:not(:disabled) {
-    background: rgba(248, 113, 113, 0.24);
-    border-color: rgba(252, 165, 165, 0.75);
+    color: #fff1f2;
+    background: rgba(248, 113, 113, 0.16);
   }
 
   .health-banner-action:disabled {
-    opacity: 0.65;
+    opacity: 0.55;
     cursor: default;
   }
 
   .health-banner-sources {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 10px;
-    padding-top: 9px;
-    border-top: 1px solid rgba(248, 113, 113, 0.18);
+    flex: 1;
+    min-width: 0;
   }
 
   .health-banner-source {
-    padding: 7px 9px;
-    border-radius: 7px;
-    background: rgba(15, 23, 42, 0.55);
-    border: 1px solid rgba(248, 113, 113, 0.16);
-  }
-
-  .health-banner-source-top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    min-width: 0;
+    gap: 6px;
+    color: #fecaca;
+    font-size: calc(10px * var(--font-scale, 1));
   }
 
   .health-banner-source-name {
-    color: #fecaca;
-    font-size: calc(11px * var(--font-scale, 1));
+    flex-shrink: 0;
+    color: #fda4af;
     font-weight: 700;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
-  .health-banner-badge {
-    flex-shrink: 0;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: rgba(239, 68, 68, 0.2);
-    border: 1px solid rgba(248, 113, 113, 0.35);
-    color: #fca5a5;
-    font-size: calc(9px * var(--font-scale, 1));
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-  }
-
   .health-banner-source-error {
-    color: #fda4af;
-    font-size: calc(11px * var(--font-scale, 1));
-    margin-top: 3px;
-    line-height: 1.35;
-    word-break: break-word;
+    overflow: hidden;
+    color: #fca5a5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .health-banner-source-meta {
+    flex-shrink: 0;
     color: #94a3b8;
-    font-size: calc(10px * var(--font-scale, 1));
-    margin-top: 4px;
   }
 
   .filter-bar {
