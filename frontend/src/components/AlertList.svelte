@@ -277,7 +277,10 @@
   }
 
   function onSearchBlur() {
-    if (!hasSearchText) searchExpanded = false;
+    // Moving focus into the syntax hint also blurs the search input. Keep the
+    // search expanded in that case so the hint remains open until dismissed
+    // through its backdrop or close button.
+    if (!hasSearchText && !searchHelpOpen) searchExpanded = false;
   }
 
   $: if (!searchOpen) searchHelpOpen = false;
