@@ -155,6 +155,7 @@
   // Expanding search: collapsed to a single icon; click expands into a field,
   // and it stays open while it holds text (collapses on blur when empty).
   let searchExpanded = false;
+  let searchEl: HTMLDivElement | null = null;
   let searchInputEl: HTMLInputElement | null = null;
   $: hasSearchText = $filter.text.trim().length > 0;
   $: searchOpen = searchExpanded || hasSearchText;
@@ -276,11 +277,13 @@
     searchInputEl?.focus();
   }
 
-  function onSearchBlur() {
-    // Moving focus into the syntax hint also blurs the search input. Keep the
-    // search expanded in that case so the hint remains open until dismissed
-    // through its backdrop or close button.
-    if (!hasSearchText && !searchHelpOpen) searchExpanded = false;
+  function onSearchFocusOut(e: FocusEvent) {
+    // Focus can move from the input to an in-field control such as the syntax
+    // help button. Only collapse after focus has left the entire search control.
+    const nextFocus = e.relatedTarget;
+    if (!hasSearchText && !searchHelpOpen && !(nextFocus instanceof Node && searchEl?.contains(nextFocus))) {
+      searchExpanded = false;
+    }
   }
 
   $: if (!searchOpen) searchHelpOpen = false;
@@ -572,8 +575,10 @@
     <!-- Expanding search: collapsed to an icon, click to expand. -->
     <div
       class="search"
+      bind:this={searchEl}
       class:open={searchOpen}
       on:click={openSearch}
+      on:focusout={onSearchFocusOut}
       on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
       on:transitionend={onSearchTransitionEnd}
       role="button"
@@ -587,7 +592,6 @@
         placeholder="Filter alerts…"
         bind:this={searchInputEl}
         bind:value={$filter.text}
-        on:blur={onSearchBlur}
       />
       {#if searchOpen}
         <button
