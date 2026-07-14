@@ -45,6 +45,7 @@
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
+  import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
@@ -149,10 +150,12 @@
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
   let filtersBeforeShowAll: FilterState | null = null;
+  let searchHelpOpen = false;
 
   // Expanding search: collapsed to a single icon; click expands into a field,
   // and it stays open while it holds text (collapses on blur when empty).
   let searchExpanded = false;
+  let searchEl: HTMLDivElement | null = null;
   let searchInputEl: HTMLInputElement | null = null;
   $: hasSearchText = $filter.text.trim().length > 0;
   $: searchOpen = searchExpanded || hasSearchText;
@@ -274,9 +277,16 @@
     searchInputEl?.focus();
   }
 
-  function onSearchBlur() {
-    if (!hasSearchText) searchExpanded = false;
+  function onSearchFocusOut(e: FocusEvent) {
+    // Focus can move from the input to an in-field control such as the syntax
+    // help button. Only collapse after focus has left the entire search control.
+    const nextFocus = e.relatedTarget;
+    if (!hasSearchText && !searchHelpOpen && !(nextFocus instanceof Node && searchEl?.contains(nextFocus))) {
+      searchExpanded = false;
+    }
   }
+
+  $: if (!searchOpen) searchHelpOpen = false;
 
   async function clearSearch() {
     filter.update(f => ({ ...f, text: '' }));
@@ -565,8 +575,10 @@
     <!-- Expanding search: collapsed to an icon, click to expand. -->
     <div
       class="search"
+      bind:this={searchEl}
       class:open={searchOpen}
       on:click={openSearch}
+      on:focusout={onSearchFocusOut}
       on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
       on:transitionend={onSearchTransitionEnd}
       role="button"
@@ -580,8 +592,19 @@
         placeholder="Filter alerts…"
         bind:this={searchInputEl}
         bind:value={$filter.text}
-        on:blur={onSearchBlur}
       />
+      {#if searchOpen}
+        <button
+          class="search-help"
+          type="button"
+          class:active={searchHelpOpen}
+          on:mousedown|stopPropagation={(e) => e.preventDefault()}
+          on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
+          title="Search syntax help"
+          aria-label="Search syntax help"
+          aria-expanded={searchHelpOpen}
+        >?</button>
+      {/if}
       {#if hasSearchText}
         <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
       {/if}
@@ -821,6 +844,8 @@
     {/if}
   </div>
 </div>
+
+<SearchHelpPopover open={searchHelpOpen} on:close={() => searchHelpOpen = false} />
 
 <!-- Single top-level silence editor, driven by the silenceEditor store. Lives
      outside the alert list so it stays open across refreshes/regrouping/sorting
@@ -1068,7 +1093,7 @@
   }
   .search.open {
     width: 200px;
-    padding-right: 6px;
+    padding-right: 4px;
   }
   .search:not(.open) {
     justify-content: center;
@@ -1117,6 +1142,30 @@
     cursor: pointer;
   }
   .search-clear:hover { background: #34425f; color: #f1f5f9; }
+
+  .search-help {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #64748b;
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .search-help:hover,
+  .search-help.active {
+    background: #2a3650;
+    color: #93c5fd;
+  }
 
   /* Square icon-button toggles (Show all, Verbose) */
   .icon-toggle {
