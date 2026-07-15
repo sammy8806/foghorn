@@ -41,7 +41,7 @@
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
-  import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
+  import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
@@ -431,6 +431,9 @@
   async function layoutPopup(): Promise<void> {
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+
+    // Never reposition or resize while in native fullscreen.
+    if (await WindowIsFullscreen()) return;
 
     const uiConfig = await GetUIConfig();
     if (uiConfig.auto_position === false) return;
