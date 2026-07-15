@@ -104,18 +104,22 @@
       await refreshAlerts();
 
       if (!isWails()) return;
-      disposeConfigReloaded = EventsOn('config:reloaded', async () => {
-        await Promise.all([
-          loadSeverityConfig(),
-          loadSourceCapabilities(),
-          syncUIConfig(),
-          syncEnvironmentInfo(),
-          syncNotificationPermissionStatus(),
-        ]);
-        await layoutPopup();
+      // EventsOn expects void callbacks, so rejections from async handlers
+      // would surface as unhandled promise rejections; catch them here.
+      disposeConfigReloaded = EventsOn('config:reloaded', () => {
+        void (async () => {
+          await Promise.all([
+            loadSeverityConfig(),
+            loadSourceCapabilities(),
+            syncUIConfig(),
+            syncEnvironmentInfo(),
+            syncNotificationPermissionStatus(),
+          ]);
+          await layoutPopup();
+        })().catch(console.error);
       });
-      disposePopupOpening = EventsOn('popup:opening', async () => {
-        await layoutPopup();
+      disposePopupOpening = EventsOn('popup:opening', () => {
+        void layoutPopup().catch(console.error);
       });
     };
 
@@ -432,8 +436,15 @@
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
-    // Never reposition or resize while in native fullscreen.
-    if (await WindowIsFullscreen()) return;
+    // Never reposition or resize while in native fullscreen. If the runtime
+    // call fails, err on the side of not touching the window: resizing a
+    // fullscreen window is worse than skipping one layout pass.
+    try {
+      if (await WindowIsFullscreen()) return;
+    } catch (e) {
+      console.error('WindowIsFullscreen failed, skipping popup layout', e);
+      return;
+    }
 
     const uiConfig = await GetUIConfig();
     if (uiConfig.auto_position === false) return;
