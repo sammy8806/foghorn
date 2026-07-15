@@ -23,6 +23,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -145,6 +146,11 @@ func main() {
 		Windows: &windows.Options{
 			WebviewUserDataPath: webviewUserDataPath(),
 		},
+		// Without Mac options Wails treats the window as non-zoomable and
+		// disables the zoom button, which also breaks the standard macOS
+		// double-click-titlebar-to-zoom gesture. An empty options struct
+		// (DisableZoom: false) restores both.
+		Mac: &mac.Options{},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			setDockIconVisible(!tray.StartHiddenByDefault())
