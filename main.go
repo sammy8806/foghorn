@@ -134,6 +134,13 @@ func main() {
 		}
 	}()
 
+	// On macOS a shutdown/logout would otherwise be cancelled by the app:
+	// the system's terminate request ends up in OnBeforeClose, which hides
+	// the window instead of quitting, and macOS blames Foghorn for
+	// interrupting the shutdown. Quit voluntarily when the system announces
+	// a power-off (no-op on other platforms).
+	watchSystemPowerOff(requestQuit)
+
 	if err := wails.Run(&options.App{
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
