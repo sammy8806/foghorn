@@ -7,6 +7,7 @@ package main
 #cgo LDFLAGS: -framework Cocoa
 
 #import <Cocoa/Cocoa.h>
+#import <dispatch/dispatch.h>
 
 extern void foghornHandlePowerOff(void);
 
