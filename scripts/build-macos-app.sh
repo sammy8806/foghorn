@@ -4,9 +4,10 @@
 #
 # Signing modes (decided from environment):
 #   - Developer ID: all of APPLE_DEVELOPER_ID_CERT_P12_BASE64,
-#     APPLE_DEVELOPER_ID_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD,
-#     APPLE_TEAM_ID are set. Imports the cert into a temp keychain, signs with
-#     hardened runtime + timestamp. Notarization is performed by build-dmg.sh.
+#     APPLE_DEVELOPER_ID_CERT_PASSWORD, APPLE_API_KEY_ID,
+#     APPLE_API_ISSUER_ID, APPLE_API_KEY_P8_BASE64 are set. Imports the cert
+#     into a temp keychain, signs with hardened runtime + timestamp.
+#     Notarization is performed by build-dmg.sh.
 #   - Ad-hoc: NONE of those vars are set. Signs locally so macOS notifications
 #     work, but Gatekeeper will warn users.
 #   - Error: partial set — fail fast, no silent fallback.
@@ -47,9 +48,9 @@ VERSION="$("$ROOT_DIR/scripts/version.sh")"
 DEV_ID_VARS=(
   APPLE_DEVELOPER_ID_CERT_P12_BASE64
   APPLE_DEVELOPER_ID_CERT_PASSWORD
-  APPLE_ID
-  APPLE_APP_SPECIFIC_PASSWORD
-  APPLE_TEAM_ID
+  APPLE_API_KEY_ID
+  APPLE_API_ISSUER_ID
+  APPLE_API_KEY_P8_BASE64
 )
 set_count=0
 unset_list=()

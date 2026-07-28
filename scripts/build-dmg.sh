@@ -42,9 +42,9 @@ export FOGHORN_VERSION
 DEV_ID_VARS=(
   APPLE_DEVELOPER_ID_CERT_P12_BASE64
   APPLE_DEVELOPER_ID_CERT_PASSWORD
-  APPLE_ID
-  APPLE_APP_SPECIFIC_PASSWORD
-  APPLE_TEAM_ID
+  APPLE_API_KEY_ID
+  APPLE_API_ISSUER_ID
+  APPLE_API_KEY_P8_BASE64
 )
 set_count=0
 for v in "${DEV_ID_VARS[@]}"; do
@@ -137,6 +137,9 @@ hdiutil convert "$RW_DMG" -quiet -format UDZO -imagekey zlib-level=9 -o "$DMG_PA
 if [[ "$SIGNING_MODE" == "developer-id" ]]; then
   require_tool xcrun
 
+  API_KEY_P8_PATH="$STAGE_DIR/AuthKey_${APPLE_API_KEY_ID}.p8"
+  printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$API_KEY_P8_PATH"
+
   IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
     | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
   if [[ -z "$IDENTITY" ]]; then
@@ -148,13 +151,14 @@ if [[ "$SIGNING_MODE" == "developer-id" ]]; then
 
   echo "Submitting DMG for notarization (this can take several minutes)..."
   xcrun notarytool submit "$DMG_PATH" \
-    --apple-id "$APPLE_ID" \
-    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-    --team-id "$APPLE_TEAM_ID" \
+    --key "$API_KEY_P8_PATH" \
+    --key-id "$APPLE_API_KEY_ID" \
+    --issuer "$APPLE_API_ISSUER_ID" \
     --wait
 
   xcrun stapler staple "$DMG_PATH"
   xcrun stapler validate "$DMG_PATH"
+  spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
 fi
 
 echo "$DMG_PATH"

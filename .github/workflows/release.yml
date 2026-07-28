@@ -16,9 +16,9 @@ jobs:
     env:
       APPLE_DEVELOPER_ID_CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
       APPLE_DEVELOPER_ID_CERT_PASSWORD:   ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-      APPLE_ID:                           ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD:        ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID:                      ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_API_KEY_ID:                   ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID:                ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_P8_BASE64:            ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,6 +46,24 @@ jobs:
             echo "FOGHORN_VERSION=${REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "FOGHORN_VERSION=$DISPATCH_VERSION" >> "$GITHUB_ENV"
+          fi
+
+      - name: Require macOS signing credentials
+        run: |
+          required=(
+            APPLE_DEVELOPER_ID_CERT_P12_BASE64
+            APPLE_DEVELOPER_ID_CERT_PASSWORD
+            APPLE_API_KEY_ID
+            APPLE_API_ISSUER_ID
+            APPLE_API_KEY_P8_BASE64
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            [[ -n "${!name:-}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required GitHub Actions secret: %s\n' "${missing[@]}" >&2
+            exit 1
           fi
 
       - name: Build DMG
