@@ -420,7 +420,7 @@
   .alert-card {
     position: relative;
     border-left: 3px solid #6b7280;
-    background: var(--card-bg, #1e293b);
+    background: var(--card-bg, var(--color-surface));
     border-radius: 3px;
     margin-bottom: 2px;
     overflow: hidden;
