@@ -170,9 +170,9 @@ func main() {
 					stopRuntime()
 				}
 
-				app.UpdateConfig(nextCfg)
+				app.updateConfig(nextCfg)
 				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
-				app.SetProviders(buildProviders(nextCfg.Sources))
+				app.setProviders(buildProviders(nextCfg.Sources))
 				store.SyncSources(sourceNames(nextCfg.Sources))
 				severities, err := config.NormalizeSeverityConfig(nextCfg.Severities)
 				if err != nil {

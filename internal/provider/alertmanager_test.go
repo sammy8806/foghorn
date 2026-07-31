@@ -418,3 +418,52 @@ func TestAlertmanagerBasicAuth(t *testing.T) {
 		t.Error("expected Authorization header, got none")
 	}
 }
+
+// generatorURL is fully controlled by the alert source and is rendered as a
+// link in the UI, so non-http(s) values must not reach the model.
+func TestAlertmanagerDropsUnsafeGeneratorURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"fingerprint":"a","labels":{"alertname":"Evil"},"generatorURL":"javascript:alert(1)","status":{"state":"active"}},
+			{"fingerprint":"b","labels":{"alertname":"Ok"},"generatorURL":"https://prom.example/graph","status":{"state":"active"}}
+		]`))
+	}))
+	defer server.Close()
+
+	p := NewAlertmanager(config.SourceConfig{Name: "am", Type: "alertmanager", URL: server.URL})
+
+	alerts, err := p.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch() error: %v", err)
+	}
+	if len(alerts) != 2 {
+		t.Fatalf("expected 2 alerts, got %d", len(alerts))
+	}
+	if alerts[0].GeneratorURL != "" {
+		t.Fatalf("expected javascript: generatorURL to be dropped, got %q", alerts[0].GeneratorURL)
+	}
+	if alerts[1].GeneratorURL != "https://prom.example/graph" {
+		t.Fatalf("expected https generatorURL to be kept, got %q", alerts[1].GeneratorURL)
+	}
+}
+
+// Silence IDs are echoed back from the source; unescaped they could traverse to
+// other API paths on the same host.
+func TestAlertmanagerUnsilenceEscapesID(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	p := NewAlertmanager(config.SourceConfig{Name: "am", Type: "alertmanager", URL: server.URL})
+
+	if err := p.Unsilence(context.Background(), "../../silences"); err != nil {
+		t.Fatalf("Unsilence() error: %v", err)
+	}
+	if want := "/api/v2/silence/..%2F..%2Fsilences"; gotPath != want {
+		t.Fatalf("silence ID was not escaped: got path %q, want %q", gotPath, want)
+	}
+}

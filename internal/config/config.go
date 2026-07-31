@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"os/user"
 	"regexp"
@@ -96,6 +98,35 @@ func expandEnvVars(input string) string {
 	})
 }
 
+// warnInsecureSourceURL logs a warning for sources fetched over plain HTTP to a
+// non-local host. Alert payloads drive links, notifications and (if configured)
+// resolver/action commands, and the auth credentials go out with every request —
+// over cleartext HTTP anyone on the network path can read or rewrite all of it.
+func warnInsecureSourceURL(name, rawURL string) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "http") {
+		return
+	}
+	if isLoopbackHost(parsed.Hostname()) {
+		return
+	}
+	log.Printf("config: WARNING source %q uses plain HTTP (%s): credentials and alert content are sent in cleartext and can be modified in transit; use https", name, parsed.Host)
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
 func validate(cfg *Config) error {
 	normalizedSeverities, err := NormalizeSeverityConfig(cfg.Severities)
 	if err != nil {
@@ -139,6 +170,7 @@ func validate(cfg *Config) error {
 		if strings.TrimSpace(src.SeverityLabel) == "" {
 			src.SeverityLabel = "severity"
 		}
+		warnInsecureSourceURL(src.Name, src.URL)
 		enabledSources = append(enabledSources, src)
 	}
 	cfg.Sources = enabledSources

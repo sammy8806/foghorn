@@ -61,7 +61,7 @@ func TestResolveDiffResolvesFrontendPayloads(t *testing.T) {
 
 func TestGetSourceCapabilitiesReflectsProviders(t *testing.T) {
 	app := NewApp(&config.Config{}, state.New())
-	app.SetProviders(map[string]provider.Provider{
+	app.setProviders(map[string]provider.Provider{
 		"am": stubProvider{name: "am", supportsSilence: true},
 		"bs": stubProvider{name: "bs", supportsSilence: false},
 	})

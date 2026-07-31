@@ -3,7 +3,6 @@
 import {model} from '../models';
 import {main} from '../models';
 import {config} from '../models';
-import {provider} from '../models';
 
 export function CreateSilence(arg1:string,arg2:Array<model.Matcher>,arg3:string,arg4:string,arg5:string):Promise<string>;
 
@@ -41,12 +40,8 @@ export function OpenNotificationSettings():Promise<void>;
 
 export function RefreshAlerts():Promise<void>;
 
-export function SetProviders(arg1:Record<string, provider.Provider>):Promise<void>;
-
 export function TestNotificationForAlert(arg1:string,arg2:string):Promise<void>;
 
 export function Unsilence(arg1:string,arg2:string):Promise<void>;
-
-export function UpdateConfig(arg1:config.Config):Promise<void>;
 
 export function UpdateSilence(arg1:string,arg2:string,arg3:Array<model.Matcher>,arg4:string,arg5:string,arg6:string):Promise<void>;

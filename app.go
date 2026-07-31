@@ -62,8 +62,11 @@ func activeApp() *App {
 	return currentApp
 }
 
-// SetProviders wires providers into the app after startup.
-func (a *App) SetProviders(providers map[string]provider.Provider) {
+// setProviders wires providers into the app after startup. Unexported so Wails
+// does not expose it as a JS binding: everything the frontend can call is
+// reachable from any document the webview ends up loading, so only genuine UI
+// operations belong in the bound surface. main.go shares this package.
+func (a *App) setProviders(providers map[string]provider.Provider) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.providers = providers
@@ -88,8 +91,10 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(_ context.Context) {}
 
-// UpdateConfig replaces the active config (called on hot-reload).
-func (a *App) UpdateConfig(cfg *config.Config) {
+// updateConfig replaces the active config (called on hot-reload). Unexported
+// for the same reason as setProviders — bound, it would let any script in the
+// webview install its own actions/resolvers and then run them.
+func (a *App) updateConfig(cfg *config.Config) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cfg = cfg

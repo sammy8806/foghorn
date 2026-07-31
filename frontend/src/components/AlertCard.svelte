@@ -3,6 +3,7 @@
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
+  import { safeExternalURL } from '../utils/url';
   import { openSilenceCreate, openSilenceEdit } from '../stores/silenceEditor';
 
   export let alert: Alert;
@@ -203,6 +204,9 @@
   $: alertKey = alert.source + ':' + alert.id;
   $: supportsSilence = !!$sourceCapabilities[alert.source]?.supportsSilence;
   $: primaryLinkLabel = alert.sourceType === 'betterstack' ? 'Open Incident' : 'Open Reference';
+  // generatorURL comes straight from the alert source; only render it as a link
+  // if it is a valid http/https URL (see utils/url.ts).
+  $: generatorLink = safeExternalURL(alert.generatorURL);
 
   function scheduleAcknowledge() {
     if ((!isNew && !isResolved) || acknowledgeTimer) return;
@@ -308,8 +312,8 @@
             </div>
           {:else}
             <p class={annotationClass}><strong>{displayLabel}:</strong>
-              {#if annotationDisplay.text.match(/^https?:\/\//)}
-                <a href={annotationDisplay.text} target="_blank" class="annotation-link">{annotationDisplay.text}</a>
+              {#if safeExternalURL(annotationDisplay.text)}
+                <a href={safeExternalURL(annotationDisplay.text)} target="_blank" rel="noreferrer" class="annotation-link">{annotationDisplay.text}</a>
               {:else}
                 <span>{annotationDisplay.text}</span>
               {/if}
@@ -392,8 +396,8 @@
       {/if}
 
       <div class="alert-actions">
-        {#if alert.generatorURL}
-          <a href={alert.generatorURL} target="_blank" rel="noreferrer" class="generator-link">{primaryLinkLabel}</a>
+        {#if generatorLink}
+          <a href={generatorLink} target="_blank" rel="noreferrer" class="generator-link">{primaryLinkLabel}</a>
         {/if}
         {#if $verbose}
           <button

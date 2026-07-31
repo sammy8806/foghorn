@@ -5,6 +5,7 @@
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
   import { initUIScale, uiScale } from './stores/uiScale';
+  import { safeExternalURL } from './utils/url';
 
   let view: 'list' | 'about' = 'list';
 
@@ -24,12 +25,17 @@
       view = 'about';
     });
 
+    // Fail closed: every in-app anchor click is cancelled, and only URLs that
+    // validate as http/https are handed to the system browser. Letting a click
+    // fall through would navigate the webview itself — which has no navigation
+    // policy handler, so a `javascript:` or attacker-page href from a hostile
+    // alert source would run with the Wails bridge in reach.
     const onClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest('a[href]');
       if (!anchor) return;
-      const href = anchor.getAttribute('href');
-      if (href && /^https?:\/\//.test(href)) {
-        e.preventDefault();
+      e.preventDefault();
+      const href = safeExternalURL(anchor.getAttribute('href'));
+      if (href) {
         BrowserOpenURL(href);
       }
     };
