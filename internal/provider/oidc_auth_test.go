@@ -179,3 +179,90 @@ func TestOIDCDeviceAuthFailsBeforeExpiry(t *testing.T) {
 		t.Fatal("expected OIDC authenticator")
 	}
 }
+
+// A compromised/hostile issuer must not be able to redirect the device
+// authorization/token requests (and the client_id/client_secret sent to them)
+// to an attacker-controlled host via the discovery document.
+func TestOIDCDiscoveryRejectsCrossOriginEndpoints(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(t, w, map[string]string{
+			"device_authorization_endpoint": "https://attacker.example/oauth/device/code",
+			"token_endpoint":                "https://attacker.example/oauth/token",
+		})
+	}))
+	defer server.Close()
+
+	auth := newOIDCDeviceAuthenticator(config.AuthConfig{
+		Type:      "oidc",
+		Flow:      "device",
+		IssuerURL: server.URL,
+		ClientID:  "foghorn-test",
+	}, server.Client())
+
+	_, err := auth.Token(context.Background())
+	if err == nil {
+		t.Fatal("expected an error for cross-origin discovery endpoints")
+	}
+	if !strings.Contains(err.Error(), "issuer's origin") {
+		t.Fatalf("expected an origin-pinning error, got: %v", err)
+	}
+}
+
+// A discovery document pointing at a non-loopback http endpoint must be
+// rejected: https discovery over MITM'able http could still be downgraded.
+func TestOIDCDiscoveryRejectsNonHTTPSEndpoint(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		host := strings.TrimPrefix(server.URL, "http://")
+		writeJSON(t, w, map[string]string{
+			"device_authorization_endpoint": "http://evil-" + host + "/oauth/device/code",
+			"token_endpoint":                "http://evil-" + host + "/oauth/token",
+		})
+	}))
+	defer server.Close()
+
+	auth := newOIDCDeviceAuthenticator(config.AuthConfig{
+		Type:      "oidc",
+		Flow:      "device",
+		IssuerURL: server.URL,
+		ClientID:  "foghorn-test",
+	}, server.Client())
+
+	_, err := auth.Token(context.Background())
+	if err == nil {
+		t.Fatal("expected an error for a non-loopback http discovery endpoint")
+	}
+}
+
+// verification_uri(_complete) comes from the token endpoint; a hostile
+// response must not be able to make Foghorn launch a local file/handler via
+// the OS's browser opener.
+func TestOIDCPromptUserRejectsUnsafeVerificationURL(t *testing.T) {
+	var opened []string
+	original := browserOpenURL
+	browserOpenURL = func(url string) error {
+		opened = append(opened, url)
+		return nil
+	}
+	defer func() { browserOpenURL = original }()
+
+	auth := &oidcDeviceAuthenticator{}
+	auth.promptUser(&oidcDeviceAuthorization{
+		DeviceCode:              "device-123",
+		VerificationURIComplete: "file:///etc/passwd",
+	})
+
+	if len(opened) != 0 {
+		t.Fatalf("unsafe verification URL was opened: %v", opened)
+	}
+}

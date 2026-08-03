@@ -2,11 +2,10 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +19,10 @@ import (
 )
 
 const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
+
+// browserOpenURL launches the OS's default browser; a variable so tests can
+// verify what promptUser hands it without actually opening a browser.
+var browserOpenURL = browser.OpenURL
 
 type oidcDeviceAuthenticator struct {
 	cfg    config.AuthConfig
@@ -143,18 +146,67 @@ func (a *oidcDeviceAuthenticator) discover(ctx context.Context) (*oidcDiscovery,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("oidc discovery returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("oidc discovery returned HTTP %d: %s", resp.StatusCode, errorBody(resp))
 	}
 	var discovery oidcDiscovery
-	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
+	if err := decodeJSONResponse(resp, &discovery); err != nil {
 		return nil, fmt.Errorf("decoding oidc discovery: %w", err)
 	}
 	if discovery.DeviceAuthorizationEndpoint == "" || discovery.TokenEndpoint == "" {
 		return nil, errors.New("oidc discovery response missing device_authorization_endpoint or token_endpoint")
 	}
+	// The discovery document is fetched from the issuer but its contents are
+	// still attacker-controlled if the issuer is compromised (or MITM'd, when
+	// issuer_url is http://): newFormRequest sends client_id+client_secret via
+	// HTTP Basic auth to whatever token_endpoint/device_authorization_endpoint
+	// this returns. Require https and pin both endpoints to the issuer's own
+	// origin so a hostile discovery response cannot redirect the client
+	// credentials to an attacker-controlled host.
+	deviceEndpoint, err := validateDiscoveredEndpoint("device_authorization_endpoint", issuer, discovery.DeviceAuthorizationEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	tokenEndpoint, err := validateDiscoveredEndpoint("token_endpoint", issuer, discovery.TokenEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	discovery.DeviceAuthorizationEndpoint = deviceEndpoint
+	discovery.TokenEndpoint = tokenEndpoint
 	a.discovery = &discovery
 	return a.discovery, nil
+}
+
+// validateDiscoveredEndpoint checks an endpoint URL returned by OIDC discovery
+// before it is used to send requests (and, for the token endpoint, client
+// credentials). It must share the issuer's origin, and be https unless it is a
+// loopback address (local dev/test issuers commonly run without TLS).
+func validateDiscoveredEndpoint(kind, issuer, endpoint string) (string, error) {
+	trimmed := strings.TrimSpace(endpoint)
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("oidc discovery: %s %q is not a valid URL: %w", kind, trimmed, err)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") && !isLoopbackHost(parsed.Hostname()) {
+		return "", fmt.Errorf("oidc discovery: %s %q must be https", kind, trimmed)
+	}
+	issuerURL, err := url.Parse(issuer)
+	if err != nil || issuerURL.Host == "" {
+		return "", fmt.Errorf("oidc discovery: cannot validate %s against issuer %q", kind, issuer)
+	}
+	if !strings.EqualFold(issuerURL.Host, parsed.Host) {
+		return "", fmt.Errorf("oidc discovery: %s %q is not on the issuer's origin (%s)", kind, trimmed, issuerURL.Host)
+	}
+	return trimmed, nil
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 func (a *oidcDeviceAuthenticator) startDeviceAuthorization(ctx context.Context, endpoint string) (*oidcDeviceAuthorization, error) {
@@ -176,11 +228,10 @@ func (a *oidcDeviceAuthenticator) startDeviceAuthorization(ctx context.Context, 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("oidc device authorization returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("oidc device authorization returned HTTP %d: %s", resp.StatusCode, errorBody(resp))
 	}
 	var device oidcDeviceAuthorization
-	if err := json.NewDecoder(resp.Body).Decode(&device); err != nil {
+	if err := decodeJSONResponse(resp, &device); err != nil {
 		return nil, fmt.Errorf("decoding oidc device authorization: %w", err)
 	}
 	if device.DeviceCode == "" || (device.VerificationURI == "" && device.VerificationURIComplete == "") {
@@ -194,13 +245,21 @@ func (a *oidcDeviceAuthenticator) promptUser(device *oidcDeviceAuthorization) {
 	if loginURL == "" {
 		loginURL = device.VerificationURI
 	}
-	if loginURL != "" && os.Getenv("FOGHORN_OIDC_SKIP_BROWSER") == "" {
-		if err := browser.OpenURL(loginURL); err != nil {
+	// verification_uri(_complete) comes from the token endpoint's response, so a
+	// compromised/hostile endpoint could put a file://, smb:// or other
+	// locally-reachable URL here instead of a login page. Only ever hand
+	// http/https to the OS's browser opener.
+	safeLoginURL := sanitizeRemoteURL(loginURL)
+	if safeLoginURL == "" && loginURL != "" {
+		log.Printf("oidc: refusing to open non-http(s) verification URL %q", loginURL)
+	}
+	if safeLoginURL != "" && os.Getenv("FOGHORN_OIDC_SKIP_BROWSER") == "" {
+		if err := browserOpenURL(safeLoginURL); err != nil {
 			log.Printf("oidc: open browser failed: %v", err)
 		}
 	}
 	if device.VerificationURIComplete != "" {
-		log.Printf("oidc: opened browser for device login: %s", device.VerificationURIComplete)
+		log.Printf("oidc: device login link: %s", device.VerificationURIComplete)
 		return
 	}
 	log.Printf("oidc: open %s and enter user code %s", device.VerificationURI, device.UserCode)
@@ -283,7 +342,7 @@ type oidcTokenRetry struct {
 func decodeDeviceTokenResponse(resp *http.Response) (*oidcToken, *oidcTokenRetry, error) {
 	defer resp.Body.Close()
 	var raw map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	if err := decodeJSONResponse(resp, &raw); err != nil {
 		return nil, nil, fmt.Errorf("decoding oidc token response: %w", err)
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
