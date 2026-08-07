@@ -254,3 +254,65 @@ func TestOnCallLifecycle(t *testing.T) {
 		t.Fatalf("expected on-call to be cleared, got %d entries", got)
 	}
 }
+
+func healthFor(health []model.SourceHealth, source string) (model.SourceHealth, bool) {
+	for _, h := range health {
+		if h.Source == source {
+			return h, true
+		}
+	}
+	return model.SourceHealth{}, false
+}
+
+func TestSyncSourcesSeedsPendingHealth(t *testing.T) {
+	s := New()
+	s.SyncSources([]string{"src1", "src2"})
+
+	health := s.SourcesHealth()
+	if len(health) != 2 {
+		t.Fatalf("expected 2 seeded health entries, got %d: %#v", len(health), health)
+	}
+	for _, name := range []string{"src1", "src2"} {
+		h, ok := healthFor(health, name)
+		if !ok {
+			t.Fatalf("expected %s to appear in health before first poll", name)
+		}
+		if !h.Pending {
+			t.Fatalf("expected %s to be pending before first poll, got %#v", name, h)
+		}
+		if h.OK {
+			t.Fatalf("expected %s not to be OK before first poll, got %#v", name, h)
+		}
+		if !h.LastPoll.IsZero() {
+			t.Fatalf("expected %s to have no last poll yet, got %v", name, h.LastPoll)
+		}
+	}
+}
+
+func TestSyncSourcesPreservesExistingHealth(t *testing.T) {
+	s := New()
+	s.RecordPollSuccess("src1")
+
+	s.SyncSources([]string{"src1", "src2"})
+
+	health := s.SourcesHealth()
+	h1, ok := healthFor(health, "src1")
+	if !ok || h1.Pending || !h1.OK {
+		t.Fatalf("expected src1 to keep its successful poll result, got %#v", h1)
+	}
+	h2, ok := healthFor(health, "src2")
+	if !ok || !h2.Pending {
+		t.Fatalf("expected newly added src2 to be pending, got %#v", h2)
+	}
+}
+
+func TestRecordPollClearsPending(t *testing.T) {
+	s := New()
+	s.SyncSources([]string{"src1"})
+
+	s.RecordPollSuccess("src1")
+	h, _ := healthFor(s.SourcesHealth(), "src1")
+	if h.Pending {
+		t.Fatalf("expected pending to clear after a successful poll, got %#v", h)
+	}
+}

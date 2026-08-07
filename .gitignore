@@ -1,6 +1,8 @@
 build/bin
 build/.cache
 build/dist
+build/windows/installer/tmp
 node_modules
 frontend/dist
 docs/superpowers
+scripts/.env.signing

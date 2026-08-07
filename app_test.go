@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"testing"
-	"time"
 
 	"foghorn/internal/config"
 	"foghorn/internal/model"
@@ -63,7 +61,7 @@ func TestResolveDiffResolvesFrontendPayloads(t *testing.T) {
 
 func TestGetSourceCapabilitiesReflectsProviders(t *testing.T) {
 	app := NewApp(&config.Config{}, state.New())
-	app.SetProviders(map[string]provider.Provider{
+	app.setProviders(map[string]provider.Provider{
 		"am": stubProvider{name: "am", supportsSilence: true},
 		"bs": stubProvider{name: "bs", supportsSilence: false},
 	})
@@ -77,75 +75,25 @@ func TestGetSourceCapabilitiesReflectsProviders(t *testing.T) {
 	}
 }
 
-func TestRefreshAlertsForcesImmediateFetch(t *testing.T) {
+func TestRefreshAlertsTriggersEngine(t *testing.T) {
 	app := NewApp(&config.Config{}, state.New())
 
 	calls := 0
-	app.SetProviders(map[string]provider.Provider{
-		"am": stubProvider{
-			name: "am",
-			fetchFn: func(context.Context) ([]model.Alert, error) {
-				calls++
-				return []model.Alert{{
-					ID:     "a1",
-					Source: "am",
-					Name:   "CPUHigh",
-				}}, nil
-			},
-		},
-	})
+	app.setRefreshTrigger(func() { calls++ })
 
 	if err := app.RefreshAlerts(); err != nil {
 		t.Fatalf("RefreshAlerts returned error: %v", err)
 	}
 	if calls != 1 {
-		t.Fatalf("expected 1 fetch, got %d", calls)
-	}
-
-	alerts := app.GetAlerts()
-	if len(alerts) != 1 {
-		t.Fatalf("expected 1 alert after refresh, got %d", len(alerts))
-	}
-
-	health := app.GetSourcesHealth()
-	if len(health) != 1 {
-		t.Fatalf("expected 1 health entry after refresh, got %d", len(health))
-	}
-	if !health[0].OK {
-		t.Fatalf("expected source to be healthy after refresh, got %#v", health[0])
-	}
-	if health[0].LastPoll.IsZero() {
-		t.Fatalf("expected refresh to update last poll timestamp, got %#v", health[0])
+		t.Fatalf("expected refresh trigger to be invoked once, got %d", calls)
 	}
 }
 
-func TestRefreshAlertsRecordsFetchFailures(t *testing.T) {
+func TestRefreshAlertsWithoutTriggerIsNoOp(t *testing.T) {
 	app := NewApp(&config.Config{}, state.New())
-	app.SetProviders(map[string]provider.Provider{
-		"am": stubProvider{
-			name: "am",
-			fetchFn: func(context.Context) ([]model.Alert, error) {
-				return nil, errors.New("boom")
-			},
-		},
-	})
 
 	if err := app.RefreshAlerts(); err != nil {
-		t.Fatalf("RefreshAlerts returned error: %v", err)
-	}
-
-	health := app.GetSourcesHealth()
-	if len(health) != 1 {
-		t.Fatalf("expected 1 health entry after refresh, got %d", len(health))
-	}
-	if health[0].OK {
-		t.Fatalf("expected failed refresh to mark source unhealthy, got %#v", health[0])
-	}
-	if health[0].LastError != "boom" {
-		t.Fatalf("expected fetch error to be recorded, got %#v", health[0])
-	}
-	if health[0].LastPoll.Before(time.Now().Add(-time.Minute)) {
-		t.Fatalf("expected recent last poll timestamp, got %#v", health[0])
+		t.Fatalf("expected no error when no refresh trigger is registered, got %v", err)
 	}
 }
 

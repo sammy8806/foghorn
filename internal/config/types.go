@@ -46,9 +46,11 @@ type HideRule struct {
 type SourceConfig struct {
 	Name          string            `yaml:"name"`
 	Type          string            `yaml:"type"`
+	Enabled       *bool             `yaml:"enabled"`
 	URL           string            `yaml:"url"`
 	Auth          AuthConfig        `yaml:"auth"`
 	PollInterval  time.Duration     `yaml:"poll_interval"`
+	Timeout       time.Duration     `yaml:"timeout"`
 	Filters       []string          `yaml:"filters"`
 	SeverityLabel string            `yaml:"severity_label"`
 	BetterStack   BetterStackConfig `yaml:"betterstack"`
@@ -346,13 +348,21 @@ type UIConfig struct {
 	PopupWidth        int                 `yaml:"popup_width" json:"popup_width"`
 	PopupHeight       int                 `yaml:"popup_height" json:"popup_height"`
 	PopupPosition     string              `yaml:"popup_position" json:"popup_position"`
+	AutoPosition      *bool               `yaml:"auto_position" json:"auto_position"`
 	AlwaysOnTop       *bool               `yaml:"always_on_top" json:"always_on_top"`
 	PopupFollowCursor *bool               `yaml:"popup_follow_cursor" json:"popup_follow_cursor"`
 	ShowResolved      bool                `yaml:"show_resolved" json:"show_resolved"`
 	ShowSilenced      bool                `yaml:"show_silenced" json:"show_silenced"`
 	DefaultCreatedBy  string              `yaml:"default_created_by" json:"default_created_by"`
 	IdleImage         string              `yaml:"idle_image" json:"idle_image"`
+	Scale             UIScale             `yaml:"scale" json:"scale"`
 	SilenceEditor     SilenceEditorConfig `yaml:"silence_editor" json:"silence_editor"`
+}
+
+type UIScale struct {
+	Factor       float64 `yaml:"factor" json:"factor"`
+	Mode         string  `yaml:"mode" json:"mode"`
+	ApplyToPopup bool    `yaml:"apply_to_popup" json:"apply_to_popup"`
 }
 
 // SilenceEditorConfig controls the silence create/edit dialog. Pointer fields

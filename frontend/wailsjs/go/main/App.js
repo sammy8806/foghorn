@@ -58,6 +58,10 @@ export function GetUIConfig() {
   return window['go']['main']['App']['GetUIConfig']();
 }
 
+export function GetUIScale() {
+  return window['go']['main']['App']['GetUIScale']();
+}
+
 export function LayoutPopup(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
@@ -70,9 +74,6 @@ export function RefreshAlerts() {
   return window['go']['main']['App']['RefreshAlerts']();
 }
 
-export function SetProviders(arg1) {
-  return window['go']['main']['App']['SetProviders'](arg1);
-}
 
 export function TestNotificationForAlert(arg1, arg2) {
   return window['go']['main']['App']['TestNotificationForAlert'](arg1, arg2);
@@ -82,9 +83,6 @@ export function Unsilence(arg1, arg2) {
   return window['go']['main']['App']['Unsilence'](arg1, arg2);
 }
 
-export function UpdateConfig(arg1) {
-  return window['go']['main']['App']['UpdateConfig'](arg1);
-}
 
 export function UpdateSilence(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['UpdateSilence'](arg1, arg2, arg3, arg4, arg5, arg6);

@@ -99,7 +99,7 @@
     border: 1px solid #334155;
     border-radius: 3px;
     color: #e2e8f0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     padding: 3px 6px;
     outline: none;
     width: 100%;
@@ -127,7 +127,7 @@
   }
   .dropdown li {
     padding: 3px 8px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     color: #cbd5e1;
     cursor: pointer;
     font-family: monospace;

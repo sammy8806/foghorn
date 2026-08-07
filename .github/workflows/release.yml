@@ -16,15 +16,15 @@ jobs:
     env:
       APPLE_DEVELOPER_ID_CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
       APPLE_DEVELOPER_ID_CERT_PASSWORD:   ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-      APPLE_ID:                           ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD:        ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID:                      ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_API_KEY_ID:                   ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID:                ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_P8_BASE64:            ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
 
       - uses: actions/setup-node@v4
         with:
@@ -48,6 +48,24 @@ jobs:
             echo "FOGHORN_VERSION=$DISPATCH_VERSION" >> "$GITHUB_ENV"
           fi
 
+      - name: Require macOS signing credentials
+        run: |
+          required=(
+            APPLE_DEVELOPER_ID_CERT_P12_BASE64
+            APPLE_DEVELOPER_ID_CERT_PASSWORD
+            APPLE_API_KEY_ID
+            APPLE_API_ISSUER_ID
+            APPLE_API_KEY_P8_BASE64
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            [[ -n "${!name:-}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required GitHub Actions secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
       - name: Build DMG
         run: ./scripts/build-dmg.sh
 
@@ -64,7 +82,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
 
       - uses: actions/setup-node@v4
         with:
@@ -116,13 +134,63 @@ jobs:
           path: build/bin/foghorn-*-x86_64.AppImage
           if-no-files-found: error
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> "$env:GITHUB_PATH"
+
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          echo "$(go env GOPATH)\bin" >> "$env:GITHUB_PATH"
+
+      - name: Resolve FOGHORN_VERSION
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" && "$REF" == refs/tags/v* ]]; then
+            echo "FOGHORN_VERSION=${REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "FOGHORN_VERSION=$DISPATCH_VERSION" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build installer
+        run: ./scripts/build-windows.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foghorn-windows-installer
+          path: build/bin/foghorn-*-amd64-installer.exe
+          if-no-files-found: error
+
   release:
-    needs: [build-macos, build-linux]
+    needs: [build-macos, build-linux, build-windows]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Resolve release tag
         id: tag
         env:
@@ -136,6 +204,23 @@ jobs:
             echo "name=v$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build release notes from tag annotation
+        id: notes
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          BODY_FILE="${RUNNER_TEMP}/release-notes.md"
+          # Use the annotated tag message body (everything after the subject line)
+          # as the release notes; fall back to auto-generated notes if the tag
+          # is lightweight or carries no message (e.g. a dev workflow_dispatch).
+          if git for-each-ref "refs/tags/${TAG}" --format='%(contents:body)' > "$BODY_FILE" && [ -s "$BODY_FILE" ]; then
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            : > "$BODY_FILE"
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "path=$BODY_FILE" >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -146,6 +231,7 @@ jobs:
           ls -lah artifacts
           test -n "$(find artifacts -maxdepth 1 -name 'foghorn-*-universal.dmg' -print -quit)"
           test -n "$(find artifacts -maxdepth 1 -name 'foghorn-*-x86_64.AppImage' -print -quit)"
+          test -n "$(find artifacts -maxdepth 1 -name 'foghorn-*-amd64-installer.exe' -print -quit)"
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -153,8 +239,10 @@ jobs:
           files: |
             artifacts/foghorn-*-universal.dmg
             artifacts/foghorn-*-x86_64.AppImage
+            artifacts/foghorn-*-amd64-installer.exe
           overwrite_files: true
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.generate }}
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.name, '-') }}

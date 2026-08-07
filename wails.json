@@ -9,5 +9,9 @@
   "author": {
     "name": "Steven Tappert",
     "email": "steven.tappert@gmail.com"
+  },
+  "info": {
+    "companyName": "Steven Tappert",
+    "productName": "Foghorn"
   }
 }

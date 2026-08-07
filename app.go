@@ -29,6 +29,11 @@ type App struct {
 	actionEng  *action.Engine
 	resolveEng *resolve.Engine
 	hideEng    *hide.Engine
+
+	// refreshTrigger asks the poll engine to poll every source immediately,
+	// off its normal cycle. Wired by main.go to the current engine, re-set on
+	// each config reload.
+	refreshTrigger func()
 }
 
 var currentApp *App
@@ -57,12 +62,25 @@ func activeApp() *App {
 	return currentApp
 }
 
-// SetProviders wires providers into the app after startup.
-func (a *App) SetProviders(providers map[string]provider.Provider) {
+// setProviders wires providers into the app after startup. Unexported so Wails
+// does not expose it as a JS binding: everything the frontend can call is
+// reachable from any document the webview ends up loading, so only genuine UI
+// operations belong in the bound surface. main.go shares this package.
+func (a *App) setProviders(providers map[string]provider.Provider) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.providers = providers
 	a.silenceMgr = silence.New(providers)
+}
+
+// setRefreshTrigger registers the function used to force an immediate poll of
+// every source. main.go points this at the current poll engine's RefreshNow.
+// Unexported so Wails does not bind it as a JS method (it takes a func, which
+// is not a meaningful binding); main.go shares this package and calls it.
+func (a *App) setRefreshTrigger(fn func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.refreshTrigger = fn
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -73,8 +91,10 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(_ context.Context) {}
 
-// UpdateConfig replaces the active config (called on hot-reload).
-func (a *App) UpdateConfig(cfg *config.Config) {
+// updateConfig replaces the active config (called on hot-reload). Unexported
+// for the same reason as setProviders — bound, it would let any script in the
+// webview install its own actions/resolvers and then run them.
+func (a *App) updateConfig(cfg *config.Config) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cfg = cfg
@@ -155,70 +175,18 @@ func (a *App) GetOnCallStatus() []model.OnCallStatus {
 	return a.store.OnCalls()
 }
 
-// RefreshAlerts forces an immediate fetch from every configured provider.
+// RefreshAlerts asks the poll engine to poll every source immediately, off its
+// normal cycle. It does not fetch synchronously: each source's goroutine fetches
+// in parallel and pushes results to the UI as it finishes (via the alerts:updated
+// event). This keeps a slow or broken source from blocking the others.
 func (a *App) RefreshAlerts() error {
 	a.mu.RLock()
-	ctx := a.ctx
-	providers := make(map[string]provider.Provider, len(a.providers))
-	for source, p := range a.providers {
-		providers[source] = p
-	}
+	trigger := a.refreshTrigger
 	a.mu.RUnlock()
 
-	if ctx == nil {
-		ctx = context.Background()
+	if trigger != nil {
+		trigger()
 	}
-
-	for source, p := range providers {
-		alerts, err := p.Fetch(ctx)
-		if err != nil {
-			a.store.RecordPollError(source, err)
-			continue
-		}
-
-		// Enrich alerts with silence details if the provider supports it.
-		if sp, ok := p.(provider.SilenceProvider); ok {
-			silences, err := sp.FetchSilences(ctx)
-			if err == nil {
-				silenceMap := make(map[string]model.SilenceInfo, len(silences))
-				for _, s := range silences {
-					silenceMap[s.ID] = s
-				}
-				for i, alert := range alerts {
-					if len(alert.SilencedBy) == 0 {
-						continue
-					}
-					var matched []model.SilenceInfo
-					for _, sid := range alert.SilencedBy {
-						if info, ok := silenceMap[sid]; ok {
-							matched = append(matched, info)
-						}
-					}
-					if len(matched) > 0 {
-						alerts[i].Silences = matched
-					}
-				}
-			}
-		}
-
-		a.store.Update(source, alerts)
-		if onCallProvider, ok := p.(provider.OnCallProvider); ok {
-			onCall, err := onCallProvider.FetchOnCall(ctx)
-			if err != nil {
-				a.store.ClearOnCall(source)
-				a.store.RecordPollError(source, fmt.Errorf("on-call lookup failed: %w", err))
-				continue
-			}
-			if onCall == nil {
-				a.store.ClearOnCall(source)
-			} else {
-				a.store.UpdateOnCall(source, *onCall)
-			}
-		}
-
-		a.store.RecordPollSuccess(source)
-	}
-
 	return nil
 }
 
@@ -244,6 +212,12 @@ func (a *App) GetUIConfig() config.UIConfig {
 	ui.DefaultCreatedBy = config.ResolveCreatedByDefault(ui.DefaultCreatedBy)
 	log.Printf("app: GetUIConfig returning default_created_by=%q", ui.DefaultCreatedBy)
 	return ui
+}
+
+func (a *App) GetUIScale() config.UIScale {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cfg.UI.Scale
 }
 
 // AboutInfo is the static app metadata shown in the in-app About screen.
@@ -309,7 +283,9 @@ func (a *App) CreateSilence(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return silenceMgr.CreateSilence(ctx, source, matchers, duration, createdBy, comment, defaultCreatedBy)
+	id, err := silenceMgr.CreateSilence(ctx, source, matchers, duration, createdBy, comment, defaultCreatedBy)
+	log.Printf("app: CreateSilence source=%q matchers=%d duration=%q -> id=%q err=%v", source, len(matchers), duration, id, err)
+	return id, err
 }
 
 // UpdateSilence replaces an existing silence in place on the named source.
@@ -330,7 +306,9 @@ func (a *App) UpdateSilence(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return silenceMgr.UpdateSilence(ctx, source, silenceID, matchers, duration, createdBy, comment, defaultCreatedBy)
+	err := silenceMgr.UpdateSilence(ctx, source, silenceID, matchers, duration, createdBy, comment, defaultCreatedBy)
+	log.Printf("app: UpdateSilence source=%q id=%q matchers=%d duration=%q -> err=%v", source, silenceID, len(matchers), duration, err)
+	return err
 }
 
 // Unsilence expires a silence by ID.

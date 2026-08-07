@@ -92,6 +92,104 @@ func TestEnginePolls(t *testing.T) {
 	}
 }
 
+func TestEngineRefreshNowTriggersImmediatePoll(t *testing.T) {
+	store := state.New()
+	mp := &mockProvider{name: "test"}
+
+	// Long interval so the ticker won't fire during the test; only the initial
+	// poll and the RefreshNow-triggered poll should occur.
+	sources := []config.SourceConfig{
+		{Name: "test", PollInterval: time.Hour},
+	}
+	e := New(store, sources, func(string, Provider) Provider { return mp })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	diffCh := e.Start(ctx)
+
+	// Drain the initial poll.
+	select {
+	case <-diffCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for initial poll")
+	}
+
+	e.RefreshNow()
+
+	select {
+	case <-diffCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for RefreshNow poll")
+	}
+
+	if got := mp.fetchCount.Load(); got < 2 {
+		t.Fatalf("expected at least 2 fetches after RefreshNow, got %d", got)
+	}
+}
+
+func TestEnginePollTimeoutDoesNotHang(t *testing.T) {
+	store := state.New()
+	mp := &blockingProvider{name: "slow"}
+
+	sources := []config.SourceConfig{
+		{Name: "slow", PollInterval: time.Hour, Timeout: 50 * time.Millisecond},
+	}
+	e := New(store, sources, func(string, Provider) Provider { return mp })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	diffCh := e.Start(ctx)
+
+	select {
+	case <-diffCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("poll hung past the per-source timeout")
+	}
+
+	health := store.SourcesHealth()
+	if len(health) != 1 || health[0].OK {
+		t.Fatalf("expected timed-out source to be unhealthy, got %#v", health)
+	}
+}
+
+func TestEngineEnrichesSilences(t *testing.T) {
+	store := state.New()
+	sp := &silenceProvider{
+		name: "am",
+		alerts: []model.Alert{
+			{ID: "a1", Source: "am", Name: "Down", SilencedBy: []string{"sil-1"},
+				Labels: map[string]string{"alertname": "Down"}},
+		},
+		silences: []model.SilenceInfo{
+			{ID: "sil-1", CreatedBy: "oncall", Comment: "maintenance"},
+		},
+	}
+	sources := []config.SourceConfig{
+		{Name: "am", PollInterval: time.Hour},
+	}
+	e := New(store, sources, func(string, Provider) Provider { return sp })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	diffCh := e.Start(ctx)
+	select {
+	case <-diffCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for poll")
+	}
+
+	all := store.All()
+	if len(all) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(all))
+	}
+	if len(all[0].Silences) != 1 || all[0].Silences[0].ID != "sil-1" {
+		t.Fatalf("expected alert enriched with silence sil-1, got %#v", all[0].Silences)
+	}
+}
+
 func TestEngineRecordsOnCallFailureInHealth(t *testing.T) {
 	store := state.New()
 	mp := &mockProvider{
@@ -137,4 +235,50 @@ func TestEngineRecordsOnCallFailureInHealth(t *testing.T) {
 	if onCalls := store.OnCalls(); len(onCalls) != 0 {
 		t.Fatalf("expected no on-call data after failure, got %d entries", len(onCalls))
 	}
+}
+
+// blockingProvider's Fetch blocks until the context is cancelled, so it only
+// returns once the per-source timeout fires.
+type blockingProvider struct {
+	name string
+}
+
+func (b *blockingProvider) Name() string          { return b.name }
+func (b *blockingProvider) Type() string          { return "mock" }
+func (b *blockingProvider) SupportsSilence() bool { return false }
+func (b *blockingProvider) Fetch(ctx context.Context) ([]model.Alert, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (b *blockingProvider) Silence(context.Context, model.SilenceRequest) (string, error) {
+	return "", nil
+}
+func (b *blockingProvider) Unsilence(context.Context, string) error { return nil }
+func (b *blockingProvider) Health(context.Context) model.ProviderHealth {
+	return model.ProviderHealth{}
+}
+
+// silenceProvider implements provider.SilenceProvider so the engine can enrich
+// alerts with silence detail.
+type silenceProvider struct {
+	name     string
+	alerts   []model.Alert
+	silences []model.SilenceInfo
+}
+
+func (s *silenceProvider) Name() string          { return s.name }
+func (s *silenceProvider) Type() string          { return "mock" }
+func (s *silenceProvider) SupportsSilence() bool { return true }
+func (s *silenceProvider) Fetch(context.Context) ([]model.Alert, error) {
+	return s.alerts, nil
+}
+func (s *silenceProvider) Silence(context.Context, model.SilenceRequest) (string, error) {
+	return "", nil
+}
+func (s *silenceProvider) Unsilence(context.Context, string) error { return nil }
+func (s *silenceProvider) Health(context.Context) model.ProviderHealth {
+	return model.ProviderHealth{}
+}
+func (s *silenceProvider) FetchSilences(context.Context) ([]model.SilenceInfo, error) {
+	return s.silences, nil
 }

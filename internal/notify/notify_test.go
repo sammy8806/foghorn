@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -146,5 +147,39 @@ func TestSendNewAlertNotification(t *testing.T) {
 	}
 	if gotBody != "Test alert summary for Alert1" {
 		t.Fatalf("unexpected body: %q", gotBody)
+	}
+}
+
+func TestSanitizeNotificationText(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain text is untouched", "Disk usage at 95%", "Disk usage at 95%"},
+		{"strips markup", `Click <a href="http://evil.example">here</a>`, "Click here"},
+		{"strips bare tags", "<b>urgent</b>", "urgent"},
+		{"newlines become spaces", "line one\nline two", "line one line two"},
+		{"drops control characters", "bell\x07text", "belltext"},
+		{"trims", "  padded  ", "padded"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sanitizeNotificationText(tc.in); got != tc.want {
+				t.Fatalf("sanitizeNotificationText(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeNotificationTextTruncates(t *testing.T) {
+	long := strings.Repeat("a", maxNotificationTextLen+50)
+	got := sanitizeNotificationText(long)
+	if len([]rune(got)) != maxNotificationTextLen+1 {
+		t.Fatalf("expected truncation to %d runes plus ellipsis, got %d", maxNotificationTextLen, len([]rune(got)))
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("expected an ellipsis suffix, got %q", got)
 	}
 }

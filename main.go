@@ -23,6 +23,8 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -55,6 +57,8 @@ func main() {
 	var stopRuntime context.CancelFunc
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
+	startHidden := tray.StartHiddenByDefault()
+	windowVisible.Store(!startHidden)
 
 	// requestQuit marks the app as quitting and asks Wails to terminate. It is
 	// used by both the tray "Quit" menu item and the SIGINT/SIGTERM handler.
@@ -81,7 +85,8 @@ func main() {
 		}
 		setDockIconVisible(true)
 		wailsruntime.WindowShow(app.ctx)
-		wailsruntime.WindowSetAlwaysOnTop(app.ctx, *cfg.UI.AlwaysOnTop)
+		alwaysOnTop := cfg.UI.AlwaysOnTop == nil || *cfg.UI.AlwaysOnTop
+		wailsruntime.WindowSetAlwaysOnTop(app.ctx, alwaysOnTop)
 		windowVisible.Store(true)
 		wailsruntime.EventsEmit(app.ctx, "popup:opening")
 	}
@@ -129,15 +134,30 @@ func main() {
 		}
 	}()
 
+	// On macOS a shutdown/logout would otherwise be cancelled by the app:
+	// the system's terminate request ends up in OnBeforeClose, which hides
+	// the window instead of quitting, and macOS blames Foghorn for
+	// interrupting the shutdown. Quit voluntarily when the system announces
+	// a power-off (no-op on other platforms).
+	watchSystemPowerOff(requestQuit)
+
 	if err := wails.Run(&options.App{
 		Title:             "Foghorn",
 		Width:             cfg.UI.PopupWidth,
 		Height:            cfg.UI.PopupHeight,
-		StartHidden:       tray.StartHiddenByDefault(),
+		StartHidden:       startHidden,
 		HideWindowOnClose: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		Windows: &windows.Options{
+			WebviewUserDataPath: webviewUserDataPath(),
+		},
+		// Without Mac options Wails treats the window as non-zoomable and
+		// disables the zoom button, which also breaks the standard macOS
+		// double-click-titlebar-to-zoom gesture. An empty options struct
+		// (DisableZoom: false) restores both.
+		Mac: &mac.Options{},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			setDockIconVisible(!tray.StartHiddenByDefault())
@@ -150,8 +170,9 @@ func main() {
 					stopRuntime()
 				}
 
-				app.UpdateConfig(nextCfg)
-				app.SetProviders(buildProviders(nextCfg.Sources))
+				app.updateConfig(nextCfg)
+				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
+				app.setProviders(buildProviders(nextCfg.Sources))
 				store.SyncSources(sourceNames(nextCfg.Sources))
 				severities, err := config.NormalizeSeverityConfig(nextCfg.Severities)
 				if err != nil {
@@ -168,6 +189,7 @@ func main() {
 				notifier := notify.New(nextCfg.Notifications, severities)
 				pollEng := poll.New(store, nextCfg.Sources, nil)
 				diffCh := pollEng.Start(bgCtx)
+				app.setRefreshTrigger(pollEng.RefreshNow)
 
 				go func(localCtx context.Context, localDiffCh <-chan poll.DiffEvent, localNotifier *notify.Engine) {
 					for {
@@ -234,6 +256,18 @@ func configPath() string {
 		dir = filepath.Join(home, ".config")
 	}
 	return filepath.Join(dir, "foghorn", "config.yaml")
+}
+
+func webviewUserDataPath() string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir, err = os.UserConfigDir()
+		if err != nil {
+			home, _ := os.UserHomeDir()
+			dir = filepath.Join(home, ".cache")
+		}
+	}
+	return filepath.Join(dir, "foghorn", "webview2")
 }
 
 func buildProviders(sources []config.SourceConfig) map[string]provider.Provider {

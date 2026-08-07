@@ -1,11 +1,16 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import { alerts, labelNamesForSource, labelValuesForSource, type Matcher } from '../stores/alerts';
+  import { formatMatcherBlock, parseMatcherBlock } from '../stores/matchers';
   import LabelAutocomplete from './LabelAutocomplete.svelte';
 
   export let matchers: Matcher[] = [];
+  export let textMatchers: Matcher[] = matchers;
   export let source: string = '';
   export let revealedAfterIndex: number | null = null;
   export let revealedCount: number = 0;
+
+  const dispatch = createEventDispatcher<{ replaceAll: Matcher[] }>();
 
   type Op = '=' | '!=' | '=~' | '!~';
   const OPS: Op[] = ['=', '!=', '=~', '!~'];
@@ -68,6 +73,49 @@
     matchers = [...matchers, { name: '', value: '', isRegex: false, isEqual: true }];
   }
 
+  let showPaste = false;
+  let pasteText = '';
+  let pasteNote = '';
+  let pasteParseError = false;
+  let pasteFocused = false;
+  let pasteTextarea: HTMLTextAreaElement | null = null;
+
+  function togglePaste() {
+    showPaste = !showPaste;
+    if (showPaste) {
+      pasteText = formatMatcherBlock(textMatchers);
+      pasteNote = '';
+      pasteParseError = false;
+    }
+  }
+
+  function syncFromPasteText() {
+    const { matchers: parsed, skipped } = parseMatcherBlock(pasteText);
+    if (skipped > 0) {
+      pasteNote = `${skipped} line${skipped === 1 ? '' : 's'} skipped`;
+      pasteParseError = true;
+      return;
+    }
+    dispatch('replaceAll', parsed);
+    pasteNote = pasteText.trim() ? `${parsed.length} matcher${parsed.length === 1 ? '' : 's'}` : '';
+    pasteParseError = false;
+  }
+
+  async function copyPasteText() {
+    try {
+      await navigator.clipboard.writeText(pasteText);
+      pasteNote = 'Copied';
+    } catch {
+      pasteTextarea?.select();
+      pasteNote = 'Text selected';
+    }
+  }
+
+  $: formattedMatchers = formatMatcherBlock(textMatchers);
+  $: if (showPaste && !pasteFocused && !pasteParseError && pasteText !== formattedMatchers) {
+    pasteText = formattedMatchers;
+  }
+
   function isRevealed(i: number): boolean {
     if (revealedAfterIndex === null) return false;
     return i >= revealedAfterIndex && i < revealedAfterIndex + revealedCount;
@@ -123,8 +171,29 @@
   {/each}
   <div class="matcher-footer">
     <button class="add" type="button" on:click={addBlank}>+ Add matcher</button>
+    <button class="add" type="button" on:click={togglePaste}>Paste</button>
     <slot name="actions" />
   </div>
+
+  {#if showPaste}
+    <div class="paste-panel">
+      <textarea
+        class="paste-input"
+        bind:this={pasteTextarea}
+        bind:value={pasteText}
+        on:focus={() => (pasteFocused = true)}
+        on:blur={() => (pasteFocused = false)}
+        on:input={syncFromPasteText}
+        rows="4"
+        placeholder={'ns=prod\napp=~api.*\nseverity="critical"'}
+      />
+      {#if pasteNote}<span class="paste-note">{pasteNote}</span>{/if}
+      <div class="paste-actions">
+        <button class="add" type="button" on:click={copyPasteText}>Copy</button>
+        <button class="add" type="button" on:click={() => { showPaste = false; pasteNote = ''; pasteParseError = false; pasteFocused = false; }}>Done</button>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -154,7 +223,7 @@
     border: 1px solid #334155;
     border-radius: 3px;
     color: #e2e8f0;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     padding: 3px 4px;
     font-family: monospace;
     outline: none;
@@ -165,7 +234,7 @@
     background: none;
     border: none;
     color: #64748b;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     cursor: pointer;
     padding: 0 4px;
   }
@@ -173,7 +242,7 @@
   .chip-error {
     grid-column: 1 / -1;
     color: #f87171;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
   }
   .matcher-footer {
     display: flex;
@@ -187,7 +256,7 @@
     border: 1px dashed #334155;
     border-radius: 3px;
     color: #94a3b8;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 3px 8px;
     cursor: pointer;
   }
@@ -211,7 +280,7 @@
   }
   .revealed-separator span {
     color: #475569;
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
     letter-spacing: 0.05em;
     white-space: nowrap;
   }
@@ -224,4 +293,27 @@
   .chip.was-collapsed {
     animation: revealed-fade 2.5s ease-out forwards;
   }
+
+  .paste-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 8px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 3px;
+  }
+  .paste-input {
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    color: #e2e8f0;
+    font-family: monospace;
+    font-size: calc(12px * var(--font-scale, 1));
+    padding: 6px;
+    resize: vertical;
+  }
+  .paste-note { color: #fbbf24; font-size: calc(10px * var(--font-scale, 1)); }
+  .paste-actions { display: flex; gap: 6px; }
 </style>

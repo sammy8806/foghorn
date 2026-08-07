@@ -123,17 +123,35 @@ export namespace config {
 	        this.collapse_matchers = source["collapse_matchers"];
 	    }
 	}
+	export class UIScale {
+	    factor: number;
+	    mode: string;
+	    apply_to_popup: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UIScale(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.factor = source["factor"];
+	        this.mode = source["mode"];
+	        this.apply_to_popup = source["apply_to_popup"];
+	    }
+	}
 	export class UIConfig {
 	    theme: string;
 	    popup_width: number;
 	    popup_height: number;
 	    popup_position: string;
+	    auto_position?: boolean;
 	    always_on_top?: boolean;
 	    popup_follow_cursor?: boolean;
 	    show_resolved: boolean;
 	    show_silenced: boolean;
 	    default_created_by: string;
 	    idle_image: string;
+	    scale: UIScale;
 	    silence_editor: SilenceEditorConfig;
 	
 	    static createFrom(source: any = {}) {
@@ -146,12 +164,14 @@ export namespace config {
 	        this.popup_width = source["popup_width"];
 	        this.popup_height = source["popup_height"];
 	        this.popup_position = source["popup_position"];
+	        this.auto_position = source["auto_position"];
 	        this.always_on_top = source["always_on_top"];
 	        this.popup_follow_cursor = source["popup_follow_cursor"];
 	        this.show_resolved = source["show_resolved"];
 	        this.show_silenced = source["show_silenced"];
 	        this.default_created_by = source["default_created_by"];
 	        this.idle_image = source["idle_image"];
+	        this.scale = this.convertValues(source["scale"], UIScale);
 	        this.silence_editor = this.convertValues(source["silence_editor"], SilenceEditorConfig);
 	    }
 	
@@ -452,9 +472,11 @@ export namespace config {
 	export class SourceConfig {
 	    Name: string;
 	    Type: string;
+	    Enabled?: boolean;
 	    URL: string;
 	    Auth: AuthConfig;
 	    PollInterval: number;
+	    Timeout: number;
 	    Filters: string[];
 	    SeverityLabel: string;
 	    BetterStack: BetterStackConfig;
@@ -467,9 +489,11 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Name = source["Name"];
 	        this.Type = source["Type"];
+	        this.Enabled = source["Enabled"];
 	        this.URL = source["URL"];
 	        this.Auth = this.convertValues(source["Auth"], AuthConfig);
 	        this.PollInterval = source["PollInterval"];
+	        this.Timeout = source["Timeout"];
 	        this.Filters = source["Filters"];
 	        this.SeverityLabel = source["SeverityLabel"];
 	        this.BetterStack = this.convertValues(source["BetterStack"], BetterStackConfig);
@@ -652,6 +676,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 	
 	
 	
@@ -883,6 +908,7 @@ export namespace model {
 	export class SourceHealth {
 	    source: string;
 	    ok: boolean;
+	    pending: boolean;
 	    // Go type: time
 	    lastPoll: any;
 	    lastError?: string;
@@ -896,6 +922,7 @@ export namespace model {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
 	        this.ok = source["ok"];
+	        this.pending = source["pending"];
 	        this.lastPoll = this.convertValues(source["lastPoll"], null);
 	        this.lastError = source["lastError"];
 	        this.consecFails = source["consecFails"];

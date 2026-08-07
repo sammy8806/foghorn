@@ -186,3 +186,60 @@ func TestClipboardCommand_Unsupported(t *testing.T) {
 		t.Fatal("expected error for unsupported platform")
 	}
 }
+
+// URL action templates interpolate alert fields from the remote source, so the
+// rendered URL has to be scheme-checked before it reaches the platform opener.
+func TestExecute_URLActionRejectsUnsafeSchemes(t *testing.T) {
+	original := openURL
+	defer func() { openURL = original }()
+
+	var opened []string
+	openURL = func(url string) error {
+		opened = append(opened, url)
+		return nil
+	}
+
+	cases := []struct {
+		name     string
+		template string
+		wantOpen bool
+	}{
+		{"https", "https://runbooks.example.com/{{.Name}}", true},
+		{"http", "http://runbooks.example.com/{{.Name}}", true},
+		{"mailto", "mailto:oncall@example.com?subject={{.Name}}", true},
+		{"file from annotation", "{{.Annotations.evil}}", false},
+		{"javascript", "javascript:alert(1)", false},
+		{"custom handler", "ms-msdt:/id", false},
+		{"no host", "https:///nowhere", false},
+		{"empty", "{{.Annotations.missing}}", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opened = nil
+			alert := makeAlert("HighMem", "warning", "prod")
+			alert.Annotations["evil"] = "file:///etc/passwd"
+
+			action := config.ActionConfig{
+				Action: config.ActionDef{Type: "url", Template: tc.template},
+			}
+			_, err := New(nil).Execute(action, alert)
+
+			if tc.wantOpen {
+				if err != nil {
+					t.Fatalf("Execute() error: %v", err)
+				}
+				if len(opened) != 1 {
+					t.Fatalf("expected the URL to be opened, got %v", opened)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected an error for template %q", tc.template)
+			}
+			if len(opened) != 0 {
+				t.Fatalf("unsafe URL was handed to the opener: %v", opened)
+			}
+		})
+	}
+}

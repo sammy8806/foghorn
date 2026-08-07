@@ -58,7 +58,7 @@
     border: none;
     color: #93c5fd;
     cursor: pointer;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     padding: 0;
   }
 
@@ -82,7 +82,7 @@
   }
 
   h1 {
-    font-size: 18px;
+    font-size: calc(18px * var(--font-scale, 1));
     margin: 4px 0 0;
     font-weight: 600;
   }
@@ -90,7 +90,7 @@
   .version {
     color: #94a3b8;
     font-weight: 400;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale, 1));
   }
 
   .description {
@@ -110,6 +110,6 @@
   .copyright {
     margin: 8px 0 0;
     color: #64748b;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
   }
 </style>

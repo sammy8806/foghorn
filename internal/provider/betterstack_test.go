@@ -309,3 +309,116 @@ func TestBetterStackFetchOnCall(t *testing.T) {
 		t.Fatalf("unexpected on-call users: %#v", status.Users)
 	}
 }
+
+// A hostile source can put any URL in pagination.next. Following it would send
+// the configured API token to that host, so cross-origin links are dropped.
+func TestBetterStackIgnoresCrossOriginPagination(t *testing.T) {
+	var attackerHits int
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attackerHits++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	}))
+	defer attacker.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v3/incidents":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":       []any{},
+				"pagination": map[string]any{"next": attacker.URL + "/steal"},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+		}
+	}))
+	defer server.Close()
+
+	p := NewBetterStack(config.SourceConfig{
+		Name: "better",
+		Type: "betterstack",
+		URL:  server.URL,
+		Auth: config.AuthConfig{Type: "bearer", Token: "secret"},
+	})
+
+	if _, err := p.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch() error: %v", err)
+	}
+	if attackerHits != 0 {
+		t.Fatalf("followed cross-origin pagination link %d time(s); token would have leaked", attackerHits)
+	}
+}
+
+// A source that always advertises another page must not keep Foghorn fetching
+// forever.
+func TestBetterStackCapsPagination(t *testing.T) {
+	var pages int
+	var baseURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/v3/incidents" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+			return
+		}
+		pages++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":       []any{},
+			"pagination": map[string]any{"next": baseURL + r.URL.String()},
+		})
+	}))
+	defer server.Close()
+	baseURL = server.URL
+
+	p := NewBetterStack(config.SourceConfig{Name: "better", Type: "betterstack", URL: server.URL})
+
+	if _, err := p.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch() error: %v", err)
+	}
+	if pages != maxIncidentPages {
+		t.Fatalf("fetched %d pages, want the cap of %d", pages, maxIncidentPages)
+	}
+}
+
+// generatorURL and the "link" annotation are attacker-controlled; non-http(s)
+// values must not survive into the model (the UI renders them as links).
+func TestBetterStackDropsUnsafeIncidentURLs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v3/incidents" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{
+					"id":   "incident-001",
+					"type": "incident",
+					"attributes": map[string]any{
+						"name":       "evil",
+						"cause":      "Status 404",
+						"started_at": "2020-03-09T17:37:56Z",
+						"url":        "javascript:window.go.main.App.RefreshAlerts()",
+						"origin_url": "file:///etc/passwd",
+					},
+				}},
+				"pagination": map[string]any{"next": ""},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	}))
+	defer server.Close()
+
+	p := NewBetterStack(config.SourceConfig{Name: "better", Type: "betterstack", URL: server.URL})
+
+	alerts, err := p.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch() error: %v", err)
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(alerts))
+	}
+	if alerts[0].GeneratorURL != "" {
+		t.Fatalf("expected javascript: generatorURL to be dropped, got %q", alerts[0].GeneratorURL)
+	}
+	if link := alerts[0].Annotations["link"]; link != "" {
+		t.Fatalf("expected unsafe link annotation to be dropped, got %q", link)
+	}
+}

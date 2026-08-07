@@ -3,9 +3,11 @@ package notify
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"foghorn/internal/config"
 	"foghorn/internal/model"
@@ -13,6 +15,36 @@ import (
 
 // send is the notification dispatcher; overridable in tests.
 var send = defaultSend
+
+// maxNotificationTextLen bounds what a single alert can push into a
+// notification. Alert names and summaries come from the source and can be
+// arbitrarily long.
+const maxNotificationTextLen = 500
+
+var notificationMarkupPattern = regexp.MustCompile(`<[^>]*>`)
+
+// sanitizeNotificationText strips markup and control characters from
+// remote-supplied notification text. Some Linux notification daemons render a
+// subset of HTML (including <a href>), which would let a hostile alert source
+// put clickable links or fake UI into a desktop notification.
+func sanitizeNotificationText(text string) string {
+	text = notificationMarkupPattern.ReplaceAllString(text, "")
+	text = strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\t':
+			return ' '
+		}
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, text)
+	text = strings.TrimSpace(text)
+	if len(text) > maxNotificationTextLen {
+		text = strings.TrimSpace(text[:maxNotificationTextLen]) + "…"
+	}
+	return text
+}
 
 // Engine sends OS notifications for alert changes.
 type Engine struct {
@@ -30,7 +62,7 @@ const defaultBatchWindow = 3 * time.Second
 func SendNewAlertNotification(alert model.Alert) error {
 	normalized, _ := config.NormalizeSeverityConfig(config.DefaultSeverityConfig())
 	title, body := newAlertNotificationContent(alert, normalized.Scheme())
-	return send(title, body)
+	return send(sanitizeNotificationText(title), sanitizeNotificationText(body))
 }
 
 func New(cfg config.NotificationsConfig, severities config.NormalizedSeverityConfig) *Engine {
@@ -120,7 +152,7 @@ func (e *Engine) sendResolved(alert model.Alert) {
 }
 
 func (e *Engine) send(title, body string) {
-	if err := send(title, body); err != nil {
+	if err := send(sanitizeNotificationText(title), sanitizeNotificationText(body)); err != nil {
 		log.Printf("notify: failed to send notification: %v", err)
 	}
 }

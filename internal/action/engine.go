@@ -3,8 +3,10 @@ package action
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"runtime"
+	"strings"
 	"text/template"
 
 	"foghorn/internal/config"
@@ -40,11 +42,15 @@ func (e *Engine) ActionsForAlert(alert model.Alert) []config.ActionConfig {
 func (e *Engine) Execute(action config.ActionConfig, alert model.Alert) (string, error) {
 	switch action.Action.Type {
 	case "url":
-		url, err := renderTemplate(action.Action.Template, alert)
+		rendered, err := renderTemplate(action.Action.Template, alert)
 		if err != nil {
 			return "", fmt.Errorf("rendering URL template: %w", err)
 		}
-		return url, openURL(url)
+		target, err := validateActionURL(rendered)
+		if err != nil {
+			return rendered, err
+		}
+		return target, openURL(target)
 
 	case "shell":
 		cmd, err := renderTemplate(action.Action.Command, alert)
@@ -63,6 +69,38 @@ func (e *Engine) Execute(action config.ActionConfig, alert model.Alert) (string,
 	default:
 		return "", fmt.Errorf("unknown action type %q", action.Action.Type)
 	}
+}
+
+// allowedActionURLSchemes are the schemes a "url" action may hand to the
+// platform opener.
+var allowedActionURLSchemes = map[string]bool{
+	"http":   true,
+	"https":  true,
+	"mailto": true,
+}
+
+// validateActionURL checks a rendered URL action before it reaches xdg-open /
+// open / rundll32. The template interpolates alert fields, which come from the
+// remote source, so the result is only as trustworthy as that source: without a
+// scheme check an alert could make the platform opener launch a `file://` path
+// or an arbitrary registered protocol handler.
+func validateActionURL(rendered string) (string, error) {
+	trimmed := strings.TrimSpace(rendered)
+	if trimmed == "" {
+		return "", fmt.Errorf("URL action produced an empty URL")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("URL action produced an invalid URL %q: %w", trimmed, err)
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if !allowedActionURLSchemes[scheme] {
+		return "", fmt.Errorf("URL action produced a %q URL; only http, https and mailto are allowed (got %q)", parsed.Scheme, trimmed)
+	}
+	if scheme != "mailto" && parsed.Host == "" {
+		return "", fmt.Errorf("URL action produced a URL with no host: %q", trimmed)
+	}
+	return trimmed, nil
 }
 
 func matchesAlert(matchLabels map[string]string, alert model.Alert) bool {

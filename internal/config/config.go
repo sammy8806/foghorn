@@ -3,15 +3,24 @@ package config
 import (
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"os/user"
 	"regexp"
 	"strings"
+	"time"
 
 	"foghorn/internal/duration"
 
 	"gopkg.in/yaml.v3"
 )
+
+// DefaultSourceTimeout bounds a single source's fetch (alerts + silences +
+// on-call) when a source does not set its own `timeout`. It matches the
+// providers' built-in HTTP client timeout so a slow/broken source cannot hang
+// a poll indefinitely.
+const DefaultSourceTimeout = 10 * time.Second
 
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
@@ -37,11 +46,19 @@ func Default() *Config {
 			BatchThreshold: 5,
 		},
 		UI: UIConfig{
-			Theme:            "system",
-			PopupWidth:       800,
-			PopupHeight:      600,
-			PopupPosition:    "top_right",
-			DefaultCreatedBy: defaultCreatedBy(),
+			Theme:             "system",
+			PopupWidth:        800,
+			PopupHeight:       600,
+			PopupPosition:     "top_right",
+			AutoPosition:      ptrTo(true),
+			DefaultCreatedBy:  defaultCreatedBy(),
+			AlwaysOnTop:       ptrTo(true),
+			PopupFollowCursor: ptrTo(true),
+			Scale: UIScale{
+				Factor:       1.0,
+				Mode:         "fonts",
+				ApplyToPopup: true,
+			},
 			SilenceEditor: SilenceEditorConfig{
 				AlwaysVisibleMatchers: ptrTo(defaultSilenceEditorMatchers()),
 				CollapseMatchers:      ptrTo(true),
@@ -59,7 +76,7 @@ func Load(path string) (*Config, error) {
 
 	expanded := expandEnvVars(string(data))
 
-	var cfg Config
+	cfg := *Default()
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
@@ -81,6 +98,35 @@ func expandEnvVars(input string) string {
 	})
 }
 
+// warnInsecureSourceURL logs a warning for sources fetched over plain HTTP to a
+// non-local host. Alert payloads drive links, notifications and (if configured)
+// resolver/action commands, and the auth credentials go out with every request —
+// over cleartext HTTP anyone on the network path can read or rewrite all of it.
+func warnInsecureSourceURL(name, rawURL string) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "http") {
+		return
+	}
+	if isLoopbackHost(parsed.Hostname()) {
+		return
+	}
+	log.Printf("config: WARNING source %q uses plain HTTP (%s): credentials and alert content are sent in cleartext and can be modified in transit; use https", name, parsed.Host)
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
 func validate(cfg *Config) error {
 	normalizedSeverities, err := NormalizeSeverityConfig(cfg.Severities)
 	if err != nil {
@@ -98,7 +144,11 @@ func validate(cfg *Config) error {
 		})
 	}
 
+	enabledSources := make([]SourceConfig, 0, len(cfg.Sources))
 	for i, src := range cfg.Sources {
+		if src.Enabled != nil && !*src.Enabled {
+			continue
+		}
 		if src.Name == "" {
 			return fmt.Errorf("source[%d]: name is required", i)
 		}
@@ -109,15 +159,21 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("source[%d] %q: url is required", i, src.Name)
 		}
 		if src.URL == "" && strings.EqualFold(src.Type, "betterstack") {
-			cfg.Sources[i].URL = "https://uptime.betterstack.com"
+			src.URL = "https://uptime.betterstack.com"
 		}
 		if src.PollInterval == 0 {
-			cfg.Sources[i].PollInterval = 30_000_000_000 // 30s default
+			src.PollInterval = 30_000_000_000 // 30s default
+		}
+		if src.Timeout <= 0 {
+			src.Timeout = DefaultSourceTimeout
 		}
 		if strings.TrimSpace(src.SeverityLabel) == "" {
-			cfg.Sources[i].SeverityLabel = "severity"
+			src.SeverityLabel = "severity"
 		}
+		warnInsecureSourceURL(src.Name, src.URL)
+		enabledSources = append(enabledSources, src)
 	}
+	cfg.Sources = enabledSources
 	if cfg.UI.PopupWidth == 0 {
 		cfg.UI.PopupWidth = 800
 	}
@@ -156,8 +212,14 @@ func validate(cfg *Config) error {
 	if cfg.UI.AlwaysOnTop == nil {
 		cfg.UI.AlwaysOnTop = ptrTo(true)
 	}
+	if cfg.UI.AutoPosition == nil {
+		cfg.UI.AutoPosition = ptrTo(true)
+	}
 	if cfg.UI.PopupFollowCursor == nil {
 		cfg.UI.PopupFollowCursor = ptrTo(true)
+	}
+	if err := normalizeUIScale(&cfg.UI.Scale); err != nil {
+		return err
 	}
 	for i := range cfg.Hide {
 		rule := &cfg.Hide[i]
@@ -175,6 +237,31 @@ func validate(cfg *Config) error {
 	}
 	if err := cfg.Display.finalizeVisibleEntries(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func normalizeUIScale(scale *UIScale) error {
+	if scale.Factor == 0 {
+		scale.Factor = 1.0
+	}
+	if scale.Factor < 0.75 {
+		log.Printf("config: ui.scale.factor %.2f is outside [0.75, 2.0], clamped to 0.75", scale.Factor)
+		scale.Factor = 0.75
+	}
+	if scale.Factor > 2.0 {
+		log.Printf("config: ui.scale.factor %.2f is outside [0.75, 2.0], clamped to 2.0", scale.Factor)
+		scale.Factor = 2.0
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(scale.Mode))
+	switch mode {
+	case "":
+		scale.Mode = "fonts"
+	case "fonts", "interface":
+		scale.Mode = mode
+	default:
+		return fmt.Errorf("ui.scale.mode %q must be one of fonts, interface", scale.Mode)
 	}
 	return nil
 }

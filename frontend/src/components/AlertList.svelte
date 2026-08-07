@@ -25,16 +25,28 @@
     SORT_PRESET_OPTIONS,
     GROUP_PRESET_OPTIONS,
     sortByCriteria,
-    criteriaEqual,
-    stringArrayEqual,
+    sourceCapabilities,
     isWails,
   } from '../stores/alerts';
-  import { filteredAlerts, filter, availableSources } from '../stores/filter';
+  import {
+    filteredAlerts,
+    filter,
+    availableSources,
+    parsedQuery,
+    hiddenCount,
+    showAllFilterState,
+    hasContentFilters,
+    type FilterState,
+  } from '../stores/filter';
+  import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
-  import { Environment, EventsOn, ScreenGetAll } from '../../wailsjs/runtime/runtime';
+  import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
+  import SilenceEditor from './SilenceEditor.svelte';
+  import SearchHelpPopover from './SearchHelpPopover.svelte';
+  import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
   const popupHorizontalMargin = 8;
@@ -48,6 +60,7 @@
   let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
+  let healthBannerExpanded = false;
 
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
@@ -92,15 +105,22 @@
       await refreshAlerts();
 
       if (!isWails()) return;
+      // EventsOn expects void callbacks, so rejections from async handlers
+      // would surface as unhandled promise rejections; catch them here.
       disposeConfigReloaded = EventsOn('config:reloaded', () => {
-        void loadSeverityConfig();
-        void loadSourceCapabilities();
-        void syncUIConfig();
-        void syncEnvironmentInfo();
-        void syncNotificationPermissionStatus();
+        void (async () => {
+          await Promise.all([
+            loadSeverityConfig(),
+            loadSourceCapabilities(),
+            syncUIConfig(),
+            syncEnvironmentInfo(),
+            syncNotificationPermissionStatus(),
+          ]);
+          await layoutPopup();
+        })().catch(console.error);
       });
-      disposePopupOpening = EventsOn('popup:opening', async () => {
-        await layoutPopup();
+      disposePopupOpening = EventsOn('popup:opening', () => {
+        void layoutPopup().catch(console.error);
       });
     };
 
@@ -115,6 +135,15 @@
 
   $: hasGroups = $activeGroupBy.length > 0;
   $: totalCount = $filteredAlerts.length;
+  $: hiddenByFiltersCount = $hiddenCount;
+  $: filtersHideAlerts = hiddenByFiltersCount > 0;
+  $: hasExplicitContentFilters = hasContentFilters($filter);
+  $: contentFiltersHideAlerts = hasExplicitContentFilters && filtersHideAlerts;
+  $: showAllTitle = $filter.showAll
+    ? 'Showing all alerts. Click to return to the default view.'
+    : hiddenByFiltersCount > 0
+      ? `Show all alerts (${hiddenByFiltersCount} hidden).`
+      : 'Show all alerts';
   $: newVisibleCount = $filteredAlerts.filter(alert => $newAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: resolvedVisibleCount = $filteredAlerts.filter(alert => $resolvedAlertKeys.has(alert.source + ':' + alert.id)).length;
   $: sortedUngroupedAlerts = [...$filteredAlerts].sort(sortByCriteria($activeSortCriteria));
@@ -124,6 +153,152 @@
   let groupMenuOpen = false;
   let severityMenuOpen = false;
   let sourceMenuOpen = false;
+  let filtersBeforeShowAll: FilterState | null = null;
+  let searchHelpOpen = false;
+
+  // Expanding search: collapsed to a single icon; click expands into a field,
+  // and it stays open while it holds text (collapses on blur when empty).
+  let searchExpanded = false;
+  let searchEl: HTMLDivElement | null = null;
+  let searchInputEl: HTMLInputElement | null = null;
+  $: hasSearchText = $filter.text.trim().length > 0;
+  $: searchOpen = searchExpanded || hasSearchText;
+  $: silenceableMatchers = queryToMatchers($parsedQuery).matchers;
+  $: hasSilenceableSources = Object.values($sourceCapabilities).some(c => c.supportsSilence);
+  $: canOpenSilenceEditor = hasSilenceableSources;
+  $: silenceFromSearchTitle = canOpenSilenceEditor
+    ? silenceableMatchers.length > 0
+      ? 'Create a silence from this search'
+      : 'Create a new silence'
+    : 'No configured source supports silences';
+
+  function silenceFromSearch() {
+    if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
+  }
+
+  function clearAllFilters() {
+    filtersBeforeShowAll = null;
+    filter.update(f => ({
+      ...f,
+      text: '',
+      severity: 'all',
+      source: 'all',
+      showSilenced: true,
+      showAll: false,
+    }));
+    searchExpanded = false;
+  }
+
+  function toggleShowAll() {
+    filter.update(f => {
+      if (f.showAll) {
+        const previous = filtersBeforeShowAll;
+        filtersBeforeShowAll = null;
+        return previous ?? { ...f, showAll: false };
+      }
+
+      filtersBeforeShowAll = { ...f };
+      return showAllFilterState(f);
+    });
+    searchExpanded = false;
+  }
+  // When the filter row would overflow, drop the segment values (captions only)
+  // to keep it on a single line.
+  // Each pass re-evaluates from the *expanded* layout (show values, measure,
+  // then hide only if they actually overflow) so it never latches compact.
+  let filterBarEl: HTMLElement | null = null;
+  let widthCompact = false;
+  let measuring = false;
+  const SEARCH_ANIM_MS = 180;
+  const COLLAPSED_SEARCH_WIDTH = 28;
+  const EXPANDED_SEARCH_WIDTH = 200;
+  let measureTimer: ReturnType<typeof setTimeout>;
+
+  function fullFilterBarWouldOverflow(el: HTMLElement): boolean {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.position = 'fixed';
+    clone.style.left = '-10000px';
+    clone.style.top = '0';
+    clone.style.width = `${el.clientWidth}px`;
+    clone.style.visibility = 'hidden';
+    clone.style.pointerEvents = 'none';
+    clone.querySelector('.view-block')?.classList.remove('compact');
+    document.body.appendChild(clone);
+    const overflow = clone.scrollWidth > clone.clientWidth + 1;
+    clone.remove();
+    return overflow;
+  }
+
+  function measureFilterBar() {
+    const el = filterBarEl;
+    if (measuring || !el) return;
+    measuring = true;
+    try {
+      const overflow = fullFilterBarWouldOverflow(el);
+      if (overflow !== widthCompact) widthCompact = overflow;
+    } finally {
+      measuring = false;
+    }
+  }
+
+  function queueFilterBarMeasure() {
+    void tick().then(() => {
+      requestAnimationFrame(() => { void measureFilterBar(); });
+    });
+    clearTimeout(measureTimer);
+    measureTimer = setTimeout(() => { void measureFilterBar(); }, SEARCH_ANIM_MS + 40);
+  }
+
+  // Re-measure when the available width changes (ResizeObserver), when a
+  // segment is added/removed, or when search opens/collapses.
+  $: { void $availableSources.length; void searchOpen; if (filterBarEl) queueFilterBarMeasure(); }
+  onMount(() => {
+    if (!filterBarEl || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => { queueFilterBarMeasure(); });
+    observer.observe(filterBarEl);
+    return () => observer.disconnect();
+  });
+
+  function onSearchTransitionEnd(e: TransitionEvent) {
+    if (e.propertyName === 'width') {
+      queueFilterBarMeasure();
+    }
+  }
+
+  function compactBeforeSearchExpansion() {
+    const el = filterBarEl;
+    if (!el || searchOpen || widthCompact) return;
+    const expandedSearchDelta = EXPANDED_SEARCH_WIDTH - COLLAPSED_SEARCH_WIDTH;
+    if (el.scrollWidth + expandedSearchDelta > el.clientWidth + 1) {
+      widthCompact = true;
+    }
+  }
+
+  async function openSearch() {
+    compactBeforeSearchExpansion();
+    searchExpanded = true;
+    await tick();
+    searchInputEl?.focus();
+  }
+
+  function onSearchFocusOut(e: FocusEvent) {
+    // Focus can move from the input to an in-field control such as the syntax
+    // help button. Only collapse after focus has left the entire search control.
+    const nextFocus = e.relatedTarget;
+    if (!hasSearchText && !searchHelpOpen && !(nextFocus instanceof Node && searchEl?.contains(nextFocus))) {
+      searchExpanded = false;
+    }
+  }
+
+  $: if (!searchOpen) searchHelpOpen = false;
+
+  async function clearSearch() {
+    filter.update(f => ({ ...f, text: '' }));
+    searchExpanded = true;
+    await tick();
+    searchInputEl?.focus();
+  }
+
   async function handleRefresh() {
     refreshing = true;
     await refreshAlerts();
@@ -166,7 +341,12 @@
 
   $: noHealthYet = $sourcesHealth.length === 0;
   $: allSourcesOK = $sourcesHealth.length > 0 && $sourcesHealth.every(h => h.ok);
-  $: anySourceFailing = $sourcesHealth.length > 0 && $sourcesHealth.some(h => !h.ok);
+  // A pending source (first poll still in flight) is neither OK nor failing, so
+  // it must not turn the status bubble red.
+  $: anySourcePending = $sourcesHealth.some(h => h.pending);
+  $: failingSources = $sourcesHealth.filter(h => !h.ok && !h.pending);
+  $: anySourceFailing = failingSources.length > 0;
+  $: showHealthBanner = anySourceFailing && !$loading;
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
   $: isMacOSDevMode = environmentPlatform === 'darwin' && (
     normalizedBuildType === 'dev' ||
@@ -188,10 +368,6 @@
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
-  $: latestPoll = $sourcesHealth.reduce((latest, h) => {
-    const t = new Date(h.lastPoll);
-    return t > latest ? t : latest;
-  }, new Date(0));
   $: onCallSummary = $onCallStatus.map(status => {
     const names = status.users.map(user => user.name || user.email).filter(Boolean).join(', ') || 'nobody assigned';
     return $onCallStatus.length === 1 ? names : `${status.source}: ${names}`;
@@ -208,56 +384,96 @@
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
+  function formatHealthLastPoll(health: { pending: boolean; lastPoll: string }): string {
+    if (health.pending) return 'waiting for first poll';
+    if (!health.lastPoll) return 'never polled';
+    return `last poll ${formatTime(new Date(health.lastPoll))}`;
+  }
+
   function formatHealthLine(health: {
     source: string;
     ok: boolean;
+    pending: boolean;
     lastPoll: string;
     lastError?: string;
     consecFails: number;
   }): string {
-    const status = health.ok ? 'OK' : 'Failing';
-    const lastPoll = health.lastPoll ? formatTime(new Date(health.lastPoll)) : 'never';
-    const error = health.ok ? '' : `; error: ${health.lastError || 'unknown error'}`;
+    const status = health.pending ? 'Pending (waiting for first poll)' : health.ok ? 'OK' : 'Failing';
+    const lastPoll = health.pending
+      ? 'not yet'
+      : health.lastPoll ? formatTime(new Date(health.lastPoll)) : 'never';
+    const error = (health.ok || health.pending) ? '' : `; error: ${health.lastError || 'unknown error'}`;
     const failures = health.consecFails > 0 ? `; consecutive failures: ${health.consecFails}` : '';
     return `${health.source}: ${status}; last poll: ${lastPoll}${error}${failures}`;
   }
 
-  function currentSortLabel(): string {
-    const matchingPreset = SORT_PRESET_OPTIONS.find(option =>
-      option.criteria && criteriaEqual(option.criteria, $activeSortCriteria)
-    );
-    if (matchingPreset) return matchingPreset.label;
-    return $activeSortMode === 'default' ? 'Default' : 'Custom';
+  $: currentSortLabel = SORT_PRESET_OPTIONS.find(o => o.mode === $activeSortMode)?.label ?? 'Custom';
+  $: currentGroupLabel = GROUP_PRESET_OPTIONS.find(o => o.mode === $activeGroupMode)?.label ?? 'Custom';
+
+  // The value column tracks the width of the *currently selected* label —
+  // small by default, growing only when a longer value is actually picked —
+  // clamped to each field's realistic min/max so the animation stays bounded
+  // and a stray long value (e.g. a long source name) just ellipsizes instead
+  // of blowing out the box.
+  function widthChFor(text: string, minCh: number, maxCh: number): number {
+    return Math.min(maxCh, Math.max(minCh, text.length)) + 0.6;
   }
 
-  function currentGroupLabel(): string {
-    const matchingPreset = GROUP_PRESET_OPTIONS.find(option =>
-      option.fields && stringArrayEqual(option.fields, $activeGroupBy)
-    );
-    if (matchingPreset) return matchingPreset.label;
-    return $activeGroupMode === 'default' ? 'Default' : 'Custom';
-  }
+  const groupLabelLengths = GROUP_PRESET_OPTIONS.map(o => o.label.length);
+  const groupMinCh = Math.min(...groupLabelLengths);
+  const groupMaxCh = Math.max(...groupLabelLengths);
+  $: groupValueWidthCh = widthChFor(currentGroupLabel, groupMinCh, groupMaxCh);
+
+  const sortLabelLengths = SORT_PRESET_OPTIONS.map(o => o.label.length);
+  const sortMinCh = Math.min(...sortLabelLengths);
+  const sortMaxCh = Math.max(...sortLabelLengths);
+  $: sortValueWidthCh = widthChFor(currentSortLabel, sortMinCh, sortMaxCh);
+
+  $: severityText = $filter.severity === 'all' ? 'All' : severityLabel($filter.severity);
+  $: severityLabelLengths = ['All', ...$severityConfig.levels.map(l => severityLabel(l.name))].map(l => l.length);
+  $: severityMinCh = Math.min(...severityLabelLengths);
+  $: severityMaxCh = Math.max(...severityLabelLengths);
+  $: severityValueWidthCh = widthChFor(severityText, severityMinCh, severityMaxCh);
+
+  // Source names are free text (not a fixed option list), so cap the growth
+  // instead of deriving a max from every possible value.
+  const sourceMinCh = 'All'.length;
+  const sourceMaxCh = 16;
+  $: sourceText = $filter.source === 'all' ? 'All' : $filter.source;
+  $: sourceValueWidthCh = widthChFor(sourceText, sourceMinCh, sourceMaxCh);
 
   async function layoutPopup(): Promise<void> {
     await tick();
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
-    const [uiConfig, screens] = await Promise.all([
-      GetUIConfig(),
-      ScreenGetAll(),
-    ]);
+    // Never reposition or resize while in native fullscreen. If the runtime
+    // call fails, err on the side of not touching the window: resizing a
+    // fullscreen window is worse than skipping one layout pass.
+    try {
+      if (await WindowIsFullscreen()) return;
+    } catch (e) {
+      console.error('WindowIsFullscreen failed, skipping popup layout', e);
+      return;
+    }
 
+    const uiConfig = await GetUIConfig();
+    if (uiConfig.auto_position === false) return;
+
+    const screens = await ScreenGetAll();
     const screen = screens.find(s => s.isCurrent) ?? screens.find(s => s.isPrimary) ?? screens[0];
     if (!screen) return;
 
+    const popupScale = uiConfig.scale?.mode === 'interface' && uiConfig.scale.apply_to_popup
+      ? uiConfig.scale.factor || 1
+      : 1;
     const width = clamp(
-      uiConfig.popup_width || 800,
+      Math.round((uiConfig.popup_width || 800) * popupScale),
       360,
       Math.max(360, screen.width - (popupHorizontalMargin * 2)),
     );
     const maxHeight = Math.max(minPopupHeight, screen.height - popupTopMargin - popupBottomMargin);
     const desiredHeight = measureDesiredPopupHeight();
-    const height = clamp(desiredHeight, minPopupHeight, maxHeight);
+    const height = clamp(Math.round(desiredHeight * popupScale), minPopupHeight, maxHeight);
 
     const popupPosition = normalizePopupPosition(uiConfig.popup_position);
     await LayoutPopup(width, height, popupHorizontalMargin, popupTopMargin, popupBottomMargin, popupPosition);
@@ -321,7 +537,7 @@
         <div class="info-card-title">{notificationInfoTitle}</div>
         <div class="info-card-text">{notificationInfoText}</div>
         {#if notificationSettingsError}
-          <div class="info-card-error">{notificationSettingsError}</div>
+          <div class="info-card-detail-error">{notificationSettingsError}</div>
         {/if}
       </div>
       <button class="info-card-action" on:click={handleOpenNotificationSettings}>
@@ -330,169 +546,230 @@
     </div>
   {/if}
 
-  <!-- Filter & view controls -->
-  <div class="filter-bar">
-    <input
-      class="filter-input"
-      type="search"
-      placeholder="Filter alerts…"
-      bind:value={$filter.text}
-    />
-
-    <div class="filter-toggle-wrap">
+  {#if showHealthBanner}
+    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
       <button
-        class="filter-toggle"
-        class:active={severityMenuOpen}
-        class:filtered={$filter.severity !== 'all'}
-        on:click|stopPropagation={() => openMenu('severity')}
-        title="Filter by severity"
+        class="health-banner-summary"
+        on:click={() => healthBannerExpanded = !healthBannerExpanded}
+        aria-expanded={healthBannerExpanded}
+        aria-controls="health-banner-details"
       >
-        <span class="filter-toggle-label">Severity</span>
-        <span class="filter-toggle-value">{$filter.severity === 'all' ? 'All' : severityLabel($filter.severity)}</span>
-        <span class="filter-toggle-caret">▾</span>
+        <span class="health-banner-heading">
+          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
+        </span>
+        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
+        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
       </button>
-      {#if severityMenuOpen}
-        <div class="filter-menu">
-          <button
-            class="filter-menu-option"
-            class:selected={$filter.severity === 'all'}
-            on:click|stopPropagation={() => setSeverityFilter('all')}
-          >
-            <span>All severities</span>
-            {#if $filter.severity === 'all'}
-              <span class="filter-menu-check">✓</span>
-            {/if}
-          </button>
-          {#each $severityConfig.levels as level}
-            <button
-              class="filter-menu-option"
-              class:selected={$filter.severity === level.name}
-              on:click|stopPropagation={() => setSeverityFilter(level.name)}
-            >
-              <span>{severityLabel(level.name)}</span>
-              {#if $filter.severity === level.name}
-                <span class="filter-menu-check">✓</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
+      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
+        {refreshing ? 'Retrying…' : 'Retry'}
+      </button>
+      {#if healthBannerExpanded}
+        <div class="health-banner-sources" id="health-banner-details">
+        {#each failingSources as health}
+          <div class="health-banner-source">
+            <div class="health-banner-source-title">
+              <span class="health-banner-source-name">{health.source}</span>
+              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
+            </div>
+            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
+            <span class="health-banner-source-meta">
+              {formatHealthLastPoll(health)}
+            </span>
+          </div>
+        {/each}
+      </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Filter & view controls -->
+  <div class="filter-bar" bind:this={filterBarEl}>
+    <!-- Expanding search: collapsed to an icon, click to expand. -->
+    <div
+      class="search"
+      bind:this={searchEl}
+      class:open={searchOpen}
+      on:click={openSearch}
+      on:focusout={onSearchFocusOut}
+      on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
+      on:transitionend={onSearchTransitionEnd}
+      role="button"
+      aria-label="Filter alerts"
+      tabindex={searchOpen ? -1 : 0}
+    >
+      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Filter alerts…"
+        bind:this={searchInputEl}
+        bind:value={$filter.text}
+      />
+      {#if searchOpen}
+        <button
+          class="search-help"
+          type="button"
+          class:active={searchHelpOpen}
+          on:mousedown|stopPropagation={(e) => e.preventDefault()}
+          on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
+          title="Search syntax help"
+          aria-label="Search syntax help"
+          aria-expanded={searchHelpOpen}
+        >?</button>
+      {/if}
+      {#if hasSearchText}
+        <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
       {/if}
     </div>
 
-    {#if $availableSources.length > 1}
-      <div class="filter-toggle-wrap">
+    <!-- Create a silence from the current search, or start one from scratch. -->
+    <button
+      class="icon-toggle"
+      disabled={!canOpenSilenceEditor}
+      on:click={silenceFromSearch}
+      title={silenceFromSearchTitle}
+      aria-label="Silence from search"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+    </button>
+
+    <!-- Icon-button toggles -->
+    <button
+      class="icon-toggle"
+      class:active={$filter.showAll}
+      on:click={toggleShowAll}
+      title={showAllTitle}
+      aria-label={$filter.showAll
+        ? 'Showing all alerts; return to default view'
+        : hiddenByFiltersCount > 0
+          ? `Show all alerts, ${hiddenByFiltersCount} hidden`
+          : 'Show all alerts'}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      {#if hiddenByFiltersCount > 0}
+        <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
+      {/if}
+    </button>
+    <button
+      class="icon-toggle"
+      class:active={$verbose}
+      on:click={() => verbose.update(v => !v)}
+      title="Toggle verbose display"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>
+    </button>
+
+    <div class="filter-spacer"></div>
+
+    <!-- Fused view block: Severity · [Source] · Group · Sort -->
+    <div class="view-block" class:compact={widthCompact}>
+      <div class="segment-wrap">
         <button
-          class="filter-toggle"
-          class:active={sourceMenuOpen}
-          class:filtered={$filter.source !== 'all'}
-          on:click|stopPropagation={() => openMenu('source')}
-          title="Filter by source"
+          class="segment"
+          class:active={severityMenuOpen}
+          class:filtered={$filter.severity !== 'all'}
+          on:click|stopPropagation={() => openMenu('severity')}
+          title="Filter by severity"
         >
-          <span class="filter-toggle-label">Source</span>
-          <span class="filter-toggle-value">{$filter.source === 'all' ? 'All' : $filter.source}</span>
-          <span class="filter-toggle-caret">▾</span>
+          <span class="segment-label">Severity</span>
+          <span class="segment-value" style="--value-w: {severityValueWidthCh}">{severityText}</span>
+          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
         </button>
-        {#if sourceMenuOpen}
+        {#if severityMenuOpen}
           <div class="filter-menu">
-            <button
-              class="filter-menu-option"
-              class:selected={$filter.source === 'all'}
-              on:click|stopPropagation={() => setSourceFilter('all')}
-            >
-              <span>All sources</span>
-              {#if $filter.source === 'all'}
-                <span class="filter-menu-check">✓</span>
-              {/if}
+            <button class="filter-menu-option" class:selected={$filter.severity === 'all'} on:click|stopPropagation={() => setSeverityFilter('all')}>
+              <span>All severities</span>
+              {#if $filter.severity === 'all'}<span class="filter-menu-check">✓</span>{/if}
             </button>
-            {#each $availableSources as src}
-              <button
-                class="filter-menu-option"
-                class:selected={$filter.source === src}
-                on:click|stopPropagation={() => setSourceFilter(src)}
-              >
-                <span>{src}</span>
-                {#if $filter.source === src}
-                  <span class="filter-menu-check">✓</span>
-                {/if}
+            {#each $severityConfig.levels as level}
+              <button class="filter-menu-option" class:selected={$filter.severity === level.name} on:click|stopPropagation={() => setSeverityFilter(level.name)}>
+                <span>{severityLabel(level.name)}</span>
+                {#if $filter.severity === level.name}<span class="filter-menu-check">✓</span>{/if}
               </button>
             {/each}
           </div>
         {/if}
       </div>
-    {/if}
 
-    <button
-      class="filter-pill"
-      class:filter-pill-active={$filter.showAll}
-      on:click={() => filter.update(f => ({ ...f, showAll: !f.showAll }))}
-      title="Show all alerts (bypass filters, except text search)"
-    >Show all</button>
-
-    <button
-      class="filter-pill"
-      class:filter-pill-active={$verbose}
-      on:click={() => verbose.update(v => !v)}
-      title="Toggle verbose display"
-    >Verbose</button>
-
-    <div class="filter-spacer"></div>
-
-    <div class="filter-toggle-wrap">
-      <button
-        class="filter-toggle"
-        class:active={groupMenuOpen}
-        on:click|stopPropagation={() => openMenu('group')}
-        title="Change alert grouping"
-      >
-        <span class="filter-toggle-label">Group</span>
-        <span class="filter-toggle-value">{currentGroupLabel()}</span>
-        <span class="filter-toggle-caret">▾</span>
-      </button>
-      {#if groupMenuOpen}
-        <div class="filter-menu">
-          {#each GROUP_PRESET_OPTIONS as option}
-            <button
-              class="filter-menu-option"
-              class:selected={$activeGroupMode === option.mode}
-              on:click|stopPropagation={() => setGroupMode(option.mode)}
-            >
-              <span>{option.label}</span>
-              {#if $activeGroupMode === option.mode}
-                <span class="filter-menu-check">✓</span>
-              {/if}
-            </button>
-          {/each}
+      {#if $availableSources.length > 1}
+        <div class="segment-wrap">
+          <button
+            class="segment"
+            class:active={sourceMenuOpen}
+            class:filtered={$filter.source !== 'all'}
+            on:click|stopPropagation={() => openMenu('source')}
+            title="Filter by source"
+          >
+            <span class="segment-label">Source</span>
+            <span class="segment-value" style="--value-w: {sourceValueWidthCh}">{sourceText}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          </button>
+          {#if sourceMenuOpen}
+            <div class="filter-menu">
+              <button class="filter-menu-option" class:selected={$filter.source === 'all'} on:click|stopPropagation={() => setSourceFilter('all')}>
+                <span>All sources</span>
+                {#if $filter.source === 'all'}<span class="filter-menu-check">✓</span>{/if}
+              </button>
+              {#each $availableSources as src}
+                <button class="filter-menu-option" class:selected={$filter.source === src} on:click|stopPropagation={() => setSourceFilter(src)}>
+                  <span>{src}</span>
+                  {#if $filter.source === src}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/if}
-    </div>
 
-    <div class="filter-toggle-wrap">
-      <button
-        class="filter-toggle"
-        class:active={sortMenuOpen}
-        on:click|stopPropagation={() => openMenu('sort')}
-        title="Change alert sort order"
-      >
-        <span class="filter-toggle-label">Sort</span>
-        <span class="filter-toggle-value">{currentSortLabel()}</span>
-        <span class="filter-toggle-caret">▾</span>
-      </button>
-      {#if sortMenuOpen}
-        <div class="filter-menu">
-          {#each SORT_PRESET_OPTIONS as option}
-            <button
-              class="filter-menu-option"
-              class:selected={$activeSortMode === option.mode}
-              on:click|stopPropagation={() => setSortMode(option.mode)}
-            >
-              <span>{option.label}</span>
-              {#if $activeSortMode === option.mode}
-                <span class="filter-menu-check">✓</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
-      {/if}
+      <div class="segment-wrap">
+        <button
+          class="segment"
+          class:active={groupMenuOpen}
+          class:filtered={$activeGroupMode !== 'default'}
+          on:click|stopPropagation={() => openMenu('group')}
+          title="Change alert grouping"
+        >
+          <span class="segment-label">Group</span>
+          <span class="segment-value" style="--value-w: {groupValueWidthCh}">{currentGroupLabel}</span>
+          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+        </button>
+        {#if groupMenuOpen}
+          <div class="filter-menu">
+            {#each GROUP_PRESET_OPTIONS as option}
+              <button class="filter-menu-option" class:selected={$activeGroupMode === option.mode} on:click|stopPropagation={() => setGroupMode(option.mode)}>
+                <span>{option.label}</span>
+                {#if $activeGroupMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="segment-wrap">
+        <button
+          class="segment"
+          class:active={sortMenuOpen}
+          class:filtered={$activeSortMode !== 'default'}
+          on:click|stopPropagation={() => openMenu('sort')}
+          title="Change alert sort order"
+        >
+          <span class="segment-label">Sort</span>
+          <span class="segment-value" style="--value-w: {sortValueWidthCh}">{currentSortLabel}</span>
+          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+        </button>
+        {#if sortMenuOpen}
+          <div class="filter-menu">
+            {#each SORT_PRESET_OPTIONS as option}
+              <button class="filter-menu-option" class:selected={$activeSortMode === option.mode} on:click|stopPropagation={() => setSortMode(option.mode)}>
+                <span>{option.label}</span>
+                {#if $activeSortMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 
@@ -505,18 +782,17 @@
     {:else}
       <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
       {#if newVisibleCount > 0}
-        <span class="status-new" title="New alerts stay highlighted until you hover them briefly.">{newVisibleCount} new</span>
+        <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
+          <span class="status-chip-x" aria-hidden="true">×</span>
+          {newVisibleCount} New
+        </button>
       {/if}
       {#if resolvedVisibleCount > 0}
-        <span class="status-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen.">{resolvedVisibleCount} resolved</span>
+        <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
+          <span class="status-chip-x" aria-hidden="true">×</span>
+          {resolvedVisibleCount} Resolved
+        </button>
       {/if}
-      {#if newVisibleCount > 0}
-        <button class="status-action-btn" on:click={acknowledgeAllAlerts} title="Mark all new alerts as seen">Clear new</button>
-      {/if}
-      {#if resolvedVisibleCount > 0}
-        <button class="status-action-btn" on:click={acknowledgeAllResolvedAlerts} title="Mark all resolved alerts as seen">Clear resolved</button>
-      {/if}
-      {#if $verbose}<span class="status-verbose">Verbose</span>{/if}
 
       <div class="status-spacer"></div>
 
@@ -527,13 +803,12 @@
       <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
         class:refresh-ok={allSourcesOK && !refreshing}
         class:refresh-fail={anySourceFailing && !refreshing}
-        class:refresh-pending={noHealthYet || refreshing}
+        class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
       >●</span>
-      {#if !noHealthYet}
-        <span class="refresh-time">{formatTime(latestPoll)}</span>
-      {/if}
       <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
-        <span class="refresh-icon" class:spinning={refreshing}>↻</span>
+        <svg class="refresh-icon" class:spinning={refreshing} viewBox="0 0 640 640" width="14" height="14" fill="currentColor">
+          <path d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z" />
+        </svg>
       </button>
     {/if}
   </div>
@@ -544,10 +819,19 @@
       <div class="empty-state">Loading alerts…</div>
     {:else if totalCount === 0}
       <div class="empty-state">
-        {#if idleImage && !($filteredAlerts.length === 0 && $filter.text)}
+        {#if idleImage && !hasExplicitContentFilters}
           <img class="idle-image" src={idleImage} alt="No active alerts" />
         {/if}
-        <p>{$filteredAlerts.length === 0 && $filter.text ? 'No alerts match filter' : 'No active alerts'}</p>
+        {#if contentFiltersHideAlerts}
+          <p>No alerts match the current filters.</p>
+          <p class="empty-state-hint">{hiddenByFiltersCount} alert{hiddenByFiltersCount !== 1 ? 's are' : ' is'} hidden.</p>
+          <button class="empty-state-action" on:click={toggleShowAll}>Show all alerts</button>
+        {:else if $filter.text.trim().length > 0}
+          <p>No alerts match filter</p>
+          <button class="empty-state-action" on:click={clearAllFilters}>Clear search</button>
+        {:else}
+          <p>No active alerts</p>
+        {/if}
       </div>
     {:else if hasGroups}
       {#each $groupedAlerts as group}
@@ -574,6 +858,23 @@
     {/if}
   </div>
 </div>
+
+<SearchHelpPopover open={searchHelpOpen} on:close={() => searchHelpOpen = false} />
+
+<!-- Single top-level silence editor, driven by the silenceEditor store. Lives
+     outside the alert list so it stays open across refreshes/regrouping/sorting
+     that destroy and recreate AlertCard instances. -->
+<SilenceEditor
+  alert={$silenceEditor.alert}
+  silence={$silenceEditor.silence}
+  mode={$silenceEditor.mode}
+  open={$silenceEditor.open}
+  query={$silenceEditor.query}
+  seedMatchers={$silenceEditor.matchers}
+  preferredSource={$silenceEditor.source}
+  on:close={closeSilenceEditor}
+  on:silenced={() => refreshAlerts()}
+/>
 
 <style>
   .alert-list-container {
@@ -602,19 +903,19 @@
 
   .info-card-title {
     color: #fed7aa;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     font-weight: 700;
   }
 
   .info-card-text {
     color: #fdba74;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     margin-top: 2px;
   }
 
-  .info-card-error {
+  .info-card-detail-error {
     color: #fecaca;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     margin-top: 4px;
   }
 
@@ -625,7 +926,7 @@
     color: #ffedd5;
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     cursor: pointer;
     white-space: nowrap;
   }
@@ -634,84 +935,422 @@
     background: rgba(251, 146, 60, 0.2);
   }
 
+  .health-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 8px 0;
+    padding: 7px 9px;
+    border: 1px solid #7f1d1d;
+    border-radius: 6px;
+    background: #1e1821;
+  }
+
+  .health-banner.expanded {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 10px;
+  }
+
+  .health-banner-summary {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .health-banner-summary:hover .health-banner-heading {
+    color: #fff1f2;
+  }
+
+  .health-banner-heading {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: #fecaca;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 700;
+  }
+
+  .health-banner-source-list {
+    min-width: 0;
+    overflow: hidden;
+    color: #fda4af;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: calc(10px * var(--font-scale, 1));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .health-banner-chevron {
+    flex-shrink: 0;
+    color: #f87171;
+    transition: transform 120ms ease;
+  }
+
+  .health-banner.expanded .health-banner-chevron {
+    transform: rotate(180deg);
+  }
+
+  .health-banner-action {
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 4px;
+    padding: 3px 5px;
+    background: transparent;
+    color: #fca5a5;
+    font-size: calc(10px * var(--font-scale, 1));
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .health-banner-action:hover:not(:disabled) {
+    color: #fff1f2;
+    background: rgba(248, 113, 113, 0.16);
+  }
+
+  .health-banner-action:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .health-banner-sources {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(248, 113, 113, 0.2);
+  }
+
+  .health-banner-source {
+    padding: 6px 7px;
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(248, 113, 113, 0.12);
+    font-size: calc(10px * var(--font-scale, 1));
+  }
+
+  .health-banner-source-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .health-banner-source-name {
+    color: #fda4af;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  .health-banner-fail-count {
+    flex-shrink: 0;
+    color: #94a3b8;
+    font-size: calc(9px * var(--font-scale, 1));
+  }
+
+  .health-banner-source-error {
+    color: #fca5a5;
+    margin-top: 3px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .health-banner-source-meta {
+    display: block;
+    color: #94a3b8;
+    margin-top: 3px;
+  }
+
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 6px 8px;
+    gap: 8px;
+    padding: 8px 10px;
     background: #0f172a;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid #1b2740;
     flex-shrink: 0;
+    /* Stay on one line; when it would overflow we strip the segment values
+       (captions only) rather than wrapping onto a second row. */
+    flex-wrap: nowrap;
   }
 
   .filter-spacer {
     flex: 1;
   }
 
-  .filter-input {
-    flex: 1 1 180px;
-    min-width: 100px;
-    max-width: 280px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #e2e8f0;
-    font-size: 12px;
-    padding: 5px 12px;
-    outline: none;
-    transition: border-color 0.15s;
+  /* Expanding search: collapsed to a 28px icon button; expands to a field. */
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 28px;
+    width: 28px;
+    box-sizing: border-box;
+    padding: 0 0 0 7px;
+    border-radius: 6px;
+    border: 1px solid #2a3650;
+    background: #162033;
+    overflow: hidden;
+    cursor: text;
+    flex-shrink: 0;
+    transition: width 0.18s cubic-bezier(0.2, 0, 0.2, 1), padding 0.18s;
   }
-  .filter-input:focus { border-color: #3b82f6; }
-  .filter-input::placeholder { color: #64748b; }
+  .search.open {
+    width: 200px;
+    padding-right: 4px;
+  }
+  .search:not(.open) {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  .search-icon {
+    stroke: #7c8aa3;
+    flex-shrink: 0;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 0;
+    width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: #e2e8f0;
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    padding: 0;
+  }
+  .search:not(.open) .search-input {
+    /* Keep the input mounted (so bind:value works) but out of the icon box. */
+    width: 0;
+    flex: 0;
+    padding: 0;
+  }
+  .search-input::placeholder { color: #5b6b83; }
+  .search-clear {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #2a3650;
+    color: #cbd5e1;
+    font-family: inherit;
+    font-size: calc(12px * var(--font-scale, 1));
+    line-height: 1;
+    cursor: pointer;
+  }
+  .search-clear:hover { background: #34425f; color: #f1f5f9; }
+
+  .search-help {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #64748b;
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .search-help:hover,
+  .search-help.active {
+    background: #2a3650;
+    color: #93c5fd;
+  }
+
+  /* Square icon-button toggles (Show all, Verbose) */
+  .icon-toggle {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid #2a3650;
+    background: #162033;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .icon-toggle:hover {
+    color: #dbe4f0;
+    border-color: #3a496a;
+  }
+  .icon-toggle.active {
+    color: #bcd9ff;
+    background: rgba(47, 129, 247, 0.18);
+    border-color: rgba(47, 129, 247, 0.45);
+  }
+  .icon-toggle:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .icon-toggle-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: #3b82f6;
+    color: #eff6ff;
+    font-size: calc(9px * var(--font-scale, 1));
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px #0f172a;
+  }
+
+  /* Fused view block: Severity · [Source] · Group · Sort */
+  .view-block {
+    display: inline-flex;
+    height: 28px;
+    border: 1px solid #2a3650;
+    border-radius: 6px;
+    background: #162033;
+    flex-shrink: 0;
+  }
+  .view-block.compact .segment {
+    gap: 0;
+  }
+  .segment-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .segment-wrap + .segment-wrap::before {
+    content: '';
+    width: 1px;
+    background: #2a3650;
+  }
+  .segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    padding: 0 10px;
+    background: transparent;
+    border: none;
+    color: #dbe4f0;
+    font-family: inherit;
+    font-size: calc(12px * var(--font-scale, 1));
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .segment-wrap:first-child .segment { border-radius: 5px 0 0 5px; }
+  .segment-wrap:last-child .segment { border-radius: 0 5px 5px 0; }
+  .segment:hover,
+  .segment.active {
+    background: rgba(47, 129, 247, 0.12);
+    color: #f1f5f9;
+  }
+  .segment.filtered {
+    background: rgba(47, 129, 247, 0.18);
+    color: #bcd9ff;
+  }
+  .segment-label {
+    font-size: calc(8.5px * var(--font-scale, 1));
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #7c8aa3;
+  }
+  .segment.filtered .segment-label { color: #9fc2f5; }
+  /* Width tracks the current value's length (via --value-w, in ch), clamped
+     per-field to a realistic min/max — small by default, animating wider
+     only when a longer value is actually selected. */
+  .segment-value {
+    color: #f1f5f9;
+    display: inline-block;
+    width: calc(var(--value-w, 7) * 1ch);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    opacity: 1;
+    transition:
+      width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+      opacity 0.12s ease;
+  }
+  .view-block.compact .segment-value {
+    width: 0;
+    opacity: 0;
+  }
+  .segment.filtered .segment-value { color: #bcd9ff; }
+  .segment-caret {
+    fill: #64748b;
+    width: 9px;
+    opacity: 1;
+    transition:
+      width 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+      opacity 0.12s ease;
+  }
+  .view-block.compact .segment-caret {
+    width: 0;
+    opacity: 0;
+  }
+  /* Anchor dropdowns to the block's right edge so the rightmost (Sort) menu
+     never overflows the popup's right edge. */
+  .view-block .filter-menu {
+    left: auto;
+    right: 0;
+  }
 
   .status-bar {
     --status-item-height: 20px;
     display: flex;
     align-items: center;
     align-content: center;
-    gap: 6px;
-    padding: 4px 10px;
-    min-height: 33px;
+    gap: 8px;
+    padding: 7px 10px;
     box-sizing: border-box;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
     color: #475569;
-    background: #0d1117;
+    background: #0f172a;
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
-    flex-wrap: wrap;
+    /* Stay on one line: the on-call name truncates rather than wrapping the
+       clock/refresh onto a second row. */
+    flex-wrap: nowrap;
+  }
+  /* Everything on the status row keeps its size; only the on-call name gives. */
+  .status-count,
+  .status-chip,
+  .status-oncall-label,
+  .refresh-status,
+  .refresh-btn {
+    flex-shrink: 0;
   }
   .status-spacer {
     flex: 1;
-  }
-
-  /* Toggle pill buttons (Show all, Verbose) */
-  .filter-pill {
-    background: rgba(30, 41, 59, 0.5);
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #94a3b8;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    padding: 5px 10px;
-    white-space: nowrap;
-    transition: all 0.15s;
-    user-select: none;
-  }
-  .filter-pill:hover {
-    color: #e2e8f0;
-    border-color: #475569;
-    background: rgba(36, 50, 71, 0.92);
-  }
-  .filter-pill-active {
-    color: #f0f9ff;
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.4);
-  }
-  .filter-pill-active:hover {
-    background: rgba(59, 130, 246, 0.28);
-    border-color: rgba(59, 130, 246, 0.5);
   }
 
   .status-error { color: #ef4444; }
@@ -722,74 +1361,60 @@
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     box-sizing: border-box;
-    color: #cbd5e1;
+    color: #e2e8f0;
+    font-size: calc(12.5px * var(--font-scale, 1));
     font-weight: 600;
     white-space: nowrap;
   }
-  .status-verbose {
+  /* Self-clearing status chips (New / Resolved) with a left-side × */
+  .status-chip {
     display: inline-flex;
     align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    font-size: 10px;
-    line-height: 1.1;
-    font-weight: 600;
-    color: #fbbf24;
-    background: rgba(245, 158, 11, 0.14);
-    border: 1px solid rgba(245, 158, 11, 0.28);
-    border-radius: 999px;
-    padding: 0 7px;
+    gap: 4px;
+    padding: 3px 6px;
+    border-radius: 10px;
+    font-size: calc(10.5px * var(--font-scale, 1));
+    line-height: 1;
+    font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     white-space: nowrap;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
   }
-  .status-new {
+  .status-chip:hover {
+    filter: brightness(1.05);
+  }
+  .status-chip-x {
     display: inline-flex;
     align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    font-size: 10px;
-    line-height: 1.1;
-    font-weight: 700;
-    color: #111827;
+    padding: 0;
+    font-size: calc(12px * var(--font-scale, 1));
+    line-height: 1;
+  }
+  .status-chip-new {
+    color: #1f2937;
     background: #facc15;
-    border-radius: 999px;
-    padding: 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    box-shadow: 0 0 14px rgba(250, 204, 21, 0.22);
-    white-space: nowrap;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.28);
   }
-  .status-resolved {
-    display: inline-flex;
-    align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    font-size: 10px;
-    line-height: 1.1;
-    font-weight: 700;
-    color: #dbeafe;
-    background: #1d4ed8;
-    border-radius: 999px;
-    padding: 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    box-shadow: 0 0 14px rgba(59, 130, 246, 0.2);
-    white-space: nowrap;
+  .status-chip-new .status-chip-x { color: #1f2937; }
+  .status-chip-resolved {
+    color: #052e16;
+    background: #22c55e;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
+  .status-chip-resolved .status-chip-x { color: #052e16; }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    color: #7dd3fc;
-    font-size: 10px;
-    font-weight: 600;
+    color: #5f9fd0;
+    font-size: calc(9px * var(--font-scale, 1));
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     white-space: nowrap;
   }
   .status-oncall {
@@ -797,90 +1422,15 @@
     align-items: center;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    color: #94a3b8;
+    color: #cbd5e1;
+    font-size: calc(12px * var(--font-scale, 1));
+    font-weight: 600;
+    flex: 0 1 auto;
+    min-width: 0;
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .status-action-btn {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(30, 41, 59, 0.88);
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #cbd5e1;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1.1;
-    font-weight: 600;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    box-sizing: border-box;
-    padding: 0 9px;
-    white-space: nowrap;
-  }
-  .status-action-btn:hover {
-    background: #243247;
-    border-color: #475569;
-    color: #f8fafc;
-  }
-  /* Dropdown toggle buttons (Severity, Source, Group, Sort) */
-  .filter-toggle-wrap {
-    position: relative;
-  }
-
-  .filter-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(30, 41, 59, 0.72);
-    border: 1px solid #334155;
-    border-radius: 999px;
-    color: #cbd5e1;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    padding: 5px 10px;
-    white-space: nowrap;
-    transition: all 0.15s;
-  }
-  .filter-toggle:hover,
-  .filter-toggle.active {
-    color: #e2e8f0;
-    border-color: #475569;
-    background: rgba(36, 50, 71, 0.92);
-  }
-  .filter-toggle.filtered {
-    color: #f0f9ff;
-    background: rgba(59, 130, 246, 0.18);
-    border-color: rgba(59, 130, 246, 0.4);
-  }
-  .filter-toggle.filtered:hover,
-  .filter-toggle.filtered.active {
-    background: rgba(59, 130, 246, 0.28);
-    border-color: rgba(59, 130, 246, 0.5);
-  }
-  .filter-toggle-label {
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 9px;
-    font-weight: 700;
-  }
-  .filter-toggle.filtered .filter-toggle-label {
-    color: #93c5fd;
-  }
-  .filter-toggle-value {
-    color: #f8fafc;
-    font-weight: 600;
-  }
-  .filter-toggle-caret {
-    color: #64748b;
-    font-size: 10px;
   }
 
   .filter-menu {
@@ -907,7 +1457,7 @@
     border-radius: 4px;
     color: #cbd5e1;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 6px 8px;
     text-align: left;
   }
@@ -927,19 +1477,11 @@
     justify-content: center;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    font-size: 9px;
+    font-size: calc(9px * var(--font-scale, 1));
   }
   .refresh-ok { color: #22c55e; }
   .refresh-fail { color: #ef4444; }
   .refresh-pending { color: #f59e0b; }
-  .refresh-time {
-    display: inline-flex;
-    align-items: center;
-    height: var(--status-item-height);
-    min-height: var(--status-item-height);
-    color: #94a3b8;
-    font-size: 10px;
-  }
 
   .refresh-btn {
     appearance: none;
@@ -949,7 +1491,7 @@
     background: none;
     border: none;
     color: #94a3b8;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale, 1));
     line-height: 1;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
@@ -959,7 +1501,7 @@
   .refresh-btn:hover { background: #1e293b; color: #e2e8f0; }
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .refresh-icon { display: inline-block; }
+  .refresh-icon { display: block; }
   .spinning { animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -973,7 +1515,7 @@
     text-align: center;
     color: #475569;
     padding: 40px 20px;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -982,6 +1524,26 @@
 
   .empty-state p {
     margin: 0;
+  }
+
+  .empty-state-hint {
+    color: #64748b;
+    font-size: calc(12px * var(--font-scale, 1));
+  }
+
+  .empty-state-action {
+    margin-top: 4px;
+    border: 1px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.12);
+    color: #bfdbfe;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: calc(12px * var(--font-scale, 1));
+    cursor: pointer;
+  }
+
+  .empty-state-action:hover {
+    background: rgba(59, 130, 246, 0.22);
   }
 
   .idle-image {
@@ -993,9 +1555,4 @@
     -webkit-user-drag: none;
   }
 
-  @media (max-width: 640px) {
-    .filter-bar {
-      flex-wrap: wrap;
-    }
-  }
 </style>

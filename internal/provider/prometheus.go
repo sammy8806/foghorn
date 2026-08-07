@@ -2,9 +2,7 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -25,7 +23,8 @@ func NewPrometheus(cfg config.SourceConfig) *Prometheus {
 	return &Prometheus{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: withHTTPDebug(nil),
 		},
 	}
 }
@@ -55,13 +54,12 @@ func (p *Prometheus) Fetch(ctx context.Context) ([]model.Alert, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		p.recordError(fmt.Errorf("HTTP %d", resp.StatusCode))
-		return nil, fmt.Errorf("prometheus %s returned HTTP %d: %s", p.cfg.Name, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("prometheus %s returned HTTP %d: %s", p.cfg.Name, resp.StatusCode, errorBody(resp))
 	}
 
 	var envelope promAlertsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := decodeJSONResponse(resp, &envelope); err != nil {
 		return nil, fmt.Errorf("decoding alerts from %s: %w", p.cfg.Name, err)
 	}
 	if envelope.Status != "success" {

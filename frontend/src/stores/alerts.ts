@@ -84,6 +84,9 @@ export type AlertRefMode = 'raw' | 'resolved' | 'both';
 export interface AlertFieldDisplay {
   text: string;
   mode: AlertRefMode;
+  ref: string;
+  kind: 'field' | 'label' | 'annotation';
+  name: string;
   raw?: string;
   resolved?: string;
 }
@@ -228,6 +231,9 @@ export const activeGroupBy = derived(
 export interface SourceHealth {
   source: string;
   ok: boolean;
+  // pending is true for a configured source whose first poll has not finished
+  // yet — it is still in work, neither OK nor failing.
+  pending: boolean;
   lastPoll: string;
   lastError?: string;
   consecFails: number;
@@ -279,7 +285,7 @@ function healthBySource(entries: SourceHealth[]): Map<string, SourceHealth> {
 function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceHealth[]): void {
   const previous = healthBySource(previousEntries);
   for (const entry of nextEntries) {
-    if (entry.ok) continue;
+    if (entry.ok || entry.pending) continue;
     const prior = previous.get(entry.source);
     const changed = !prior || prior.ok || prior.lastError !== entry.lastError || prior.consecFails !== entry.consecFails;
     if (!changed) continue;
@@ -287,17 +293,14 @@ function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceH
   }
 }
 
-export async function refreshAlerts(): Promise<void> {
+// reloadFromStore paints the backend's current store snapshot into the svelte
+// stores. It does NOT fetch from any source — the poll engine keeps the store
+// fresh in parallel and pushes an alerts:updated event as each source finishes,
+// so reading the store is enough to show each source's alerts the moment it
+// completes. Used both by the event handler and after an explicit refresh.
+export async function reloadFromStore(): Promise<void> {
+  if (!isWails()) return;
   try {
-    if (!isWails()) {
-      // No backend — show empty state instead of hanging/crashing.
-      alerts.set([]);
-      severityCounts.set(emptySeverityCounts());
-      onCallStatus.set([]);
-      error.set('Dev mode: no Wails backend connected');
-      return;
-    }
-    await RefreshAlerts();
     const [alertList, counts, health, onCall] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
@@ -354,6 +357,29 @@ export async function refreshAlerts(): Promise<void> {
   } finally {
     loading.set(false);
   }
+}
+
+// refreshAlerts triggers an immediate poll of every source, then paints the
+// current store. The poll runs in parallel per source on the backend; results
+// stream in via alerts:updated as each finishes, so a slow or broken source no
+// longer blocks the others. Use for explicit refreshes (mount, manual refresh,
+// after a silence/ack action).
+export async function refreshAlerts(): Promise<void> {
+  if (!isWails()) {
+    // No backend — show empty state instead of hanging/crashing.
+    alerts.set([]);
+    severityCounts.set(emptySeverityCounts());
+    onCallStatus.set([]);
+    error.set('Dev mode: no Wails backend connected');
+    loading.set(false);
+    return;
+  }
+  try {
+    await RefreshAlerts();
+  } catch (e) {
+    error.set(String(e));
+  }
+  await reloadFromStore();
 }
 
 export async function loadDisplayConfig(): Promise<void> {
@@ -468,7 +494,11 @@ export function initEventListeners(): void {
   if (!isWails()) return; // no event bridge in plain browser
   EventsOn('alerts:updated', (diff?: AlertsUpdatedDiff) => {
     handleResolvedAlerts(diff);
-    refreshAlerts();
+    // The poll engine has already updated the store for the source that just
+    // finished — read that snapshot rather than forcing a fresh sequential
+    // re-fetch of every source. This is what lets each source appear as soon
+    // as it completes instead of waiting on the slowest one.
+    void reloadFromStore();
   });
   EventsOn('config:reloaded', () => {
     loadSeverityConfig();
@@ -659,22 +689,27 @@ export function alertMatchesBadgeRule(alert: Alert, rule: BadgeRule): boolean {
 export function resolveAlertFieldDisplay(alert: Alert, ref: string): AlertFieldDisplay | undefined {
   const parsed = parseAlertRef(ref);
   const { raw, resolved } = getAlertFieldValues(alert, parsed.ref);
+  const meta = {
+    ref: parsed.ref,
+    kind: parsed.kind,
+    name: parsed.name,
+  };
 
   switch (parsed.mode) {
     case 'raw':
-      if (raw) return { text: raw, mode: 'raw', raw, resolved };
-      if (resolved) return { text: resolved, mode: 'raw', raw, resolved };
+      if (raw) return { ...meta, text: raw, mode: 'raw', raw, resolved };
+      if (resolved) return { ...meta, text: resolved, mode: 'raw', raw, resolved };
       return undefined;
     case 'resolved':
-      if (resolved) return { text: resolved, mode: 'resolved', raw, resolved };
-      if (raw) return { text: raw, mode: 'resolved', raw, resolved };
+      if (resolved) return { ...meta, text: resolved, mode: 'resolved', raw, resolved };
+      if (raw) return { ...meta, text: raw, mode: 'resolved', raw, resolved };
       return undefined;
     case 'both':
       if (raw && resolved && raw !== resolved) {
-        return { text: `${raw} (${resolved})`, mode: 'both', raw, resolved };
+        return { ...meta, text: `${raw} (${resolved})`, mode: 'both', raw, resolved };
       }
-      if (raw) return { text: raw, mode: 'both', raw, resolved };
-      if (resolved) return { text: resolved, mode: 'both', raw, resolved };
+      if (raw) return { ...meta, text: raw, mode: 'both', raw, resolved };
+      if (resolved) return { ...meta, text: resolved, mode: 'both', raw, resolved };
       return undefined;
   }
 }

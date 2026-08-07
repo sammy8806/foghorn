@@ -146,6 +146,109 @@ ui:
 	}
 }
 
+func TestLoadConfigSourceTimeout(t *testing.T) {
+	yaml := `
+sources:
+  - name: with-timeout
+    type: alertmanager
+    url: http://localhost:9093
+    timeout: 5s
+  - name: without-timeout
+    type: alertmanager
+    url: http://localhost:9094
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := cfg.Sources[0].Timeout; got != 5*time.Second {
+		t.Fatalf("expected explicit timeout 5s, got %v", got)
+	}
+	if got := cfg.Sources[1].Timeout; got != DefaultSourceTimeout {
+		t.Fatalf("expected default timeout %v, got %v", DefaultSourceTimeout, got)
+	}
+}
+
+func TestLoadConfigFiltersDisabledSources(t *testing.T) {
+	yaml := `
+sources:
+  - name: enabled-by-default
+    type: alertmanager
+    url: http://localhost:9093
+  - name: explicitly-enabled
+    type: alertmanager
+    enabled: true
+    url: http://localhost:9094
+  - name: disabled
+    type: alertmanager
+    enabled: false
+    url: http://localhost:9095
+display:
+  visible_labels: []
+  visible_annotations: []
+  group_by: []
+  sort_by: severity
+sounds:
+  enabled: false
+notifications:
+  enabled: false
+  on_new: false
+  on_resolved: false
+  batch_threshold: 5
+actions: []
+ui:
+  theme: system
+  popup_width: 800
+  popup_height: 600
+  show_resolved: false
+  show_silenced: true
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := len(cfg.Sources); got != 2 {
+		t.Fatalf("expected 2 enabled sources, got %d", got)
+	}
+	if cfg.Sources[0].Name != "enabled-by-default" {
+		t.Fatalf("expected omitted enabled source to stay enabled, got %q", cfg.Sources[0].Name)
+	}
+	if cfg.Sources[1].Name != "explicitly-enabled" {
+		t.Fatalf("expected explicitly enabled source, got %q", cfg.Sources[1].Name)
+	}
+}
+
 func TestLoadConfigDefaultsSeverityLabel(t *testing.T) {
 	yaml := `
 sources:
@@ -408,6 +511,26 @@ ui:
 	}
 }
 
+func TestAutoPositionDefaultsTrue(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource)
+	if cfg.UI.AutoPosition == nil {
+		t.Fatal("auto_position should be resolved to a non-nil default")
+	}
+	if !*cfg.UI.AutoPosition {
+		t.Fatalf("auto_position default = %v, want true", *cfg.UI.AutoPosition)
+	}
+}
+
+func TestAutoPositionExplicitFalse(t *testing.T) {
+	cfg := writeAndLoad(t, minimalSource+`
+ui:
+  auto_position: false
+`)
+	if cfg.UI.AutoPosition == nil || *cfg.UI.AutoPosition {
+		t.Fatalf("auto_position = %v, want false", cfg.UI.AutoPosition)
+	}
+}
+
 func TestSilenceEditorExplicitEmptyWhitelist(t *testing.T) {
 	cfg := writeAndLoad(t, minimalSource+`
 ui:
@@ -595,4 +718,100 @@ ui:
 	if !strings.Contains(err.Error(), `"ominous"`) {
 		t.Errorf("error missing bad token: %v", err)
 	}
+}
+
+func TestLoadConfigUIScaleDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.UI.Scale.Factor != 1.0 {
+		t.Fatalf("expected default scale factor 1.0, got %v", cfg.UI.Scale.Factor)
+	}
+	if cfg.UI.Scale.Mode != "fonts" {
+		t.Fatalf("expected default scale mode fonts, got %q", cfg.UI.Scale.Mode)
+	}
+	if !cfg.UI.Scale.ApplyToPopup {
+		t.Fatal("expected default scale apply_to_popup true")
+	}
+}
+
+func TestLoadConfigUIScalePartialDefaults(t *testing.T) {
+	yaml := minimalConfigWithUIScale("    factor: 1.25\n")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.UI.Scale.Factor != 1.25 {
+		t.Fatalf("expected scale factor 1.25, got %v", cfg.UI.Scale.Factor)
+	}
+	if cfg.UI.Scale.Mode != "fonts" {
+		t.Fatalf("expected default scale mode fonts, got %q", cfg.UI.Scale.Mode)
+	}
+	if !cfg.UI.Scale.ApplyToPopup {
+		t.Fatal("expected default scale apply_to_popup true")
+	}
+}
+
+func TestLoadConfigUIScaleClampsFactor(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want float64
+	}{
+		{name: "lower", in: "0.5", want: 0.75},
+		{name: "upper", in: "5.0", want: 2.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			yaml := minimalConfigWithUIScale("    factor: " + tt.in + "\n")
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load() error: %v", err)
+			}
+			if cfg.UI.Scale.Factor != tt.want {
+				t.Fatalf("expected scale factor %v, got %v", tt.want, cfg.UI.Scale.Factor)
+			}
+		})
+	}
+}
+
+func TestLoadConfigUIScaleInvalidMode(t *testing.T) {
+	yaml := minimalConfigWithUIScale("    mode: huge\n")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected Load() to fail with invalid ui.scale.mode, got nil")
+	}
+	if !strings.Contains(err.Error(), "ui.scale.mode") {
+		t.Fatalf("expected ui.scale.mode error, got %v", err)
+	}
+}
+
+func minimalConfigWithUIScale(scaleBody string) string {
+	return strings.Replace(minimalConfig, "  show_silenced: true\n", "  show_silenced: true\n  scale:\n"+scaleBody, 1)
 }

@@ -1,13 +1,21 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
   import { createEventDispatcher } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
+  import { alerts, sourceCapabilities } from '../stores/alerts';
+  import { filter } from '../stores/filter';
+  import { queryToMatchers, type ParsedQuery, type DroppedTerm } from '../stores/query';
+  import { matchesAllMatchers } from '../stores/matchers';
   import MatcherEditor from './MatcherEditor.svelte';
 
   export let alert: Alert | null = null;
   export let silence: SilenceInfo | null = null;
   export let mode: 'create' | 'edit' = 'create';
   export let open = false;
+  export let query: ParsedQuery | null = null;
+  export let seedMatchers: Matcher[] | null = null;
+  export let preferredSource: string | null = null;
 
   const dispatch = createEventDispatcher<{ close: void; silenced: void }>();
 
@@ -25,9 +33,53 @@
   let error = '';
   let confirmExpire = false;
   let initializedForOpen = false;
+  let droppedTerms: DroppedTerm[] = [];
+  let selectedSource = '';
 
   // Combined source of truth: hidden matchers are always part of the silence.
   $: allMatchers = [...editorMatchers, ...hiddenMatchers];
+
+  // In alert-seeded / edit modes the source is fixed to the alert's source.
+  // In query mode the user picks it.
+  $: activeSource = alert ? alert.source : selectedSource;
+
+  $: previewTotalOnSource = activeSource
+    ? $alerts.filter((a) => a.source === activeSource).length
+    : 0;
+  $: previewMatchCount = activeSource
+    ? $alerts.filter((a) => a.source === activeSource && matchesAllMatchers(a, allMatchers)).length
+    : 0;
+  $: previewValid = allMatchers.length > 0 && allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
+  // Warn when the silence would catch nothing, or would catch every alert on the
+  // source (likely too broad).
+  $: previewWarn = previewValid && (previewMatchCount === 0 || (previewTotalOnSource > 0 && previewMatchCount === previewTotalOnSource));
+  $: isAlertlessCreate = !!query || !!seedMatchers;
+  $: isScratchCreate = (!!query && query.terms.length === 0) || (!!seedMatchers && seedMatchers.length === 0);
+  $: hasQuerySeedMatchers = !!query && queryToMatchers(query).matchers.length > 0;
+
+  // Candidate sources for the picker. Search-seeded silences stay scoped to
+  // sources with matching alerts; scratch silences list all silence-capable
+  // sources so the user can add matchers from an empty editor. Text-only
+  // searches behave like scratch creates because text terms cannot be turned
+  // into Alertmanager matchers.
+  $: sourceCandidates = isAlertlessCreate
+    ? (void $sourceCapabilities, sourcesForQuery($alerts, allMatchers, !hasQuerySeedMatchers && !seedMatchers?.length))
+    : [];
+  // Query-mode matchers can change after the source picker's initial default is
+  // set (user edits matchers). If the current selection falls out of the
+  // recomputed candidate list, re-default to the top candidate rather than
+  // leaving a stale selection that no longer appears in the picker. Guarded to
+  // non-empty candidates so a transient zero-match edit doesn't clobber the
+  // pick to ''. Alert/edit modes never hit this since query is null there.
+  $: if (isAlertlessCreate && !selectedSource && sourceCandidates.length) {
+    selectedSource = preferredSource && sourceCandidates.some((c) => c.source === preferredSource)
+      ? preferredSource
+      : sourceCandidates[0].source;
+  }
+  $: if (isAlertlessCreate && selectedSource && sourceCandidates.length &&
+         !sourceCandidates.some((c) => c.source === selectedSource)) {
+    selectedSource = sourceCandidates[0].source;
+  }
   // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
   // only while expanded and some visible matcher would collapse back out of the
   // whitelist. The two are mutually exclusive: expanding empties hiddenMatchers.
@@ -44,8 +96,48 @@
     !loading &&
     !!duration &&
     !!createdBy.trim() &&
+    !!activeSource &&
     allMatchers.length > 0 &&
     allMatchers.every((m) => m.name.trim() && m.value && regexValid(m));
+
+  function silenceableSources(): string[] {
+    return Object.entries(get(sourceCapabilities))
+      .filter(([, capabilities]) => capabilities.supportsSilence)
+      .map(([source]) => source)
+      .sort();
+  }
+
+  function sourcesWithMatches(all: Alert[], matchers: Matcher[]): { source: string; count: number }[] {
+    const counts = new Map<string, number>();
+    const allowed = new Set(silenceableSources());
+    for (const a of all) {
+      if (allowed.size > 0 && !allowed.has(a.source)) continue;
+      if (matchers.length > 0 && !matchesAllMatchers(a, matchers)) continue;
+      counts.set(a.source, (counts.get(a.source) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([source, count]) => ({ source, count }))
+      .sort((x, y) => y.count - x.count);
+  }
+
+  function sourcesForQuery(all: Alert[], matchers: Matcher[], includeAllSilenceable: boolean): { source: string; count: number }[] {
+    const withMatches = sourcesWithMatches(all, matchers);
+    if (!includeAllSilenceable) return withMatches;
+
+    const countsBySource = new Map(withMatches.map((c) => [c.source, c.count]));
+    return silenceableSources()
+      .map((source) => ({ source, count: countsBySource.get(source) ?? 0 }))
+      .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+  }
+
+  function defaultSourceForQuery(seeded: Matcher[]): string {
+    const f = get(filter);
+    const candidates = sourcesForQuery(get(alerts), seeded, seeded.length === 0);
+    if (f.source !== 'all' && candidates.some((c) => c.source === f.source)) {
+      return f.source;
+    }
+    return candidates.length ? candidates[0].source : '';
+  }
 
   function regexValid(m: Matcher): boolean {
     if (!m.isRegex) return true;
@@ -127,6 +219,10 @@
     revealedCount = 0;
   }
 
+  function replaceAllMatchers(e: CustomEvent<Matcher[]>) {
+    applyCollapse(e.detail);
+  }
+
   function matchersFromAlertLabels(a: Alert): Matcher[] {
     const entries = Object.entries(a.labels || {});
     return entries.map(([name, value]) => ({
@@ -201,8 +297,31 @@
       if (duration === '0s') duration = '1m';
       comment = silence.comment || '';
       createdBy = (silence.createdBy || '').trim();
+      droppedTerms = [];
+    } else if (query) {
+      const { matchers, dropped } = queryToMatchers(query);
+      all = matchers.map((m) => ({ ...m }));
+      droppedTerms = dropped;
+      duration = '2h';
+      comment = '';
+      createdBy = '';
+      selectedSource = preferredSource || defaultSourceForQuery(all);
+      void loadDefaultCreatedBy().then((v) => {
+        if (!createdBy) createdBy = v;
+      });
+    } else if (seedMatchers) {
+      all = seedMatchers.map((m) => ({ ...m }));
+      droppedTerms = [];
+      duration = '2h';
+      comment = '';
+      createdBy = '';
+      selectedSource = preferredSource || defaultSourceForQuery(all);
+      void loadDefaultCreatedBy().then((v) => {
+        if (!createdBy) createdBy = v;
+      });
     } else {
       all = alert ? matchersFromAlertLabels(alert) : [];
+      droppedTerms = [];
       duration = '2h';
       comment = '';
       createdBy = '';
@@ -231,14 +350,14 @@
   }
 
   async function submit() {
-    if (!alert || !canSubmit) return;
+    if (!activeSource || !canSubmit) return;
     loading = true;
     error = '';
     try {
-      if (mode === 'edit' && silence) {
+      if (mode === 'edit' && silence && alert) {
         await UpdateSilence(alert.source, silence.id, allMatchers, duration, createdBy, comment);
       } else {
-        await CreateSilence(alert.source, allMatchers, duration, createdBy, comment);
+        await CreateSilence(activeSource, allMatchers, duration, createdBy, comment);
       }
       dispatch('silenced');
       dispatch('close');
@@ -279,7 +398,7 @@
   }
 </script>
 
-{#if open && alert}
+{#if open && (alert || query || seedMatchers)}
   <div class="overlay" on:click={close} on:keydown={handleKeydown} role="presentation">
     <div
       class="dialog"
@@ -290,30 +409,48 @@
       aria-labelledby="silence-title"
     >
       <div class="dialog-header">
-        <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : 'Silence alert'}</h3>
+        <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : isScratchCreate ? 'New silence' : 'Silence alert'}</h3>
         <button class="btn-close" on:click={close} aria-label="Close">✕</button>
       </div>
 
       <div class="dialog-body">
-        <div class="context-strip">
-          {#if mode === 'edit' && silence}
+        {#if alert || mode === 'edit'}
+          <div class="context-strip">
+            {#if mode === 'edit' && silence}
             <span class="ctx-item"><strong>id:</strong> {silence.id.slice(0, 10)}…</span>
             <span class="ctx-item"><strong>started:</strong> {new Date(silence.startsAt).toLocaleString()}</span>
             <span class="ctx-item"><strong>by:</strong> {silence.createdBy}</span>
             <span class="ctx-item"><strong>expires in:</strong> {formatRemaining(silence.endsAt)}</span>
-          {:else}
+            {:else if alert}
             <span class="alert-name">{alert.name}</span>
             <span class="alert-source">{alert.source}</span>
-          {/if}
-        </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#if isAlertlessCreate}
+          <div class="field">
+            <span class="field-label">Target source</span>
+            <select class="input" bind:value={selectedSource}>
+              {#each sourceCandidates as c}
+                <option value={c.source}>{c.source} ({c.count})</option>
+              {/each}
+              {#if sourceCandidates.length === 0}
+                <option value="" disabled>No silence-capable sources</option>
+              {/if}
+            </select>
+          </div>
+        {/if}
 
         <div class="field">
           <span class="field-label">Matchers ({allMatchers.length})</span>
           <MatcherEditor
             bind:matchers={editorMatchers}
-            source={alert.source}
+            textMatchers={allMatchers}
+            source={activeSource}
             revealedAfterIndex={revealedAfterIndex}
             revealedCount={revealedCount}
+            on:replaceAll={replaceAllMatchers}
           >
             <svelte:fragment slot="actions">
               {#if canExpand}
@@ -327,6 +464,14 @@
               {/if}
             </svelte:fragment>
           </MatcherEditor>
+          {#if droppedTerms.length > 0}
+            <p class="dropped-note">
+              Not included in silence:
+              {#each droppedTerms as d, i}
+                <code>{d.label}</code><span class="dropped-reason"> ({d.reason})</span>{i < droppedTerms.length - 1 ? ', ' : ''}
+              {/each}
+            </p>
+          {/if}
         </div>
 
         <div class="field">
@@ -373,6 +518,11 @@
 
       <div class="dialog-footer">
         <div class="footer-left">
+          {#if previewValid && activeSource}
+            <span class="match-preview" class:warn={previewWarn}>
+              Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
+            </span>
+          {/if}
           {#if mode === 'edit' && silence}
             {#if confirmExpire}
               <span class="expire-confirm-text">Expire now?</span>
@@ -430,7 +580,7 @@
   }
   h3 {
     margin: 0;
-    font-size: 15px;
+    font-size: calc(15px * var(--font-scale, 1));
     font-weight: 600;
     color: #f1f5f9;
   }
@@ -439,7 +589,7 @@
     border: none;
     color: #64748b;
     cursor: pointer;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-scale, 1));
     padding: 2px 6px;
   }
   .btn-close:hover { color: #e2e8f0; }
@@ -448,7 +598,7 @@
     background: none;
     border: none;
     color: #94a3b8;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     cursor: pointer;
     padding: 2px 0;
     white-space: nowrap;
@@ -473,19 +623,19 @@
     padding: 6px 10px;
     background: #0f172a;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     color: #94a3b8;
   }
   .ctx-item strong { color: #cbd5e1; margin-right: 3px; font-weight: 600; }
-  .alert-name { color: #f1f5f9; font-weight: 600; font-size: 13px; }
-  .alert-source { color: #64748b; font-size: 11px; }
+  .alert-name { color: #f1f5f9; font-weight: 600; font-size: calc(13px * var(--font-scale, 1)); }
+  .alert-source { color: #64748b; font-size: calc(11px * var(--font-scale, 1)); }
 
   .field {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     color: #94a3b8;
   }
   .field-label { font-weight: 500; color: #94a3b8; }
@@ -495,7 +645,7 @@
     border: 1px solid #334155;
     border-radius: 4px;
     color: #e2e8f0;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     padding: 6px 10px;
     outline: none;
     width: 100%;
@@ -515,7 +665,7 @@
     border-radius: 3px;
     color: #94a3b8;
     cursor: pointer;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
     padding: 3px 8px;
   }
   .preset-btn:hover { border-color: #3b82f6; color: #e2e8f0; }
@@ -523,9 +673,22 @@
 
   .error {
     color: #f87171;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     margin: 8px 0 0;
   }
+
+  .dropped-note {
+    font-size: calc(11px * var(--font-scale, 1));
+    color: #94a3b8;
+    margin: 6px 0 0;
+  }
+  .dropped-note code {
+    background: #0f172a;
+    border-radius: 3px;
+    padding: 1px 4px;
+    color: #cbd5e1;
+  }
+  .dropped-reason { color: #64748b; }
 
   .dialog-footer {
     display: flex;
@@ -537,8 +700,13 @@
   }
   .footer-left { display: flex; align-items: center; gap: 8px; }
   .footer-right { display: flex; align-items: center; gap: 8px; }
+  .match-preview {
+    font-size: calc(11px * var(--font-scale, 1));
+    color: #94a3b8;
+  }
+  .match-preview.warn { color: #fbbf24; }
   .expire-confirm-text {
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
     color: #f87171;
   }
 
@@ -546,7 +714,7 @@
     border-radius: 4px;
     border: none;
     cursor: pointer;
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
     font-weight: 500;
     padding: 7px 16px;
   }
