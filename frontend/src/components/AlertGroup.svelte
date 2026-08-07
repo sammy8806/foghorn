@@ -19,6 +19,7 @@
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
+  let menuButtonEl: HTMLButtonElement | null = null;
 
   $: groupMatchers = matchersFromGroupParts(groupParts);
   $: preferredSource = sourceForGroup(groupParts, alerts);
@@ -53,11 +54,27 @@
     return sources.length === 1 ? sources[0] : null;
   }
 
+  function openMenuAt(x: number, y: number) {
+    menuX = x;
+    menuY = y;
+    menuOpen = true;
+  }
+
   function openMenu(e: MouseEvent) {
     e.preventDefault();
-    menuX = e.clientX;
-    menuY = e.clientY;
-    menuOpen = true;
+    e.stopPropagation();
+    openMenuAt(e.clientX, e.clientY);
+  }
+
+  function openMenuFromButton(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = menuButtonEl?.getBoundingClientRect();
+    if (rect) {
+      openMenuAt(rect.right - 150, rect.bottom + 4);
+    } else {
+      openMenuAt(e.clientX, e.clientY);
+    }
   }
 
   function closeMenu() {
@@ -80,7 +97,12 @@
     on:contextmenu={openMenu}
     role="button"
     tabindex="0"
-    on:keydown={e => e.key === 'Enter' && (collapsed = !collapsed)}
+    on:keydown={e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        collapsed = !collapsed;
+      }
+    }}
   >
     <span class="group-dot" style="background: {severityColor(maxSeverity)}" />
     <span class="group-name">
@@ -103,6 +125,17 @@
       {/if}
     </span>
     <span class="group-count">{alerts.length}</span>
+    <button
+      class="group-menu-btn"
+      type="button"
+      bind:this={menuButtonEl}
+      title={canSilenceGroup ? 'Group actions' : 'No configured source supports silences'}
+      aria-label="Group actions"
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      disabled={!canSilenceGroup}
+      on:click={openMenuFromButton}
+    >⋯</button>
     <span class="chevron">{collapsed ? '▶' : '▼'}</span>
   </div>
 
@@ -188,6 +221,31 @@
     padding: 1px 7px;
     border-radius: 10px;
     color: #64748b;
+  }
+
+  .group-menu-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    background: #0f172a;
+    color: #94a3b8;
+    font-size: calc(14px * var(--font-scale, 1));
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .group-menu-btn:hover:not(:disabled) {
+    color: #e2e8f0;
+    border-color: #475569;
+    background: #1e293b;
+  }
+
+  .group-menu-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   .chevron { font-size: calc(10px * var(--font-scale, 1)); color: #475569; }
