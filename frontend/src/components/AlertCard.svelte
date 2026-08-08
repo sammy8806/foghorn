@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Alert, DisplayConfig, SilenceInfo, VisibleEntry } from '../stores/alerts';
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
-  import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
+  import { TestNotificationForAlert, Unsilence, GetActionsForAlert, ExecuteAction } from '../../wailsjs/go/main/App';
+  import type { config } from '../../wailsjs/go/models';
   import { severityColor, formatDuration } from '../utils/severity';
   import { safeExternalURL } from '../utils/url';
   import { openSilenceCreate, openSilenceEdit } from '../stores/silenceEditor';
@@ -115,6 +116,10 @@
   let expiring: Record<string, boolean> = {};
   let testingNotification = false;
   let testNotificationStatus = '';
+  let alertActions: config.ActionConfig[] = [];
+  let actionsLoading = false;
+  let actionStatus = '';
+  let runningAction: string | null = null;
   let acknowledgeTimer: ReturnType<typeof setTimeout> | null = null;
 
   type CommentSegment = {
@@ -226,6 +231,37 @@
     acknowledgeTimer = null;
   }
 
+  async function loadAlertActions() {
+    actionsLoading = true;
+    try {
+      alertActions = await GetActionsForAlert(alert.id, alert.source);
+    } catch {
+      alertActions = [];
+    } finally {
+      actionsLoading = false;
+    }
+  }
+
+  async function runAction(action: config.ActionConfig) {
+    runningAction = action.Name;
+    actionStatus = '';
+    try {
+      const result = await ExecuteAction(action.Name, alert.id, alert.source);
+      actionStatus = result ? `Done: ${result}` : `Ran ${action.Name}`;
+    } catch (e) {
+      actionStatus = `Action failed: ${String(e)}`;
+    } finally {
+      runningAction = null;
+    }
+  }
+
+  $: if (expanded) {
+    void loadAlertActions();
+  } else {
+    alertActions = [];
+    actionStatus = '';
+  }
+
   async function handleTestNotification() {
     testingNotification = true;
     testNotificationStatus = '';
@@ -249,7 +285,12 @@
   on:pointerenter={scheduleAcknowledge}
   on:pointerleave={cancelAcknowledge}
 >
-  <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => e.key === 'Enter' && (expanded = !expanded)}>
+  <div class="alert-header" on:click={() => (expanded = !expanded)} role="button" tabindex="0" on:keydown={e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      expanded = !expanded;
+    }
+  }}>
     <span class="severity-dot" style="background: {severityColor(alert.severity)}" />
     {#if isNew}
       <span class="badge badge-new" title="New alert. Hover for a moment to mark as seen.">NEW</span>
@@ -398,6 +439,23 @@
       <div class="alert-actions">
         {#if generatorLink}
           <a href={generatorLink} target="_blank" rel="noreferrer" class="generator-link">{primaryLinkLabel}</a>
+        {/if}
+        {#if actionsLoading}
+          <span class="action-status">Loading actions…</span>
+        {:else}
+          {#each alertActions as action}
+            <button
+              class="btn-action"
+              on:click|stopPropagation={() => runAction(action)}
+              disabled={runningAction === action.Name}
+              title={action.Action?.Type ? `${action.Action.Type} action` : 'Configured action'}
+            >
+              {runningAction === action.Name ? 'Running…' : (action.Name || 'Action')}
+            </button>
+          {/each}
+        {/if}
+        {#if actionStatus}
+          <span class="action-status">{actionStatus}</span>
         {/if}
         {#if $verbose}
           <button
@@ -767,6 +825,26 @@
     cursor: default;
   }
   .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
+
+  .btn-action {
+    background: transparent;
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: calc(11px * var(--font-scale, 1));
+    cursor: pointer;
+  }
+
+  .btn-action:hover:not(:disabled) {
+    border-color: #60a5fa;
+    color: #93c5fd;
+  }
+
+  .btn-action:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 
   .action-status {
     font-size: calc(11px * var(--font-scale, 1));
