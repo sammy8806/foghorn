@@ -475,6 +475,25 @@ sources:
     url: http://localhost:9093
 `
 
+func TestLoadOIDCPersistTokensExplicitFalse(t *testing.T) {
+	cfg := writeAndLoad(t, `
+sources:
+  - name: oidc-am
+    type: alertmanager
+    url: https://alertmanager.example.test
+    auth:
+      type: oidc
+      flow: device
+      issuer_url: https://login.example.test
+      client_id: foghorn
+      persist_tokens: false
+`)
+	persist := cfg.Sources[0].Auth.PersistTokens
+	if persist == nil || *persist {
+		t.Fatalf("persist_tokens = %v, want explicit false", persist)
+	}
+}
+
 func TestSilenceEditorDefaultsWhenAbsent(t *testing.T) {
 	cfg := writeAndLoad(t, minimalSource)
 	se := cfg.UI.SilenceEditor

@@ -64,7 +64,7 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 		client: client,
 		apiV2:  apiV2,
 		kind:   kind,
-		oidc:   newOIDCDeviceAuthenticator(cfg.Auth, client),
+		oidc:   newOIDCDeviceAuthenticator(cfg.Name, cfg.Auth, client),
 		cookie: cookieAuth,
 	}
 }
@@ -72,6 +72,20 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 func (a *alertmanagerAPI) Name() string          { return a.cfg.Name }
 func (a *alertmanagerAPI) Type() string          { return a.kind }
 func (a *alertmanagerAPI) SupportsSilence() bool { return true }
+
+func (a *alertmanagerAPI) OIDCSessionInfo() OIDCSessionInfo {
+	if a.oidc == nil {
+		return OIDCSessionInfo{Source: a.cfg.Name}
+	}
+	return a.oidc.SessionInfo()
+}
+
+func (a *alertmanagerAPI) ForgetOIDCLogin() error {
+	if a.oidc == nil {
+		return fmt.Errorf("source %q does not use OIDC authentication", a.cfg.Name)
+	}
+	return a.oidc.Forget()
+}
 
 func (a *alertmanagerAPI) Health(_ context.Context) model.ProviderHealth {
 	a.mu.RLock()

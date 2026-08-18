@@ -79,6 +79,10 @@ type AuthConfig struct {
 	DeviceAuthorizationURL string   `yaml:"device_authorization_url"`
 	TokenURL               string   `yaml:"token_url"`
 	UseIDToken             bool     `yaml:"use_id_token"`
+	// PersistTokens defaults to true. On macOS, OIDC token responses are stored
+	// in the login Keychain so refresh tokens survive app restarts. Set false to
+	// retain the previous memory-only behavior.
+	PersistTokens *bool `yaml:"persist_tokens"`
 
 	// Cookie auth stores cookies gathered by an embedded login browser. CookieFile
 	// is optional; when empty, Foghorn stores cookies below the user config dir.

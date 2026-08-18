@@ -3,10 +3,13 @@
 import {model} from '../models';
 import {main} from '../models';
 import {config} from '../models';
+import {provider} from '../models';
 
 export function CreateSilence(arg1:string,arg2:Array<model.Matcher>,arg3:string,arg4:string,arg5:string):Promise<string>;
 
 export function ExecuteAction(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function ForgetOIDCLogin(arg1:string):Promise<void>;
 
 export function GetAbout():Promise<main.AboutInfo>;
 
@@ -19,6 +22,8 @@ export function GetAlerts():Promise<Array<model.Alert>>;
 export function GetDisplayConfig():Promise<config.NormalizedDisplayConfig>;
 
 export function GetNotificationPermissionStatus():Promise<string>;
+
+export function GetOIDCSessions():Promise<Array<provider.OIDCSessionInfo>>;
 
 export function GetOnCallStatus():Promise<Array<model.OnCallStatus>>;
 

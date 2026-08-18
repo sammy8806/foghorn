@@ -566,3 +566,30 @@ export namespace model {
 
 }
 
+export namespace provider {
+
+	export class OIDCSessionInfo {
+	    source: string;
+	    configured: boolean;
+	    active: boolean;
+	    saved: boolean;
+	    persistenceEnabled: boolean;
+	    storageError?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new OIDCSessionInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.configured = source["configured"];
+	        this.active = source["active"];
+	        this.saved = source["saved"];
+	        this.persistenceEnabled = source["persistenceEnabled"];
+	        this.storageError = source["storageError"];
+	    }
+	}
+
+}
+
