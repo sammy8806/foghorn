@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -100,6 +102,7 @@ func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error)
 	if a.token != nil && a.token.RefreshToken != "" {
 		if token, err := a.refresh(ctx, a.token.RefreshToken); err == nil {
 			a.token = token
+			logOIDCTokenAuthorizationClaims(token)
 			return token, nil
 		} else {
 			log.Printf("oidc: refresh failed, starting device authorization: %v", err)
@@ -121,6 +124,7 @@ func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error)
 		return nil, err
 	}
 	a.token = token
+	logOIDCTokenAuthorizationClaims(token)
 	return token, nil
 }
 
@@ -407,5 +411,71 @@ func intValue(v interface{}) int {
 		return n
 	default:
 		return 0
+	}
+}
+
+// logOIDCTokenAuthorizationClaims logs only claims useful for diagnosing
+// gateway authorization. It deliberately excludes identity claims and never
+// logs the encoded token itself. Both tokens are inspected because some OIDC
+// client mappings accidentally add groups to the ID token but not the access
+// token that Foghorn sends to Alertmanager.
+func logOIDCTokenAuthorizationClaims(token *oidcToken) {
+	if !HTTPDebugEnabled() || token == nil {
+		return
+	}
+	for _, candidate := range []struct {
+		name string
+		raw  string
+	}{
+		{name: "access", raw: token.AccessToken},
+		{name: "id", raw: token.IDToken},
+	} {
+		if strings.TrimSpace(candidate.raw) == "" {
+			continue
+		}
+		claims, err := decodeOIDCAuthorizationClaims(candidate.raw)
+		if err != nil {
+			log.Printf("oidc: unable to decode %s token authorization claims: %v", candidate.name, err)
+			continue
+		}
+		encoded, err := json.Marshal(claims)
+		if err != nil {
+			log.Printf("oidc: unable to format %s token authorization claims: %v", candidate.name, err)
+			continue
+		}
+		log.Printf("oidc: %s token authorization claims=%s", candidate.name, encoded)
+	}
+}
+
+func decodeOIDCAuthorizationClaims(rawToken string) (map[string]interface{}, error) {
+	parts := strings.Split(rawToken, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("expected JWT with 3 segments, got %d", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("decoding JWT payload: %w", err)
+	}
+	var all map[string]interface{}
+	if err := json.Unmarshal(payload, &all); err != nil {
+		return nil, fmt.Errorf("decoding JWT claims: %w", err)
+	}
+
+	filtered := make(map[string]interface{})
+	for name, value := range all {
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "group") || strings.Contains(lower, "role") || isOIDCAuthorizationContextClaim(lower) {
+			filtered[name] = value
+		}
+	}
+	return filtered, nil
+}
+
+func isOIDCAuthorizationContextClaim(name string) bool {
+	switch name {
+	case "iss", "aud", "azp", "client_id", "scope", "scp", "typ", "realm_access", "resource_access":
+		return true
+	default:
+		return false
 	}
 }

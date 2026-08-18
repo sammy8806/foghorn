@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -327,5 +328,44 @@ func TestOIDCPromptUserRejectsUnsafeVerificationURL(t *testing.T) {
 
 	if len(opened) != 0 {
 		t.Fatalf("unsafe verification URL was opened: %v", opened)
+	}
+}
+
+func TestDecodeOIDCAuthorizationClaimsFiltersIdentityClaims(t *testing.T) {
+	payload, err := json.Marshal(map[string]interface{}{
+		"aud":                []string{"alertmanager"},
+		"azp":                "foghorn",
+		"email":              "operator@example.test",
+		"groups":             []string{"monitoring-user"},
+		"preferred_username": "operator",
+		"realm_access": map[string]interface{}{
+			"roles": []string{"default-roles-contact"},
+		},
+		"scope": "openid offline_access",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawToken := "e30." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+
+	claims, err := decodeOIDCAuthorizationClaims(rawToken)
+	if err != nil {
+		t.Fatalf("decodeOIDCAuthorizationClaims() error: %v", err)
+	}
+	for _, name := range []string{"aud", "azp", "groups", "realm_access", "scope"} {
+		if _, ok := claims[name]; !ok {
+			t.Errorf("expected authorization claim %q", name)
+		}
+	}
+	for _, name := range []string{"email", "preferred_username"} {
+		if _, ok := claims[name]; ok {
+			t.Errorf("identity claim %q must not be included in debug output", name)
+		}
+	}
+}
+
+func TestDecodeOIDCAuthorizationClaimsRejectsNonJWT(t *testing.T) {
+	if _, err := decodeOIDCAuthorizationClaims("opaque-access-token"); err == nil {
+		t.Fatal("expected non-JWT access token to be rejected")
 	}
 }
