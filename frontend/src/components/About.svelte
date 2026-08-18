@@ -56,8 +56,9 @@
   }
 
   function sessionStatus(session: provider.OIDCSessionInfo): string {
-    if (session.storageError) return `Keychain error: ${session.storageError}`;
-    if (session.saved) return 'Saved in macOS Keychain';
+    const backend = session.storageBackend || 'System keyring';
+    if (session.storageError) return `${backend} error: ${session.storageError}`;
+    if (session.saved) return `Saved in ${backend}`;
     if (session.active) return 'Active in memory only';
     if (!session.persistenceEnabled) return 'Persistent storage disabled';
     return 'No saved login';
@@ -95,7 +96,7 @@
         <div class="sessions-heading">
           <div>
             <h2 id="oidc-sessions-heading">OIDC logins</h2>
-            <p>Tokens stay local. Forgetting a login removes its in-memory token and macOS Keychain entry.</p>
+            <p>Tokens stay local. Forgetting a login removes its in-memory token and system keyring entry.</p>
           </div>
         </div>
 

@@ -115,7 +115,7 @@ func TestOIDCRestoresValidTokenWithoutNetwork(t *testing.T) {
 	if token.AccessToken != "saved-access" {
 		t.Fatalf("AccessToken = %q, want saved token", token.AccessToken)
 	}
-	if info := auth.SessionInfo(); !info.Active || !info.Saved || info.StorageError != "" {
+	if info := auth.SessionInfo(); !info.Active || !info.Saved || info.StorageError != "" || info.StorageBackend != keyring.BackendName() {
 		t.Fatalf("unexpected session state: %#v", info)
 	}
 }

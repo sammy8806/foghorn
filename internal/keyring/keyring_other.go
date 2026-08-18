@@ -1,4 +1,4 @@
-//go:build !darwin || !cgo
+//go:build (!darwin && !linux) || (darwin && !cgo)
 
 package keyring
 
@@ -6,6 +6,7 @@ type unsupportedStore struct{}
 
 func newStore(string) Store { return unsupportedStore{} }
 func supported() bool       { return false }
+func backendName() string   { return "" }
 
 func (unsupportedStore) Get(string) ([]byte, error) { return nil, ErrUnsupported }
 func (unsupportedStore) Set(string, []byte) error   { return ErrUnsupported }

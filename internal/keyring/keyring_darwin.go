@@ -165,6 +165,8 @@ func newStore(service string) Store {
 
 func supported() bool { return true }
 
+func backendName() string { return "macOS Keychain" }
+
 func (s *macOSStore) Get(account string) ([]byte, error) {
 	serviceValue := C.CString(s.service)
 	accountValue := C.CString(account)

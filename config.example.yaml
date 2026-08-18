@@ -45,8 +45,9 @@ sources:
   #     # `openid` is sufficient unless the identity provider requires an
   #     # additional scope such as `offline_access` to issue refresh tokens.
   #     scopes: [openid]
-  #     # On supported macOS builds, the token fields Foghorn uses are saved in
-  #     # the login Keychain by default. Set false for memory-only authentication.
+  #     # On supported macOS and Linux builds, the token fields Foghorn uses are
+  #     # saved in the system credential store by default. Set false for
+  #     # memory-only authentication.
   #     # persist_tokens: false
   #     # Optional when discovery is unavailable:
   #     # device_authorization_url: https://login.example.com/oauth/device/code

@@ -153,7 +153,7 @@ func (a *oidcDeviceAuthenticator) loadPersistedTokenLocked() {
 	a.loadComplete = true
 	a.persisted = true
 	a.recordStorageSuccessLocked()
-	log.Printf("oidc: restored saved login for source %q from macOS Keychain", a.source)
+	log.Printf("oidc: restored saved login for source %q from %s", a.source, a.storageBackend)
 }
 
 func (a *oidcDeviceAuthenticator) savePersistedTokenLocked() {
@@ -196,12 +196,12 @@ func (a *oidcDeviceAuthenticator) recordStorageErrorLocked(operation string, err
 		return
 	}
 	a.storageError = message
-	log.Printf("oidc: source %q Keychain %s failed; continuing with memory-only credentials: %v", a.source, operation, err)
+	log.Printf("oidc: source %q %s %s failed; continuing with memory-only credentials: %v", a.source, a.storageBackend, operation, err)
 }
 
 func (a *oidcDeviceAuthenticator) recordStorageSuccessLocked() {
 	if a.storageError != "" {
-		log.Printf("oidc: source %q macOS Keychain access recovered", a.source)
+		log.Printf("oidc: source %q %s access recovered", a.source, a.storageBackend)
 	}
 	a.storageError = ""
 }

@@ -36,25 +36,34 @@ claim through an optional client scope. `email` and `profile` are not needed
 for Alertmanager access. Foghorn never adds `offline_access` automatically;
 include it in `auth.scopes` when the provider requires it.
 
-## Persistent login on macOS
+## Persistent login
 
-On supported macOS builds, Foghorn saves the token fields it uses in the user's
-login Keychain by default: access token, refresh token, ID token, token type,
-expiry, and acquisition time. The Keychain item uses service
-`de.sammy8806.foghorn.oidc`, is local rather than iCloud-synchronizable, and is
-available while the user's login Keychain is unlocked.
+On supported macOS and Linux builds, Foghorn saves the token fields it uses in
+the desktop's secure credential store by default: access token, refresh token,
+ID token, token type, expiry, and acquisition time. Both implementations use
+service `de.sammy8806.foghorn.oidc`.
 
-The Keychain lets Foghorn reuse a still-valid token after an app or source
-configuration restart. When the access token expires, Foghorn uses the saved
-refresh token and immediately stores the rotated response. If a successful
-refresh omits a new refresh or ID token, Foghorn preserves the previous one.
-Refreshing still requires network access to the identity provider; "offline"
-login means the user does not need to repeat browser authentication.
+- **macOS:** the item is stored in the login Keychain, is local rather than
+  iCloud-synchronizable, and is available after the user first unlocks the Mac
+  following startup.
+- **Linux:** the item is stored through the freedesktop Secret Service D-Bus
+  API. GNOME Keyring, KWallet with Secret Service enabled, KeePassXC with its
+  Secret Service integration, or another compatible provider must be running
+  in the user's graphical session. Foghorn does not invoke `secret-tool` or put
+  token material in command-line arguments.
+
+The credential store lets Foghorn reuse a still-valid token after an app or
+source configuration restart. When the access token expires, Foghorn uses the
+saved refresh token and immediately stores the rotated response. If a
+successful refresh omits a new refresh or ID token, Foghorn preserves the
+previous one. Refreshing still requires network access to the identity
+provider; "offline" login means the user does not need to repeat browser
+authentication.
 
 Saved credentials are isolated by source name, issuer/endpoints, client ID,
 sorted scopes, and whether `use_id_token` is enabled. Renaming a source or
 changing one of those settings creates a new login identity and leaves the old
-Keychain item untouched.
+credential-store item untouched.
 
 To disable persistence for one source:
 
@@ -68,16 +77,17 @@ auth:
   persist_tokens: false
 ```
 
-If Keychain is locked or temporarily unavailable, authentication continues in
-memory and Foghorn retries saving the token on later requests. The About view
-shows the storage error until Keychain access recovers.
+If the credential store is locked or temporarily unavailable, authentication
+continues in memory and Foghorn retries saving the token on later requests. The
+About view identifies the active backend and shows the storage error until
+access recovers.
 
 ### Forget a login
 
-Open **About → OIDC logins → Forget login** to delete a source's Keychain item
-and clear its in-memory token. This removes Foghorn's local credential only; it
-does not revoke the refresh token at the identity provider. The next request
-for that source starts a new device login.
+Open **About → OIDC logins → Forget login** to delete a source's saved item and
+clear its in-memory token. This removes Foghorn's local credential only; it does
+not revoke the refresh token at the identity provider. The next request for
+that source starts a new device login.
 
 ## Keycloak client
 

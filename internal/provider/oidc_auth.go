@@ -35,6 +35,7 @@ type oidcDeviceAuthenticator struct {
 	account            string
 	persistenceEnabled bool
 	storeSupported     bool
+	storageBackend     string
 
 	mu           sync.Mutex
 	discovery    *oidcDiscovery
@@ -76,6 +77,7 @@ func newOIDCDeviceAuthenticator(source string, auth config.AuthConfig, client *h
 	if a != nil {
 		a.persistenceEnabled = oidcPersistenceEnabled(auth)
 		a.storeSupported = keyring.Supported()
+		a.storageBackend = keyring.BackendName()
 	}
 	return a
 }
@@ -103,6 +105,7 @@ func newOIDCDeviceAuthenticatorWithStore(source string, auth config.AuthConfig, 
 		account:            oidcTokenAccount(source, auth),
 		persistenceEnabled: auth.PersistTokens == nil || *auth.PersistTokens,
 		storeSupported:     true,
+		storageBackend:     keyring.BackendName(),
 	}
 }
 
@@ -133,6 +136,7 @@ func (a *oidcDeviceAuthenticator) SessionInfo() OIDCSessionInfo {
 		Active:             a.token != nil,
 		Saved:              a.persisted,
 		PersistenceEnabled: a.persistenceEnabled,
+		StorageBackend:     a.storageBackend,
 		StorageError:       a.storageError,
 	}
 }
