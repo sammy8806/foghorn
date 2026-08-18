@@ -204,6 +204,10 @@ sources:
 
 See `config.example.yaml` for the full reference, including severity mapping, display/grouping options, notification rules, and Better Stack-specific fields.
 
+For Alertmanager login through the OIDC device flow, including Keycloak client
+and group mapper settings, reverse-proxy bearer passthrough, and `302`/`403`
+diagnostics, see [`docs/oidc-device-auth.md`](docs/oidc-device-auth.md).
+
 The `ui.scale` block can enlarge the app for accessibility. Use `mode: fonts` to scale text only, or `mode: interface` to scale the full web UI. `factor` accepts `0.75` through `2.0`; when `mode: interface`, `apply_to_popup: true` also resizes the popup window.
 
 For how the **Sort** selector's presets work — what each one orders by, where `startsAt`/`updatedAt` come from, and the provider-specific caveats — see [`docs/sorting.md`](docs/sorting.md).
@@ -259,10 +263,13 @@ Read them top-down to find the failing layer:
 | `http: … -> 30x … Location=…` | A proxy/ingress is redirecting the request. Foghorn does **not** follow redirects on silence writes (a followed redirect downgrades `POST` to `GET` and silently drops the body), so this is reported as an error rather than a phantom success. Point the source `url` at the address the proxy redirects *to*. |
 | `app: CreateSilence … id="<real-id>" err=<nil>` | Alertmanager accepted the silence. If it still isn't shown in the UI, it likely isn't in the `active` state yet (clock skew can make a fresh silence `pending`) or it landed on a different replica in an HA Alertmanager cluster. |
 
-Credentials are never logged: the `Authorization` header and any URL userinfo
-are redacted. `FOGHORN_HTTP_DEBUG` covers all providers (Alertmanager, Grafana,
-Prometheus, Better Stack); the `app: CreateSilence`/`UpdateSilence` boundary
-lines are always logged regardless of the flag.
+Raw credentials are never logged: the `Authorization` header, encoded OIDC
+tokens, and any URL userinfo are redacted. For OIDC troubleshooting, debug mode
+does log selected non-identity authorization claims such as groups, roles,
+scope, audience, issuer, and client ID. `FOGHORN_HTTP_DEBUG` covers all
+providers (Alertmanager, Grafana, Prometheus, Better Stack); the
+`app: CreateSilence`/`UpdateSilence` boundary lines are always logged regardless
+of the flag.
 
 ## Project layout
 
