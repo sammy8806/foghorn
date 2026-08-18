@@ -74,7 +74,6 @@ export function RefreshAlerts() {
   return window['go']['main']['App']['RefreshAlerts']();
 }
 
-
 export function TestNotificationForAlert(arg1, arg2) {
   return window['go']['main']['App']['TestNotificationForAlert'](arg1, arg2);
 }
@@ -82,7 +81,6 @@ export function TestNotificationForAlert(arg1, arg2) {
 export function Unsilence(arg1, arg2) {
   return window['go']['main']['App']['Unsilence'](arg1, arg2);
 }
-
 
 export function UpdateSilence(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['UpdateSilence'](arg1, arg2, arg3, arg4, arg5, arg6);
