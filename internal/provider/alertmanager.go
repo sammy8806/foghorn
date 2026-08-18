@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -43,27 +42,28 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 		log.Printf("%s %s cookie auth disabled: %v", kind, cfg.Name, err)
 	}
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout:   10 * time.Second,
+		Transport: withHTTPDebug(nil),
 	}
 	if cookieAuth != nil {
+		// Cookie auth needs to see cross-host redirects itself (to detect and
+		// replay a login flow via HandleRedirect below), so it gets a narrower
+		// policy than the plain ErrUseLastResponse used otherwise.
 		client.Jar = cookieAuth.jar
 		client.CheckRedirect = stopCrossDomainCookieRedirect
+	} else {
+		// Do not follow redirects. Besides preventing POST requests from being
+		// rewritten as GETs, this keeps OIDC requests pinned to the endpoints
+		// that passed issuer-origin validation.
+		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
 	}
 	return &alertmanagerAPI{
-		cfg: cfg,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-			// Do not follow redirects. Go's default client downgrades a
-			// redirected POST to a GET and drops the body, which would turn a
-			// silence-creation POST into a harmless GET of the silence list —
-			// a 200 with no silenceID that looks like success. Surface it instead.
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-			Transport: withHTTPDebug(nil),
-		},
-		apiV2: apiV2,
-		kind:  kind,
+		cfg:    cfg,
+		client: client,
+		apiV2:  apiV2,
+		kind:   kind,
 		oidc:   newOIDCDeviceAuthenticator(cfg.Auth, client),
 		cookie: cookieAuth,
 	}
@@ -168,7 +168,7 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 		log.Printf("silence: %s %s POST %s body=%s", a.kind, a.cfg.Name, httpReq.URL.Redacted(), string(jsonBody))
 	}
 
-	resp, err := a.client.Do(httpReq)
+	resp, err := a.do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("creating silence on %s: %w", a.cfg.Name, err)
 	}

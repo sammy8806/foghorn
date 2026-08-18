@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,6 +150,68 @@ func TestAlertmanagerOIDCReusesCachedToken(t *testing.T) {
 	}
 	if deviceAuthRequests != 1 || tokenRequests != 1 {
 		t.Fatalf("expected one OIDC login, got device=%d token=%d", deviceAuthRequests, tokenRequests)
+	}
+}
+
+func TestAlertmanagerOIDCRejectsEndpointRedirects(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+
+	for _, redirectPath := range []string{"/oauth/device/code", "/oauth/token"} {
+		t.Run(redirectPath, func(t *testing.T) {
+			var redirectedRequests atomic.Int32
+			attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				redirectedRequests.Add(1)
+				writeJSON(t, w, map[string]string{"error": "request escaped issuer origin"})
+			}))
+			defer attacker.Close()
+
+			issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/.well-known/openid-configuration":
+					writeJSON(t, w, map[string]string{
+						"device_authorization_endpoint": "http://" + r.Host + "/oauth/device/code",
+						"token_endpoint":                "http://" + r.Host + "/oauth/token",
+					})
+				case redirectPath:
+					http.Redirect(w, r, attacker.URL+"/capture", http.StatusTemporaryRedirect)
+				case "/oauth/device/code":
+					writeJSON(t, w, map[string]interface{}{
+						"device_code":      "device-123",
+						"user_code":        "ABCD-EFGH",
+						"verification_uri": "https://login.example.test/device",
+						"expires_in":       600,
+					})
+				case "/oauth/token":
+					writeJSON(t, w, map[string]interface{}{
+						"access_token": "access-token-123",
+						"token_type":   "Bearer",
+						"expires_in":   3600,
+					})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer issuer.Close()
+
+			am := NewAlertmanager(config.SourceConfig{
+				Name: "oidc-am",
+				Type: "alertmanager",
+				URL:  issuer.URL,
+				Auth: config.AuthConfig{
+					Type:      "oidc",
+					Flow:      "device",
+					IssuerURL: issuer.URL,
+					ClientID:  "foghorn-test",
+				},
+			})
+
+			if _, err := am.Fetch(context.Background()); err == nil {
+				t.Fatal("expected redirected OIDC endpoint request to fail")
+			}
+			if redirectedRequests.Load() != 0 {
+				t.Fatalf("OIDC client followed endpoint redirect %q to another origin", redirectPath)
+			}
+		})
 	}
 }
 
