@@ -267,10 +267,11 @@ func TestOIDCDiscoveryRejectsCrossOriginEndpoints(t *testing.T) {
 	defer server.Close()
 
 	auth := newOIDCDeviceAuthenticator("oidc-am", config.AuthConfig{
-		Type:      "oidc",
-		Flow:      "device",
-		IssuerURL: server.URL,
-		ClientID:  "foghorn-test",
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
 	}, server.Client())
 
 	_, err := auth.Token(context.Background())
@@ -301,10 +302,11 @@ func TestOIDCDiscoveryRejectsNonHTTPSEndpoint(t *testing.T) {
 	defer server.Close()
 
 	auth := newOIDCDeviceAuthenticator("oidc-am", config.AuthConfig{
-		Type:      "oidc",
-		Flow:      "device",
-		IssuerURL: server.URL,
-		ClientID:  "foghorn-test",
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
 	}, server.Client())
 
 	_, err := auth.Token(context.Background())

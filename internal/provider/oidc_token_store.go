@@ -40,7 +40,7 @@ type oidcTokenIdentity struct {
 
 func oidcPersistenceEnabled(auth config.AuthConfig) bool {
 	if auth.PersistTokens != nil {
-		return *auth.PersistTokens
+		return *auth.PersistTokens && keyring.Supported()
 	}
 	return keyring.Supported()
 }
@@ -175,7 +175,9 @@ func (a *oidcDeviceAuthenticator) savePersistedTokenLocked() {
 }
 
 func (a *oidcDeviceAuthenticator) deletePersistedTokenLocked() error {
-	if !a.persistenceEnabled {
+	// Deletion intentionally ignores persist_tokens. A user who disables
+	// persistence must still be able to remove an item saved by an older config.
+	if !a.storeSupported {
 		return nil
 	}
 	if err := a.store.Delete(a.account); err != nil {

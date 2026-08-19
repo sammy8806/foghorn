@@ -204,6 +204,83 @@ func TestOIDCRefreshPreservesRefreshTokenWhenResponseOmitsIt(t *testing.T) {
 	}
 }
 
+func TestOIDCRefreshPreservesIDTokenAndUnknownExpiryForcesRefresh(t *testing.T) {
+	refreshRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"device_authorization_endpoint": "http://" + r.Host + "/device",
+				"token_endpoint":                "http://" + r.Host + "/token",
+			})
+		case "/token":
+			refreshRequests++
+			writeJSON(t, w, map[string]interface{}{"access_token": "new-access"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth(server.URL)
+	authConfig.UseIDToken = true
+	auth := newOIDCDeviceAuthenticatorWithStore("production", authConfig, server.Client(), store)
+	saveTestToken(t, store, auth.account, &oidcToken{
+		IDToken:      "saved-id",
+		RefreshToken: "saved-refresh",
+		ExpiresIn:    0,
+		obtainedAt:   time.Now(),
+	})
+
+	for i := 0; i < 2; i++ {
+		token, err := auth.Token(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if token.IDToken != "saved-id" {
+			t.Fatalf("IDToken = %q, want preserved ID token", token.IDToken)
+		}
+	}
+	if refreshRequests != 2 {
+		t.Fatalf("refresh requests = %d, want 2 for unknown expiry", refreshRequests)
+	}
+	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.IDToken != "saved-id" {
+		t.Fatalf("persisted IDToken = %q, want preserved ID token", stored.IDToken)
+	}
+}
+
+func TestOIDCRefreshRejectsMissingConfiguredTokenBeforePersisting(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"device_authorization_endpoint": "http://" + r.Host + "/device",
+				"token_endpoint":                "http://" + r.Host + "/token",
+			})
+		case "/token":
+			writeJSON(t, w, map[string]interface{}{"refresh_token": "rotated-refresh"})
+		}
+	}))
+	defer server.Close()
+
+	store := newMemoryTokenStore()
+	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth(server.URL), server.Client(), store)
+	saveTestToken(t, store, auth.account, &oidcToken{RefreshToken: "saved-refresh", obtainedAt: time.Now()})
+	original := slices.Clone(store.items[auth.account])
+
+	if _, err := auth.Token(context.Background()); err == nil || !strings.Contains(err.Error(), "configured token") {
+		t.Fatalf("Token() error = %v, want missing configured token", err)
+	}
+	if !slices.Equal(store.items[auth.account], original) {
+		t.Fatal("invalid refresh response overwrote the saved login")
+	}
+}
+
 func TestOIDCTransientRefreshFailurePreservesSavedLogin(t *testing.T) {
 	deviceRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +319,18 @@ func TestOIDCTransientRefreshFailurePreservesSavedLogin(t *testing.T) {
 	}
 	if !slices.Equal(store.items[auth.account], original) {
 		t.Fatal("transient refresh failure changed the saved login")
+	}
+}
+
+func TestOIDCRefreshErrorRetryability(t *testing.T) {
+	for _, code := range []string{"invalid_grant", "invalid_token", "unauthorized_client", "invalid_client"} {
+		err := &oidcTokenEndpointError{Status: http.StatusBadRequest, Code: code}
+		if !isNonRetryableOIDCRefreshError(err) {
+			t.Errorf("HTTP 400 %s should be non-retryable", code)
+		}
+	}
+	if isNonRetryableOIDCRefreshError(&oidcTokenEndpointError{Status: http.StatusServiceUnavailable, Code: "temporarily_unavailable"}) {
+		t.Error("HTTP 503 should remain retryable")
 	}
 }
 
@@ -340,6 +429,43 @@ func TestOIDCRetriesSaveAfterKeyringRecovery(t *testing.T) {
 	}
 	if info := auth.SessionInfo(); info.StorageError != "" || !info.Saved {
 		t.Fatalf("unexpected recovered session state: %#v", info)
+	}
+}
+
+func TestOIDCKeyringReadFailureIsReportedAndRetried(t *testing.T) {
+	store := newMemoryTokenStore()
+	store.getErr = errors.New("test keyring locked")
+	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth("https://login.example.test"), http.DefaultClient, store)
+
+	if info := auth.SessionInfo(); info.StorageError == "" || info.Active {
+		t.Fatalf("unexpected session state after read failure: %#v", info)
+	}
+	store.getErr = nil
+	if info := auth.SessionInfo(); info.StorageError != "" {
+		t.Fatalf("read was not retried after recovery: %#v", info)
+	}
+}
+
+func TestOIDCPersistenceDisabledDoesNotReadOrWriteButForgetDeletes(t *testing.T) {
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth("https://login.example.test")
+	authConfig.PersistTokens = testBoolPointer(false)
+	auth := newOIDCDeviceAuthenticatorWithStore("production", authConfig, http.DefaultClient, store)
+	auth.token = &oidcToken{AccessToken: "access", ExpiresIn: 3600, obtainedAt: time.Now()}
+	auth.tokenDirty = true
+	store.items[auth.account] = []byte("old-secret")
+
+	if _, err := auth.Token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if store.setCalls != 0 {
+		t.Fatalf("Set calls = %d, want 0", store.setCalls)
+	}
+	if err := auth.Forget(); err != nil {
+		t.Fatal(err)
+	}
+	if store.deleteCalls != 1 {
+		t.Fatalf("Delete calls = %d, want 1", store.deleteCalls)
 	}
 }
 
