@@ -53,7 +53,7 @@
   {#if view === 'about'}
     <About on:back={() => (view = 'list')} />
   {:else}
-    <AlertList />
+    <AlertList on:about={() => (view = 'about')} />
   {/if}
 </main>
 

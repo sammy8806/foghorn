@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { createEventDispatcher, onMount, tick } from 'svelte';
   import {
     groupedAlerts,
     loading,
@@ -48,6 +48,8 @@
   import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
+
+  const dispatch = createEventDispatcher<{ about: void }>();
 
   const popupHorizontalMargin = 8;
   const popupTopMargin = 0;
@@ -811,6 +813,13 @@
         </svg>
       </button>
     {/if}
+    <button class="about-btn" type="button" on:click={() => dispatch('about')} title="About Foghorn" aria-label="About Foghorn">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"></circle>
+        <line x1="12" y1="11" x2="12" y2="16"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+    </button>
   </div>
 
   <!-- Alert content -->
@@ -1502,6 +1511,32 @@
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .refresh-icon { display: block; }
+
+  .about-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--status-item-height);
+    height: var(--status-item-height);
+    margin-left: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .status-loading + .about-btn,
+  .status-error + .about-btn {
+    margin-left: auto;
+  }
+
+  .about-btn:hover {
+    background: #1e293b;
+    color: #e2e8f0;
+  }
   .spinning { animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
