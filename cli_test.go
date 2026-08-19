@@ -75,7 +75,12 @@ func TestHandleCLIAuthListAndClear(t *testing.T) {
 	if !handled || code != 0 {
 		t.Fatalf("auth list = (%v, %d), stderr=%q", handled, code, stderr.String())
 	}
-	if got := stdout.String(); !strings.Contains(got, "production\tcookie\tsaved\t"+cookiePath) {
+	if got := stdout.String(); !strings.Contains(got, "Managed logins (1)") ||
+		!strings.Contains(got, "SOURCE") ||
+		!strings.Contains(got, "production") ||
+		!strings.Contains(got, "COOKIE") ||
+		!strings.Contains(got, "Saved") ||
+		!strings.Contains(got, cookiePath) {
 		t.Fatalf("auth list output = %q", got)
 	}
 
@@ -88,7 +93,7 @@ func TestHandleCLIAuthListAndClear(t *testing.T) {
 	if _, err := os.Stat(cookiePath); !os.IsNotExist(err) {
 		t.Fatalf("cookie file still exists or stat failed unexpectedly: %v", err)
 	}
-	if got, want := stdout.String(), "Cleared 1 saved login(s).\n"; got != want {
+	if got, want := stdout.String(), "Cleared saved login for \"production\". Foghorn will ask you to sign in again.\n"; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }
@@ -124,8 +129,19 @@ func TestHandleCLIAuthListAndClearOIDCKeyring(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	_, code := handleCLI([]string{"auth", "list"}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "sso\toidc\tsaved\tsystem keyring") {
+	if code != 0 || !strings.Contains(stdout.String(), "sso") ||
+		!strings.Contains(stdout.String(), "OIDC") ||
+		!strings.Contains(stdout.String(), "Saved") ||
+		!strings.Contains(stdout.String(), platformKeyringName()) {
 		t.Fatalf("auth list code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	_, code = handleCLI([]string{"auth", "list", "--json"}, &stdout, &stderr)
+	if code != 0 || !strings.Contains(stdout.String(), `"source": "sso"`) ||
+		!strings.Contains(stdout.String(), `"storage": "`+platformKeyringName()+`"`) {
+		t.Fatalf("auth list --json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
 	stdout.Reset()

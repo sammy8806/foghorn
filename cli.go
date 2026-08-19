@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"foghorn/internal/config"
 	"foghorn/internal/keyring"
@@ -15,7 +18,7 @@ import (
 
 const cliUsage = `Usage:
   foghorn [--version|-v]
-  foghorn auth list
+  foghorn auth list [--json]
   foghorn auth clear <source>
   foghorn auth clear --all
 
@@ -70,23 +73,44 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 	sources := managedAuthSources(cfg)
 
 	if args[0] == "list" {
-		if len(args) != 1 {
-			fmt.Fprintln(stderr, "auth list does not accept arguments")
+		if len(args) > 2 || len(args) == 2 && args[1] != "--json" {
+			fmt.Fprintln(stderr, "usage: foghorn auth list [--json]")
 			return true, 2
 		}
 		if len(sources) == 0 {
+			if len(args) == 2 {
+				fmt.Fprintln(stdout, "[]")
+				return true, 0
+			}
 			fmt.Fprintln(stdout, "No sources with managed logins configured.")
 			return true, 0
 		}
 		store := newCLIKeyringStore()
+		entries := make([]authListEntry, 0, len(sources))
 		for _, src := range sources {
 			kind := normalizedAuthType(src)
 			status, location := loginStatus(src, store)
 			if kind == "oidc" && !cliKeyringSupported() {
 				status = "unsupported"
 			}
-			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", src.Name, kind, status, location)
+			entries = append(entries, authListEntry{
+				Source:      src.Name,
+				Auth:        kind,
+				Status:      status,
+				Storage:     location,
+				Persistence: persistenceStatus(src),
+			})
 		}
+		if len(args) == 2 {
+			encoded, err := json.MarshalIndent(entries, "", "  ")
+			if err != nil {
+				fmt.Fprintf(stderr, "foghorn: encoding auth list: %v\n", err)
+				return true, 1
+			}
+			fmt.Fprintln(stdout, string(encoded))
+			return true, 0
+		}
+		printAuthTable(stdout, entries)
 		return true, 0
 	}
 
@@ -126,11 +150,23 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 			removed++
 		}
 	}
-	fmt.Fprintf(stdout, "Cleared %d saved login(s).\n", removed)
+	if args[1] == "--all" {
+		fmt.Fprintf(stdout, "Cleared %d saved login(s).\n", removed)
+	} else if removed == 0 {
+		fmt.Fprintf(stdout, "No saved login found for %q.\n", args[1])
+	} else {
+		fmt.Fprintf(stdout, "Cleared saved login for %q. Foghorn will ask you to sign in again.\n", args[1])
+	}
 	return true, 0
 }
 
 func loadCLIConfig() (*config.Config, error) {
+	// Config resolution logs useful desktop-startup diagnostics. CLI commands
+	// should keep stdout/stderr stable and limited to their requested result.
+	logOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(logOutput)
+
 	path := configPath()
 	config.MigrateLegacyPath(path)
 	cfg, err := config.Load(path)
@@ -138,6 +174,51 @@ func loadCLIConfig() (*config.Config, error) {
 		return config.Default(), nil
 	}
 	return cfg, err
+}
+
+type authListEntry struct {
+	Source      string `json:"source"`
+	Auth        string `json:"auth"`
+	Status      string `json:"status"`
+	Storage     string `json:"storage"`
+	Persistence string `json:"persistence"`
+}
+
+func printAuthTable(w io.Writer, entries []authListEntry) {
+	fmt.Fprintf(w, "Managed logins (%d)\n\n", len(entries))
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "SOURCE\tAUTH\tSTATUS\tPERSISTENCE\tSTORAGE")
+	for _, entry := range entries {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			entry.Source,
+			strings.ToUpper(entry.Auth),
+			titleStatus(entry.Status),
+			titleStatus(entry.Persistence),
+			entry.Storage,
+		)
+	}
+	_ = tw.Flush()
+	fmt.Fprintln(w, "\nClear one with: foghorn auth clear <source>")
+}
+
+func titleStatus(value string) string {
+	if value == "" {
+		return value
+	}
+	return strings.ToUpper(value[:1]) + value[1:]
+}
+
+func persistenceStatus(src config.SourceConfig) string {
+	if normalizedAuthType(src) != "oidc" {
+		return "enabled"
+	}
+	if src.Auth.PersistTokens != nil && !*src.Auth.PersistTokens {
+		return "disabled"
+	}
+	if !cliKeyringSupported() {
+		return "unsupported"
+	}
+	return "enabled"
 }
 
 func managedAuthSources(cfg *config.Config) []config.SourceConfig {
@@ -165,7 +246,7 @@ func loginIdentity(src config.SourceConfig) string {
 
 func loginStatus(src config.SourceConfig, store keyring.Store) (status, location string) {
 	if normalizedAuthType(src) == "oidc" {
-		location = "system keyring"
+		location = platformKeyringName()
 		if !cliKeyringSupported() {
 			return "unsupported", location
 		}
@@ -189,6 +270,13 @@ func loginStatus(src config.SourceConfig, store keyring.Store) (status, location
 		return "not saved", path
 	}
 	return "unavailable", path
+}
+
+func platformKeyringName() string {
+	if name := keyring.BackendName(); name != "" {
+		return name
+	}
+	return "system keyring"
 }
 
 func clearSavedLogin(src config.SourceConfig, store keyring.Store) (bool, error) {

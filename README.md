@@ -213,6 +213,7 @@ opening the desktop application:
 foghorn --version
 foghorn -v
 foghorn auth list
+foghorn auth list --json
 foghorn auth clear my-alertmanager
 foghorn auth clear --all
 ```
