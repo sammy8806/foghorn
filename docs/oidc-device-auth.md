@@ -38,16 +38,16 @@ include it in `auth.scopes` when the provider requires it.
 
 ## Persistent login on macOS
 
-On macOS, Foghorn saves the complete latest token response in the user's login
-Keychain by default. This includes the access token, refresh token, ID token,
-token type, expiry, and acquisition time. The Keychain item uses service
+On supported macOS builds, Foghorn saves the token fields it uses in the user's
+login Keychain by default: access token, refresh token, ID token, token type,
+expiry, and acquisition time. The Keychain item uses service
 `de.sammy8806.foghorn.oidc`, is local rather than iCloud-synchronizable, and is
-available after the user first unlocks the Mac following startup.
+available while the user's login Keychain is unlocked.
 
 The Keychain lets Foghorn reuse a still-valid token after an app or source
 configuration restart. When the access token expires, Foghorn uses the saved
 refresh token and immediately stores the rotated response. If a successful
-refresh omits a new refresh token, Foghorn preserves the previous one.
+refresh omits a new refresh or ID token, Foghorn preserves the previous one.
 Refreshing still requires network access to the identity provider; "offline"
 login means the user does not need to repeat browser authentication.
 
