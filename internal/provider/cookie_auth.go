@@ -29,7 +29,7 @@ func newCookieAuthenticator(cfg config.SourceConfig) (*cookieAuthenticator, erro
 	if strings.ToLower(strings.TrimSpace(cfg.Auth.Type)) != "cookie" {
 		return nil, nil
 	}
-	jar, err := newPersistentCookieJar(cookieFilePath(cfg))
+	jar, err := newPersistentCookieJar(CookieFilePath(cfg))
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,10 @@ func isCookieAuth(auth config.AuthConfig) bool {
 	return strings.ToLower(strings.TrimSpace(auth.Type)) == "cookie"
 }
 
-func cookieFilePath(cfg config.SourceConfig) string {
+// CookieFilePath returns the persistent login-cookie path for a source. It is
+// exported so credential-management commands can inspect and remove the same
+// file without constructing an authenticator (which would load its contents).
+func CookieFilePath(cfg config.SourceConfig) string {
 	if configured := strings.TrimSpace(cfg.Auth.CookieFile); configured != "" {
 		return configured
 	}

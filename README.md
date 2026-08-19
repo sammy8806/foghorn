@@ -204,8 +204,27 @@ sources:
 
 See `config.example.yaml` for the full reference, including severity mapping, display/grouping options, notification rules, and Better Stack-specific fields.
 
+### Command line
+
+Foghorn can report its version and manage saved cookie and OIDC logins without
+opening the desktop application:
+
+```bash
+foghorn --version
+foghorn -v
+foghorn auth list
+foghorn auth clear my-alertmanager
+foghorn auth clear --all
+```
+
+`auth list` reports whether each supported source has a saved login and where
+it is stored; it never prints cookies or token values. `auth clear` removes the
+saved login so the source prompts for authentication again. OIDC credentials
+use macOS Keychain, Linux Secret Service, or Windows Credential Manager. These
+commands do not modify passwords or API tokens in the configuration.
+
 For Alertmanager login through the OIDC device flow, including Keycloak client
-and group mapper settings, macOS Keychain/Linux Secret Service persistent login,
+and group mapper settings, secure credential-store-backed persistent login,
 local logout, reverse-proxy bearer passthrough, and `302`/`403` diagnostics, see
 [`docs/oidc-device-auth.md`](docs/oidc-device-auth.md).
 

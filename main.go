@@ -36,6 +36,10 @@ var assets embed.FS
 var version = "dev"
 
 func main() {
+	if handled, exitCode := handleCLI(os.Args[1:], os.Stdout, os.Stderr); handled {
+		os.Exit(exitCode)
+	}
+
 	log.Printf("foghorn %s starting", version)
 
 	cfgPath := configPath()
