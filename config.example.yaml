@@ -42,9 +42,12 @@ sources:
   #     # Use a dedicated public client with the OAuth 2.0 Device Authorization
   #     # Grant enabled; do not reuse the proxy's confidential browser client.
   #     client_id: foghorn
-  #     # `openid` is sufficient unless a required claim is exposed through an
-  #     # optional client scope. See docs/oidc-device-auth.md.
+  #     # `openid` is sufficient unless the identity provider requires an
+  #     # additional scope such as `offline_access` to issue refresh tokens.
   #     scopes: [openid]
+  #     # On supported macOS builds, the token fields Foghorn uses are saved in
+  #     # the login Keychain by default. Set false for memory-only authentication.
+  #     # persist_tokens: false
   #     # Optional when discovery is unavailable:
   #     # device_authorization_url: https://login.example.com/oauth/device/code
   #     # token_url: https://login.example.com/oauth/token

@@ -17,7 +17,9 @@ sources:
       flow: device
       issuer_url: https://login.example.com/realms/observability
       client_id: foghorn
-      scopes: [openid]
+      # Add offline_access manually if your provider requires it before issuing
+      # a refresh token. Foghorn does not add OAuth scopes automatically.
+      scopes: [openid, offline_access]
     poll_interval: 30s
     # The source timeout also covers the interactive login. The normal 10s
     # default is too short for a user to complete SSO or MFA.
@@ -29,13 +31,53 @@ issuer, opens the verification page in the system browser, polls for the
 token, and sends the access token as `Authorization: Bearer <token>`.
 
 `openid` is the only scope Foghorn itself requires. Add another scope only
-when the identity provider exposes a required claim through an optional client
-scope. `email` and `profile` are not needed for Alertmanager access.
+when the identity provider requires it for refresh tokens or exposes a required
+claim through an optional client scope. `email` and `profile` are not needed
+for Alertmanager access. Foghorn never adds `offline_access` automatically;
+include it in `auth.scopes` when the provider requires it.
 
-Foghorn refreshes an expired access token while it remains running. Tokens are
-currently stored only in memory, so restarting Foghorn or reloading its source
-configuration requires another device login. Requesting `offline_access` does
-not make login persistent until refresh-token storage is implemented.
+## Persistent login on macOS
+
+On supported macOS builds, Foghorn saves the token fields it uses in the user's
+login Keychain by default: access token, refresh token, ID token, token type,
+expiry, and acquisition time. The Keychain item uses service
+`de.sammy8806.foghorn.oidc`, is local rather than iCloud-synchronizable, and is
+available while the user's login Keychain is unlocked.
+
+The Keychain lets Foghorn reuse a still-valid token after an app or source
+configuration restart. When the access token expires, Foghorn uses the saved
+refresh token and immediately stores the rotated response. If a successful
+refresh omits a new refresh or ID token, Foghorn preserves the previous one.
+Refreshing still requires network access to the identity provider; "offline"
+login means the user does not need to repeat browser authentication.
+
+Saved credentials are isolated by source name, issuer/endpoints, client ID,
+sorted scopes, and whether `use_id_token` is enabled. Renaming a source or
+changing one of those settings creates a new login identity and leaves the old
+Keychain item untouched.
+
+To disable persistence for one source:
+
+```yaml
+auth:
+  type: oidc
+  flow: device
+  issuer_url: https://login.example.com/realms/observability
+  client_id: foghorn
+  scopes: [openid]
+  persist_tokens: false
+```
+
+If Keychain is locked or temporarily unavailable, authentication continues in
+memory and Foghorn retries saving the token on later requests. The About view
+shows the storage error until Keychain access recovers.
+
+### Forget a login
+
+Open **About → OIDC logins → Forget login** to delete a source's Keychain item
+and clear its in-memory token. This removes Foghorn's local credential only; it
+does not revoke the refresh token at the identity provider. The next request
+for that source starts a new device login.
 
 ## Keycloak client
 
@@ -164,5 +206,5 @@ http: GET https://alertmanager.example.com/api/v2/alerts?... -> 200 (...)
 | `groups` contains `/monitoring-user` but the proxy expects `monitoring-user` | Keycloak emits full group paths | Turn **Full group path** off or update the proxy rule |
 | Access-token `groups` contains the expected value, but the response is still `403` | Another JWT constraint is failing | Check issuer, signature/JWKS, audience restrictions, and the deployed proxy policy |
 
-After changing a mapper or client scope, obtain a new token by restarting
-Foghorn and completing device login again.
+After changing a mapper or client scope, forget the source's saved OIDC login
+from the About view and complete device login again.

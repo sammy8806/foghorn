@@ -205,8 +205,9 @@ sources:
 See `config.example.yaml` for the full reference, including severity mapping, display/grouping options, notification rules, and Better Stack-specific fields.
 
 For Alertmanager login through the OIDC device flow, including Keycloak client
-and group mapper settings, reverse-proxy bearer passthrough, and `302`/`403`
-diagnostics, see [`docs/oidc-device-auth.md`](docs/oidc-device-auth.md).
+and group mapper settings, macOS Keychain-backed persistent login, local logout,
+reverse-proxy bearer passthrough, and `302`/`403` diagnostics, see
+[`docs/oidc-device-auth.md`](docs/oidc-device-auth.md).
 
 The `ui.scale` block can enlarge the app for accessibility. Use `mode: fonts` to scale text only, or `mode: interface` to scale the full web UI. `factor` accepts `0.75` through `2.0`; when `mode: interface`, `apply_to_popup: true` also resizes the popup window.
 

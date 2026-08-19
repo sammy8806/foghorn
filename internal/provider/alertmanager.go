@@ -64,7 +64,7 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 		client: client,
 		apiV2:  apiV2,
 		kind:   kind,
-		oidc:   newOIDCDeviceAuthenticator(cfg.Auth, client),
+		oidc:   newOIDCDeviceAuthenticator(cfg.Name, cfg.Auth, client),
 		cookie: cookieAuth,
 	}
 }
@@ -72,6 +72,20 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 func (a *alertmanagerAPI) Name() string          { return a.cfg.Name }
 func (a *alertmanagerAPI) Type() string          { return a.kind }
 func (a *alertmanagerAPI) SupportsSilence() bool { return true }
+
+func (a *alertmanagerAPI) OIDCSessionInfo() OIDCSessionInfo {
+	if a.oidc == nil {
+		return OIDCSessionInfo{Source: a.cfg.Name}
+	}
+	return a.oidc.SessionInfo()
+}
+
+func (a *alertmanagerAPI) ForgetOIDCLogin() error {
+	if a.oidc == nil {
+		return fmt.Errorf("source %q does not use OIDC authentication", a.cfg.Name)
+	}
+	return a.oidc.Forget()
+}
 
 func (a *alertmanagerAPI) Health(_ context.Context) model.ProviderHealth {
 	a.mu.RLock()
@@ -275,7 +289,30 @@ func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInf
 }
 
 func (a *alertmanagerAPI) do(req *http.Request) (*http.Response, error) {
+	return a.doWithOIDCRetry(req, true)
+}
+
+func (a *alertmanagerAPI) doWithOIDCRetry(req *http.Request, retryOIDC bool) (*http.Response, error) {
 	resp, err := a.client.Do(req)
+	if err == nil && resp != nil && retryOIDC && a.oidc != nil && resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+		a.oidc.expireAccessToken()
+		retry := req.Clone(req.Context())
+		if req.Body != nil {
+			if req.GetBody == nil {
+				return nil, fmt.Errorf("%s %s rejected OIDC credentials but the request body cannot be replayed", a.kind, a.cfg.Name)
+			}
+			body, bodyErr := req.GetBody()
+			if bodyErr != nil {
+				return nil, bodyErr
+			}
+			retry.Body = body
+		}
+		if authErr := a.applyAuth(req.Context(), retry); authErr != nil {
+			return nil, authErr
+		}
+		return a.doWithOIDCRetry(retry, false)
+	}
 	if err != nil || resp == nil || a.cookie == nil || !isRedirect(resp.StatusCode) {
 		return resp, err
 	}

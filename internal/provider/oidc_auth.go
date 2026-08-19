@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/browser"
 
 	"foghorn/internal/config"
+	"foghorn/internal/keyring"
 )
 
 const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
@@ -27,12 +28,21 @@ const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 var browserOpenURL = browser.OpenURL
 
 type oidcDeviceAuthenticator struct {
-	cfg    config.AuthConfig
-	client *http.Client
+	source             string
+	cfg                config.AuthConfig
+	client             *http.Client
+	store              keyring.Store
+	account            string
+	persistenceEnabled bool
+	storeSupported     bool
 
-	mu        sync.Mutex
-	discovery *oidcDiscovery
-	token     *oidcToken
+	mu           sync.Mutex
+	discovery    *oidcDiscovery
+	token        *oidcToken
+	tokenDirty   bool
+	loadComplete bool
+	persisted    bool
+	storageError string
 }
 
 type oidcDiscovery struct {
@@ -58,7 +68,19 @@ type oidcToken struct {
 	obtainedAt   time.Time
 }
 
-func newOIDCDeviceAuthenticator(auth config.AuthConfig, client *http.Client) *oidcDeviceAuthenticator {
+func newOIDCDeviceAuthenticator(source string, auth config.AuthConfig, client *http.Client) *oidcDeviceAuthenticator {
+	if auth.PersistTokens != nil && *auth.PersistTokens && !keyring.Supported() {
+		log.Printf("oidc: source %q requested persistent tokens, but secure token storage is unavailable on this platform; using memory-only credentials", source)
+	}
+	a := newOIDCDeviceAuthenticatorWithStore(source, auth, client, keyring.NewOIDCStore())
+	if a != nil {
+		a.persistenceEnabled = oidcPersistenceEnabled(auth)
+		a.storeSupported = keyring.Supported()
+	}
+	return a
+}
+
+func newOIDCDeviceAuthenticatorWithStore(source string, auth config.AuthConfig, client *http.Client, store keyring.Store) *oidcDeviceAuthenticator {
 	authType := strings.ToLower(strings.TrimSpace(auth.Type))
 	flow := strings.ToLower(strings.TrimSpace(auth.Flow))
 	if authType != "oidc" && authType != "oidc_device" {
@@ -73,7 +95,15 @@ func newOIDCDeviceAuthenticator(auth config.AuthConfig, client *http.Client) *oi
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &oidcDeviceAuthenticator{cfg: auth, client: client}
+	return &oidcDeviceAuthenticator{
+		source:             source,
+		cfg:                auth,
+		client:             client,
+		store:              store,
+		account:            oidcTokenAccount(source, auth),
+		persistenceEnabled: auth.PersistTokens == nil || *auth.PersistTokens,
+		storeSupported:     true,
+	}
 }
 
 func (a *oidcDeviceAuthenticator) Apply(ctx context.Context, req *http.Request) error {
@@ -92,20 +122,66 @@ func (a *oidcDeviceAuthenticator) Apply(ctx context.Context, req *http.Request) 
 	return nil
 }
 
+func (a *oidcDeviceAuthenticator) SessionInfo() OIDCSessionInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.loadPersistedTokenLocked()
+	return OIDCSessionInfo{
+		Source:             a.source,
+		Configured:         true,
+		Active:             a.token != nil,
+		Saved:              a.persisted,
+		PersistenceEnabled: a.persistenceEnabled,
+		StorageError:       a.storageError,
+	}
+}
+
+// expireAccessToken forces the next Apply to refresh or reauthenticate. It is
+// used after a resource server rejects an otherwise unexpired bearer token.
+func (a *oidcDeviceAuthenticator) expireAccessToken() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.token != nil {
+		a.token.ExpiresIn = 0
+	}
+}
+
+func (a *oidcDeviceAuthenticator) Forget() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.token = nil
+	a.tokenDirty = false
+	a.loadComplete = true
+	return a.deletePersistedTokenLocked()
+}
+
 func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	a.loadPersistedTokenLocked()
 	if a.token != nil && !a.token.expired() {
+		a.savePersistedTokenLocked()
 		return a.token, nil
 	}
 	if a.token != nil && a.token.RefreshToken != "" {
-		if token, err := a.refresh(ctx, a.token.RefreshToken); err == nil {
+		if token, err := a.refresh(ctx, a.token); err == nil {
 			a.token = token
+			a.tokenDirty = true
+			a.savePersistedTokenLocked()
 			logOIDCTokenAuthorizationClaims(token)
 			return token, nil
+		} else if isNonRetryableOIDCRefreshError(err) {
+			log.Printf("oidc: saved login for source %q is no longer valid; starting device authorization", a.source)
+			a.token = nil
+			a.tokenDirty = false
+			if deleteErr := a.deletePersistedTokenLocked(); deleteErr != nil {
+				log.Printf("oidc: source %q could not remove the invalid saved login: %v", a.source, deleteErr)
+			}
 		} else {
-			log.Printf("oidc: refresh failed, starting device authorization: %v", err)
+			return nil, fmt.Errorf("oidc: refreshing saved login for source %q: %w", a.source, err)
 		}
 	}
 
@@ -124,6 +200,8 @@ func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error)
 		return nil, err
 	}
 	a.token = token
+	a.tokenDirty = true
+	a.savePersistedTokenLocked()
 	logOIDCTokenAuthorizationClaims(token)
 	return token, nil
 }
@@ -312,7 +390,7 @@ func (a *oidcDeviceAuthenticator) pollToken(ctx context.Context, endpoint string
 	}
 }
 
-func (a *oidcDeviceAuthenticator) refresh(ctx context.Context, refreshToken string) (*oidcToken, error) {
+func (a *oidcDeviceAuthenticator) refresh(ctx context.Context, previous *oidcToken) (*oidcToken, error) {
 	discovery, err := a.discover(ctx)
 	if err != nil {
 		return nil, err
@@ -320,7 +398,7 @@ func (a *oidcDeviceAuthenticator) refresh(ctx context.Context, refreshToken stri
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
 	form.Set("client_id", a.cfg.ClientID)
-	form.Set("refresh_token", refreshToken)
+	form.Set("refresh_token", previous.RefreshToken)
 	req, err := newFormRequest(ctx, discovery.TokenEndpoint, form, a.cfg.ClientID, a.cfg.ClientSecret)
 	if err != nil {
 		return nil, err
@@ -336,11 +414,41 @@ func (a *oidcDeviceAuthenticator) refresh(ctx context.Context, refreshToken stri
 	if token == nil {
 		return nil, errors.New("oidc refresh did not return a token")
 	}
+	if token.RefreshToken == "" {
+		token.RefreshToken = previous.RefreshToken
+	}
+	if token.IDToken == "" {
+		token.IDToken = previous.IDToken
+	}
+	configuredToken := token.AccessToken
+	if a.cfg.UseIDToken {
+		configuredToken = token.IDToken
+	}
+	if strings.TrimSpace(configuredToken) == "" {
+		return nil, errors.New("oidc refresh did not contain the configured token")
+	}
 	return token, nil
 }
 
 type oidcTokenRetry struct {
 	SlowDown bool
+}
+
+type oidcTokenEndpointError struct {
+	Status int
+	Code   string
+}
+
+func (e *oidcTokenEndpointError) Error() string {
+	return fmt.Sprintf("oidc token endpoint returned HTTP %d: %s", e.Status, e.Code)
+}
+
+func isNonRetryableOIDCRefreshError(err error) bool {
+	var endpointErr *oidcTokenEndpointError
+	if !errors.As(err, &endpointErr) {
+		return false
+	}
+	return endpointErr.Status >= 400 && endpointErr.Status < 500
 }
 
 func decodeDeviceTokenResponse(resp *http.Response) (*oidcToken, *oidcTokenRetry, error) {
@@ -370,7 +478,7 @@ func decodeDeviceTokenResponse(resp *http.Response) (*oidcToken, *oidcTokenRetry
 	case "slow_down":
 		return nil, &oidcTokenRetry{SlowDown: true}, nil
 	default:
-		return nil, nil, fmt.Errorf("oidc token endpoint returned HTTP %d: %s", resp.StatusCode, errorCode)
+		return nil, nil, &oidcTokenEndpointError{Status: resp.StatusCode, Code: errorCode}
 	}
 }
 
@@ -391,7 +499,7 @@ func (t *oidcToken) expired() bool {
 		return true
 	}
 	if t.ExpiresIn <= 0 {
-		return false
+		return true
 	}
 	return time.Now().After(t.obtainedAt.Add(time.Duration(t.ExpiresIn)*time.Second - 30*time.Second))
 }

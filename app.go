@@ -171,6 +171,47 @@ func (a *App) GetSourceCapabilities() map[string]model.SourceCapabilities {
 	return out
 }
 
+// GetOIDCSessions returns non-secret authentication state for OIDC sources.
+// It is used by the About/settings view to expose local session removal.
+func (a *App) GetOIDCSessions() []provider.OIDCSessionInfo {
+	a.mu.RLock()
+	providers := make([]provider.Provider, 0, len(a.providers))
+	for _, src := range a.cfg.Sources {
+		if p, ok := a.providers[src.Name]; ok {
+			providers = append(providers, p)
+		}
+	}
+	a.mu.RUnlock()
+
+	sessions := make([]provider.OIDCSessionInfo, 0, len(providers))
+	for _, p := range providers {
+		if oidc, ok := p.(provider.OIDCSessionProvider); ok {
+			info := oidc.OIDCSessionInfo()
+			if info.Configured {
+				sessions = append(sessions, info)
+			}
+		}
+	}
+	return sessions
+}
+
+// ForgetOIDCLogin deletes a source's saved OIDC token fields and clears the
+// live in-memory token. The identity provider may still consider the refresh
+// token valid; this is local credential removal, not server-side revocation.
+func (a *App) ForgetOIDCLogin(source string) error {
+	a.mu.RLock()
+	p, ok := a.providers[source]
+	a.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("source %q was not found", source)
+	}
+	oidc, ok := p.(provider.OIDCSessionProvider)
+	if !ok {
+		return fmt.Errorf("source %q does not support OIDC login management", source)
+	}
+	return oidc.ForgetOIDCLogin()
+}
+
 func (a *App) GetOnCallStatus() []model.OnCallStatus {
 	return a.store.OnCalls()
 }

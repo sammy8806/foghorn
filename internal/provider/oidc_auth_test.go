@@ -65,11 +65,12 @@ func TestAlertmanagerOIDCDeviceFlowUsesAccessToken(t *testing.T) {
 		Type: "alertmanager",
 		URL:  server.URL,
 		Auth: config.AuthConfig{
-			Type:      "oidc",
-			Flow:      "device",
-			IssuerURL: server.URL,
-			ClientID:  "foghorn-test",
-			Scopes:    []string{"openid", "profile"},
+			Type:          "oidc",
+			Flow:          "device",
+			IssuerURL:     server.URL,
+			ClientID:      "foghorn-test",
+			Scopes:        []string{"openid", "profile"},
+			PersistTokens: testBoolPointer(false),
 		},
 	}
 	am := NewAlertmanager(cfg)
@@ -136,10 +137,11 @@ func TestAlertmanagerOIDCReusesCachedToken(t *testing.T) {
 		Type: "alertmanager",
 		URL:  server.URL,
 		Auth: config.AuthConfig{
-			Type:      "oidc",
-			Flow:      "device",
-			IssuerURL: server.URL,
-			ClientID:  "foghorn-test",
+			Type:          "oidc",
+			Flow:          "device",
+			IssuerURL:     server.URL,
+			ClientID:      "foghorn-test",
+			PersistTokens: testBoolPointer(false),
 		},
 	}
 	am := NewAlertmanager(cfg)
@@ -199,10 +201,11 @@ func TestAlertmanagerOIDCRejectsEndpointRedirects(t *testing.T) {
 				Type: "alertmanager",
 				URL:  issuer.URL,
 				Auth: config.AuthConfig{
-					Type:      "oidc",
-					Flow:      "device",
-					IssuerURL: issuer.URL,
-					ClientID:  "foghorn-test",
+					Type:          "oidc",
+					Flow:          "device",
+					IssuerURL:     issuer.URL,
+					ClientID:      "foghorn-test",
+					PersistTokens: testBoolPointer(false),
 				},
 			})
 
@@ -232,8 +235,10 @@ func readFormBody(t *testing.T, r *http.Request) string {
 	return r.Form.Encode()
 }
 
+func testBoolPointer(value bool) *bool { return &value }
+
 func TestOIDCDeviceAuthFailsBeforeExpiry(t *testing.T) {
-	auth := newOIDCDeviceAuthenticator(config.AuthConfig{
+	auth := newOIDCDeviceAuthenticator("oidc-am", config.AuthConfig{
 		Type:      "oidc",
 		Flow:      "device",
 		IssuerURL: "https://login.example.test",
@@ -261,11 +266,12 @@ func TestOIDCDiscoveryRejectsCrossOriginEndpoints(t *testing.T) {
 	}))
 	defer server.Close()
 
-	auth := newOIDCDeviceAuthenticator(config.AuthConfig{
-		Type:      "oidc",
-		Flow:      "device",
-		IssuerURL: server.URL,
-		ClientID:  "foghorn-test",
+	auth := newOIDCDeviceAuthenticator("oidc-am", config.AuthConfig{
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
 	}, server.Client())
 
 	_, err := auth.Token(context.Background())
@@ -295,11 +301,12 @@ func TestOIDCDiscoveryRejectsNonHTTPSEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	auth := newOIDCDeviceAuthenticator(config.AuthConfig{
-		Type:      "oidc",
-		Flow:      "device",
-		IssuerURL: server.URL,
-		ClientID:  "foghorn-test",
+	auth := newOIDCDeviceAuthenticator("oidc-am", config.AuthConfig{
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
 	}, server.Client())
 
 	_, err := auth.Token(context.Background())

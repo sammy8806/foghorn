@@ -148,6 +148,8 @@ export function buildBridgeInit(scenario) {
           RefreshAlerts: async () => {},
           LayoutPopup: async () => {},
           GetAbout: async () => ({ name: 'Foghorn', version: 'screenshot', description: 'Demo', repoURL: 'https://github.com/sammy8806/foghorn', copyright: '' }),
+          GetOIDCSessions: async () => [],
+          ForgetOIDCLogin: async () => {},
         },
       },
     };

@@ -172,7 +172,6 @@ func main() {
 
 				app.updateConfig(nextCfg)
 				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
-				app.setProviders(buildProviders(nextCfg.Sources))
 				store.SyncSources(sourceNames(nextCfg.Sources))
 				severities, err := config.NormalizeSeverityConfig(nextCfg.Severities)
 				if err != nil {
@@ -187,7 +186,14 @@ func main() {
 				app.cancel = cancel
 
 				notifier := notify.New(nextCfg.Notifications, severities)
-				pollEng := poll.New(store, nextCfg.Sources, nil)
+				// The UI, silence manager, and poller intentionally share the same
+				// provider instances. This lets a user-facing OIDC logout clear the
+				// exact in-memory token used by background polling.
+				providers := buildProviders(nextCfg.Sources)
+				app.setProviders(providers)
+				pollEng := poll.New(store, nextCfg.Sources, func(source string, _ poll.Provider) poll.Provider {
+					return providers[source]
+				})
 				diffCh := pollEng.Start(bgCtx)
 				app.setRefreshTrigger(pollEng.RefreshNow)
 

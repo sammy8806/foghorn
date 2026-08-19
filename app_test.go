@@ -16,6 +16,19 @@ type stubProvider struct {
 	fetchFn         func(context.Context) ([]model.Alert, error)
 }
 
+type stubOIDCProvider struct {
+	stubProvider
+	session     provider.OIDCSessionInfo
+	forgetCalls int
+	forgetErr   error
+}
+
+func (s *stubOIDCProvider) OIDCSessionInfo() provider.OIDCSessionInfo { return s.session }
+func (s *stubOIDCProvider) ForgetOIDCLogin() error {
+	s.forgetCalls++
+	return s.forgetErr
+}
+
 func (s stubProvider) Name() string          { return s.name }
 func (s stubProvider) Type() string          { return "stub" }
 func (s stubProvider) SupportsSilence() bool { return s.supportsSilence }
@@ -94,6 +107,40 @@ func TestRefreshAlertsWithoutTriggerIsNoOp(t *testing.T) {
 
 	if err := app.RefreshAlerts(); err != nil {
 		t.Fatalf("expected no error when no refresh trigger is registered, got %v", err)
+	}
+}
+
+func TestOIDCSessionManagementUsesActiveProvider(t *testing.T) {
+	oidc := &stubOIDCProvider{
+		stubProvider: stubProvider{name: "production"},
+		session: provider.OIDCSessionInfo{
+			Source:             "production",
+			Configured:         true,
+			Active:             true,
+			Saved:              true,
+			PersistenceEnabled: true,
+		},
+	}
+	app := NewApp(&config.Config{Sources: []config.SourceConfig{{Name: "production"}}}, state.New())
+	app.setProviders(map[string]provider.Provider{"production": oidc})
+
+	sessions := app.GetOIDCSessions()
+	if len(sessions) != 1 || sessions[0].Source != "production" || !sessions[0].Saved {
+		t.Fatalf("GetOIDCSessions() = %#v", sessions)
+	}
+	if err := app.ForgetOIDCLogin("production"); err != nil {
+		t.Fatalf("ForgetOIDCLogin() error: %v", err)
+	}
+	if oidc.forgetCalls != 1 {
+		t.Fatalf("Forget calls = %d, want 1", oidc.forgetCalls)
+	}
+}
+
+func TestForgetOIDCLoginRejectsUnknownSource(t *testing.T) {
+	app := NewApp(&config.Config{}, state.New())
+	app.setProviders(map[string]provider.Provider{})
+	if err := app.ForgetOIDCLogin("missing"); err == nil {
+		t.Fatal("expected unknown source error")
 	}
 }
 
