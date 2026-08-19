@@ -133,6 +133,7 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 	}
 
 	removed := 0
+	skipped := 0
 	seen := make(map[string]bool)
 	store := newCLIKeyringStore()
 	for _, src := range targets {
@@ -143,6 +144,10 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 		seen[identity] = true
 		wasRemoved, err := clearSavedLogin(src, store)
 		if err != nil {
+			if args[1] == "--all" && errors.Is(err, keyring.ErrUnsupported) {
+				skipped++
+				continue
+			}
 			fmt.Fprintf(stderr, "foghorn: clearing login for %q: %v\n", src.Name, err)
 			return true, 1
 		}
@@ -151,7 +156,11 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 		}
 	}
 	if args[1] == "--all" {
-		fmt.Fprintf(stdout, "Cleared %d saved login(s).\n", removed)
+		if skipped > 0 {
+			fmt.Fprintf(stdout, "Cleared %d saved login(s); skipped %d unsupported login(s).\n", removed, skipped)
+		} else {
+			fmt.Fprintf(stdout, "Cleared %d saved login(s).\n", removed)
+		}
 	} else if removed == 0 {
 		fmt.Fprintf(stdout, "No saved login found for %q.\n", args[1])
 	} else {

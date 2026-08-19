@@ -154,3 +154,62 @@ func TestHandleCLIAuthListAndClearOIDCKeyring(t *testing.T) {
 		t.Fatal("OIDC keyring item was not deleted")
 	}
 }
+
+func TestHandleCLIAuthClearAllSkipsUnsupportedOIDC(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+
+	cookiePath := filepath.Join(home, "saved-login.json")
+	cfgPath := configPath()
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configBody := "sources:\n" +
+		"  - name: a-sso\n" +
+		"    type: alertmanager\n" +
+		"    url: https://alerts.example.test\n" +
+		"    auth:\n" +
+		"      type: oidc\n" +
+		"      flow: device\n" +
+		"      issuer_url: https://login.example.test\n" +
+		"      client_id: foghorn\n" +
+		"  - name: z-cookie\n" +
+		"    type: alertmanager\n" +
+		"    url: https://alerts.example.test\n" +
+		"    auth:\n" +
+		"      type: cookie\n" +
+		"      cookie_file: " + cookiePath + "\n"
+	if err := os.WriteFile(cfgPath, []byte(configBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cookiePath, []byte(`{"https://alerts.example.test":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	oldSupported := cliKeyringSupported
+	cliKeyringSupported = func() bool { return false }
+	t.Cleanup(func() { cliKeyringSupported = oldSupported })
+
+	var stdout, stderr bytes.Buffer
+	_, code := handleCLI([]string{"auth", "clear", "--all"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("auth clear --all code=%d stderr=%q", code, stderr.String())
+	}
+	if _, err := os.Stat(cookiePath); !os.IsNotExist(err) {
+		t.Fatalf("cookie file still exists or stat failed unexpectedly: %v", err)
+	}
+	if got, want := stdout.String(), "Cleared 1 saved login(s); skipped 1 unsupported login(s).\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	_, code = handleCLI([]string{"auth", "clear", "a-sso"}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), keyring.ErrUnsupported.Error()) {
+		t.Fatalf("individual unsupported clear code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
