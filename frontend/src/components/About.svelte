@@ -20,11 +20,11 @@
   let sessionMessage = '';
   let sessionError = '';
 
-  async function loadSessions() {
+  async function loadSessions(clearError = true) {
     sessionsLoading = true;
     try {
       sessions = await GetOIDCSessions();
-      sessionError = '';
+      if (clearError) sessionError = '';
     } catch (e) {
       console.warn('GetOIDCSessions failed', e);
       sessionError = 'Could not load OIDC login status.';
@@ -49,13 +49,14 @@
     } catch (e) {
       console.warn('ForgetOIDCLogin failed', e);
       sessionError = `Could not remove the saved login for ${source}: ${String(e)}`;
+      await loadSessions(false);
     } finally {
       forgettingSource = '';
     }
   }
 
   function sessionStatus(session: provider.OIDCSessionInfo): string {
-    if (session.storageError) return 'Keychain unavailable — using memory-only credentials';
+    if (session.storageError) return `Keychain error: ${session.storageError}`;
     if (session.saved) return 'Saved in macOS Keychain';
     if (session.active) return 'Active in memory only';
     if (!session.persistenceEnabled) return 'Persistent storage disabled';

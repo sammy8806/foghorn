@@ -195,13 +195,13 @@ func (a *App) GetOIDCSessions() []provider.OIDCSessionInfo {
 	return sessions
 }
 
-// ForgetOIDCLogin deletes a source's saved OIDC token response and clears the
+// ForgetOIDCLogin deletes a source's saved OIDC token fields and clears the
 // live in-memory token. The identity provider may still consider the refresh
 // token valid; this is local credential removal, not server-side revocation.
 func (a *App) ForgetOIDCLogin(source string) error {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
 	p, ok := a.providers[source]
+	a.mu.RUnlock()
 	if !ok {
 		return fmt.Errorf("source %q was not found", source)
 	}
