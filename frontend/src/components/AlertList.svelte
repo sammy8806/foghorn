@@ -281,6 +281,12 @@
     searchInputEl?.focus();
   }
 
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    if (e.key.toLowerCase() !== 'f' || (!e.ctrlKey && !e.metaKey) || e.altKey) return;
+    e.preventDefault();
+    void openSearch();
+  }
+
   function onSearchFocusOut(e: FocusEvent) {
     // Focus can move from the input to an in-field control such as the syntax
     // help button. Only collapse after focus has left the entire search control.
@@ -528,7 +534,7 @@
   }
 </script>
 
-<svelte:window on:click={closeAllMenus} />
+<svelte:window on:click={closeAllMenus} on:keydown={handleGlobalKeydown} />
 
 <div class="alert-list-container">
   {#if showNotificationInfoCard}
@@ -597,6 +603,7 @@
       on:transitionend={onSearchTransitionEnd}
       role="button"
       aria-label="Filter alerts"
+      title="Filter alerts (Ctrl/⌘+F)"
       tabindex={searchOpen ? -1 : 0}
     >
       <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
