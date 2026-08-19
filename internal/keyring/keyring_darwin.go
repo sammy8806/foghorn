@@ -177,6 +177,9 @@ func (s *macOSStore) Get(account string) ([]byte, error) {
 	if status != C.errSecSuccess {
 		return nil, keyringError("read", status)
 	}
+	if length == 0 {
+		return nil, ErrNotFound
+	}
 	if bytes != nil {
 		defer C.foghorn_clear_and_free(bytes, C.size_t(length))
 	}

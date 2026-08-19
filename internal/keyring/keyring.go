@@ -13,7 +13,8 @@ var (
 )
 
 // Store is the minimal secret-store contract used by the OIDC authenticator.
-// Implementations must never include secret values in returned errors.
+// Get returns ErrNotFound for a missing or empty item, Delete is idempotent,
+// and implementations must never include secret values in returned errors.
 type Store interface {
 	Get(account string) ([]byte, error)
 	Set(account string, secret []byte) error
