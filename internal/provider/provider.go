@@ -27,7 +27,7 @@ type OnCallProvider interface {
 }
 
 // OIDCSessionInfo is the non-secret session state exposed to the desktop UI.
-// Token values and the opaque Keychain account identifier never leave the
+// Token values and the opaque credential-store account identifier never leave the
 // provider package.
 type OIDCSessionInfo struct {
 	Source             string `json:"source"`
@@ -35,12 +35,13 @@ type OIDCSessionInfo struct {
 	Active             bool   `json:"active"`
 	Saved              bool   `json:"saved"`
 	PersistenceEnabled bool   `json:"persistenceEnabled"`
+	StorageBackend     string `json:"storageBackend,omitempty"`
 	StorageError       string `json:"storageError,omitempty"`
 }
 
 // OIDCSessionProvider is implemented by providers configured for OIDC device
 // authentication. ForgetOIDCLogin clears both the live token and its persisted
-// Keychain entry.
+// system credential-store entry.
 type OIDCSessionProvider interface {
 	OIDCSessionInfo() OIDCSessionInfo
 	ForgetOIDCLogin() error

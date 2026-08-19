@@ -574,6 +574,7 @@ export namespace provider {
 	    active: boolean;
 	    saved: boolean;
 	    persistenceEnabled: boolean;
+	    storageBackend?: string;
 	    storageError?: string;
 
 	    static createFrom(source: any = {}) {
@@ -587,9 +588,9 @@ export namespace provider {
 	        this.active = source["active"];
 	        this.saved = source["saved"];
 	        this.persistenceEnabled = source["persistenceEnabled"];
+	        this.storageBackend = source["storageBackend"];
 	        this.storageError = source["storageError"];
 	    }
 	}
 
 }
-

@@ -29,3 +29,7 @@ func NewOIDCStore() Store {
 // Supported reports whether this build has a native secure-store
 // implementation. OIDC persistence defaults on only when this is true.
 func Supported() bool { return supported() }
+
+// BackendName returns the user-facing name of the native credential store.
+// It is empty on platforms where Foghorn has no persistent implementation.
+func BackendName() string { return backendName() }
