@@ -45,7 +45,10 @@ func oidcPersistenceEnabled(auth config.AuthConfig) bool {
 	return keyring.Supported()
 }
 
-func oidcTokenAccount(source string, auth config.AuthConfig) string {
+// OIDCTokenAccount returns the stable keyring account for an OIDC source. The
+// account identifies the login configuration but contains no secret material.
+// Credential-management commands use it to inspect and delete saved logins.
+func OIDCTokenAccount(source string, auth config.AuthConfig) string {
 	scopes := make([]string, 0, len(auth.Scopes))
 	seen := make(map[string]struct{}, len(auth.Scopes))
 	for _, scope := range auth.Scopes {

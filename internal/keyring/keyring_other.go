@@ -1,4 +1,4 @@
-//go:build (!darwin && !linux) || (darwin && !cgo)
+//go:build (darwin && !cgo) || (!darwin && !linux && !windows)
 
 package keyring
 

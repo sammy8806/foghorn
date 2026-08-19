@@ -38,9 +38,9 @@ include it in `auth.scopes` when the provider requires it.
 
 ## Persistent login
 
-On supported macOS and Linux builds, Foghorn saves the token fields it uses in
+On supported macOS, Linux, and Windows builds, Foghorn saves the token fields it uses in
 the desktop's secure credential store by default: access token, refresh token,
-ID token, token type, expiry, and acquisition time. Both implementations use
+ID token, token type, expiry, and acquisition time. All implementations use
 service `de.sammy8806.foghorn.oidc`.
 
 - **macOS:** the item is stored in the login Keychain, is local rather than
@@ -51,6 +51,8 @@ service `de.sammy8806.foghorn.oidc`.
   Secret Service integration, or another compatible provider must be running
   in the user's graphical session. Foghorn does not invoke `secret-tool` or put
   token material in command-line arguments.
+- **Windows:** the item is stored in Windows Credential Manager for the current
+  user.
 
 The credential store lets Foghorn reuse a still-valid token after an app or
 source configuration restart. When the access token expires, Foghorn uses the
@@ -88,6 +90,13 @@ Open **About → OIDC logins → Forget login** to delete a source's saved item 
 clear its in-memory token. This removes Foghorn's local credential only; it does
 not revoke the refresh token at the identity provider. The next request for
 that source starts a new device login.
+
+The same saved login can be inspected or removed without opening the UI:
+
+```bash
+foghorn auth list
+foghorn auth clear my-alertmanager
+```
 
 ## Keycloak client
 

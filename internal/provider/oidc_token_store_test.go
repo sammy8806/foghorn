@@ -80,18 +80,18 @@ func saveTestToken(t *testing.T, store *memoryTokenStore, account string, token 
 func TestOIDCTokenAccountIsStableAndConfigurationScoped(t *testing.T) {
 	auth := persistentTestAuth("HTTPS://Login.Example.Test/realm/")
 	auth.Scopes = []string{"offline_access", "openid", "openid"}
-	first := oidcTokenAccount("production", auth)
+	first := OIDCTokenAccount("production", auth)
 
 	auth.IssuerURL = "https://login.example.test/realm"
 	auth.Scopes = []string{"openid", "offline_access"}
-	if second := oidcTokenAccount("production", auth); second != first {
+	if second := OIDCTokenAccount("production", auth); second != first {
 		t.Fatalf("equivalent identities produced different accounts: %q != %q", first, second)
 	}
-	if changed := oidcTokenAccount("staging", auth); changed == first {
+	if changed := OIDCTokenAccount("staging", auth); changed == first {
 		t.Fatal("source name must isolate saved credentials")
 	}
 	auth.UseIDToken = true
-	if changed := oidcTokenAccount("production", auth); changed == first {
+	if changed := OIDCTokenAccount("production", auth); changed == first {
 		t.Fatal("use_id_token must isolate saved credentials")
 	}
 }
