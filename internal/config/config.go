@@ -117,6 +117,37 @@ func warnInsecureSourceURL(name, rawURL string) {
 	log.Printf("config: WARNING source %q uses plain HTTP (%s): credentials and alert content are sent in cleartext and can be modified in transit; use https", name, parsed.Host)
 }
 
+// warnInsecureAuthURL logs a warning for an OIDC endpoint configured as plain
+// HTTP to a non-local host. A cleartext issuer lets an on-path attacker choose
+// which endpoints are used, and cleartext device/token endpoints carry the
+// client_id and client_secret in an HTTP Basic header.
+func warnInsecureAuthURL(name, field, rawURL string) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "http") {
+		return
+	}
+	if isLoopbackHost(parsed.Hostname()) {
+		return
+	}
+	log.Printf("config: WARNING source %q auth.%s uses plain HTTP (%s): OIDC client credentials and tokens are sent in cleartext and can be read or modified in transit; use https", name, field, parsed.Host)
+}
+
+// warnInsecureAuthURLs checks every OIDC endpoint a source may contact.
+func warnInsecureAuthURLs(src SourceConfig) {
+	switch strings.ToLower(strings.TrimSpace(src.Auth.Type)) {
+	case "oidc", "oidc_device":
+	default:
+		return
+	}
+	warnInsecureAuthURL(src.Name, "issuer_url", src.Auth.IssuerURL)
+	warnInsecureAuthURL(src.Name, "device_authorization_url", src.Auth.DeviceAuthorizationURL)
+	warnInsecureAuthURL(src.Name, "token_url", src.Auth.TokenURL)
+}
+
 func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
@@ -171,6 +202,7 @@ func validate(cfg *Config) error {
 			src.SeverityLabel = "severity"
 		}
 		warnInsecureSourceURL(src.Name, src.URL)
+		warnInsecureAuthURLs(src)
 		enabledSources = append(enabledSources, src)
 	}
 	cfg.Sources = enabledSources

@@ -248,9 +248,18 @@ func normalizedAuthType(src config.SourceConfig) string {
 
 func loginIdentity(src config.SourceConfig) string {
 	if normalizedAuthType(src) == "oidc" {
-		return "oidc:" + provider.OIDCTokenAccount(src.Name, src.Auth)
+		return "oidc:" + provider.OIDCTokenAccount(src.Name)
 	}
 	return "cookie:" + provider.CookieFilePath(src)
+}
+
+// oidcAccounts lists the credential-store accounts a source's login may occupy:
+// the current per-source slot and the legacy identity-derived one.
+func oidcAccounts(src config.SourceConfig) []string {
+	return []string{
+		provider.OIDCTokenAccount(src.Name),
+		provider.OIDCLegacyTokenAccount(src.Name, src.Auth),
+	}
 }
 
 func loginStatus(src config.SourceConfig, store keyring.Store) (status, location string) {
@@ -259,14 +268,24 @@ func loginStatus(src config.SourceConfig, store keyring.Store) (status, location
 		if !cliKeyringSupported() {
 			return "unsupported", location
 		}
-		secret, err := store.Get(provider.OIDCTokenAccount(src.Name, src.Auth))
-		for i := range secret {
-			secret[i] = 0
+		// Check the legacy layout too, so a login saved before the credential
+		// store moved to one item per source is still reported as saved.
+		var notFound bool
+		for _, account := range oidcAccounts(src) {
+			secret, err := store.Get(account)
+			for i := range secret {
+				secret[i] = 0
+			}
+			if err == nil {
+				return "saved", location
+			}
+			if errors.Is(err, keyring.ErrNotFound) {
+				notFound = true
+				continue
+			}
+			return "unavailable", location
 		}
-		if err == nil {
-			return "saved", location
-		}
-		if errors.Is(err, keyring.ErrNotFound) {
+		if notFound {
 			return "not saved", location
 		}
 		return "unavailable", location
@@ -293,21 +312,26 @@ func clearSavedLogin(src config.SourceConfig, store keyring.Store) (bool, error)
 		if !cliKeyringSupported() {
 			return false, keyring.ErrUnsupported
 		}
-		account := provider.OIDCTokenAccount(src.Name, src.Auth)
-		secret, err := store.Get(account)
-		for i := range secret {
-			secret[i] = 0
+		// Clear both layouts: a login saved before the move to one item per
+		// source would otherwise survive, invisible to the user.
+		removed := false
+		for _, account := range oidcAccounts(src) {
+			secret, err := store.Get(account)
+			for i := range secret {
+				secret[i] = 0
+			}
+			if errors.Is(err, keyring.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return removed, err
+			}
+			if err := store.Delete(account); err != nil {
+				return removed, err
+			}
+			removed = true
 		}
-		if errors.Is(err, keyring.ErrNotFound) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		if err := store.Delete(account); err != nil {
-			return false, err
-		}
-		return true, nil
+		return removed, nil
 	}
 
 	err := os.Remove(provider.CookieFilePath(src))

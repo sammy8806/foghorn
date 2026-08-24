@@ -28,6 +28,8 @@ func (f *fakeCLIKeyring) Set(account string, secret []byte) error {
 	return nil
 }
 
+func (f *fakeCLIKeyring) MaxSecretSize() int { return 0 }
+
 func (f *fakeCLIKeyring) Delete(account string) error {
 	delete(f.items, account)
 	return nil
@@ -117,7 +119,7 @@ func TestHandleCLIAuthListAndClearOIDCKeyring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := provider.OIDCTokenAccount(cfg.Sources[0].Name, cfg.Sources[0].Auth)
+	account := provider.OIDCTokenAccount(cfg.Sources[0].Name)
 	store.items[account] = []byte(`{"refresh_token":"secret"}`)
 	oldStore, oldSupported := newCLIKeyringStore, cliKeyringSupported
 	newCLIKeyringStore = func() keyring.Store { return store }

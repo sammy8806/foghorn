@@ -11,3 +11,4 @@ func backendName() string   { return "" }
 func (unsupportedStore) Get(string) ([]byte, error) { return nil, ErrUnsupported }
 func (unsupportedStore) Set(string, []byte) error   { return ErrUnsupported }
 func (unsupportedStore) Delete(string) error        { return ErrUnsupported }
+func (unsupportedStore) MaxSecretSize() int         { return 0 }

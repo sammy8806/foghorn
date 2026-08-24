@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,10 @@ type memoryTokenStore struct {
 	deleteErr   error
 	setCalls    int
 	deleteCalls int
+	maxSecret   int
 }
+
+func (s *memoryTokenStore) MaxSecretSize() int { return s.maxSecret }
 
 func newMemoryTokenStore() *memoryTokenStore {
 	return &memoryTokenStore{items: make(map[string][]byte)}
@@ -43,6 +47,9 @@ func (s *memoryTokenStore) Set(account string, secret []byte) error {
 	if s.setFailures > 0 {
 		s.setFailures--
 		return errors.New("test keyring unavailable")
+	}
+	if s.maxSecret > 0 && len(secret) > s.maxSecret {
+		return errors.New("test keyring value too big")
 	}
 	s.items[account] = slices.Clone(secret)
 	return nil
@@ -68,31 +75,212 @@ func persistentTestAuth(issuer string) config.AuthConfig {
 	}
 }
 
-func saveTestToken(t *testing.T, store *memoryTokenStore, account string, token *oidcToken) {
+func saveTestToken(t *testing.T, store *memoryTokenStore, auth *oidcDeviceAuthenticator, token *oidcToken) {
 	t.Helper()
-	encoded, err := marshalPersistedOIDCToken(token)
+	encoded, err := marshalPersistedOIDCToken(token, auth.identity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.items[account] = encoded
+	store.items[auth.account] = encoded
 }
 
-func TestOIDCTokenAccountIsStableAndConfigurationScoped(t *testing.T) {
+// oidcTokenAfterLogin drives Token the way the poll engine does. A device login
+// runs in the background and its callers are told it is pending, so they retry
+// on their own schedule instead of holding a request open across a human's
+// sign-in. It returns the first result that is not "pending".
+func oidcTokenAfterLogin(t *testing.T, auth *oidcDeviceAuthenticator) (*oidcToken, error) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		token, err := auth.Token(context.Background())
+		if !errors.Is(err, ErrLoginPending) {
+			return token, err
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("device login never finished")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func tokenWhenSignedIn(t *testing.T, auth *oidcDeviceAuthenticator) *oidcToken {
+	t.Helper()
+	token, err := oidcTokenAfterLogin(t, auth)
+	if err != nil {
+		t.Fatalf("Token() error: %v", err)
+	}
+	return token
+}
+
+func TestOIDCTokenIdentityIsStableAndConfigurationScoped(t *testing.T) {
 	auth := persistentTestAuth("HTTPS://Login.Example.Test/realm/")
 	auth.Scopes = []string{"offline_access", "openid", "openid"}
-	first := OIDCTokenAccount("production", auth)
+	first := OIDCTokenIdentity("production", auth)
 
 	auth.IssuerURL = "https://login.example.test/realm"
 	auth.Scopes = []string{"openid", "offline_access"}
-	if second := OIDCTokenAccount("production", auth); second != first {
-		t.Fatalf("equivalent identities produced different accounts: %q != %q", first, second)
+	if second := OIDCTokenIdentity("production", auth); second != first {
+		t.Fatalf("equivalent identities produced different fingerprints: %q != %q", first, second)
 	}
-	if changed := OIDCTokenAccount("staging", auth); changed == first {
+	if changed := OIDCTokenIdentity("staging", auth); changed == first {
 		t.Fatal("source name must isolate saved credentials")
 	}
 	auth.UseIDToken = true
-	if changed := OIDCTokenAccount("production", auth); changed == first {
-		t.Fatal("use_id_token must isolate saved credentials")
+	if changed := OIDCTokenIdentity("production", auth); changed == first {
+		t.Fatal("use_id_token must change the login identity")
+	}
+}
+
+// The credential-store slot is keyed by source name alone, so editing a
+// source's login configuration reuses its item instead of stranding one the
+// user can neither list nor clear.
+func TestOIDCTokenAccountDependsOnlyOnSourceName(t *testing.T) {
+	auth := persistentTestAuth("https://login.example.test")
+	account := OIDCTokenAccount("production")
+
+	auth.ClientID = "rotated-client"
+	auth.Scopes = append(auth.Scopes, "groups")
+	auth.UseIDToken = true
+	if changed := OIDCTokenAccount("production"); changed != account {
+		t.Fatalf("login configuration changed the account: %q != %q", changed, account)
+	}
+	if OIDCTokenAccount("staging") == account {
+		t.Fatal("different sources must not share a credential-store item")
+	}
+	if OIDCLegacyTokenAccount("production", auth) == account {
+		t.Fatal("legacy account must be distinct from the current one")
+	}
+}
+
+// A token minted for one login configuration must never be presented for
+// another: the fingerprint check fails closed.
+func TestOIDCRejectsSavedTokenFromDifferentIdentity(t *testing.T) {
+	store := newMemoryTokenStore()
+	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth("https://login.example.test"), http.DefaultClient, store)
+	encoded, err := marshalPersistedOIDCToken(&oidcToken{
+		AccessToken: "other-identity-access",
+		ExpiresIn:   3600,
+		obtainedAt:  time.Now(),
+	}, "fingerprint-of-a-different-login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.items[auth.account] = encoded
+
+	if info := auth.SessionInfo(); info.Active || info.Saved {
+		t.Fatalf("token from another identity was adopted: %#v", info)
+	}
+}
+
+// A login saved under the pre-v2 layout must survive the upgrade: it is moved
+// into the per-source slot and the old item is removed once the copy is safe.
+func TestOIDCMigratesLegacyTokenAndRemovesOldItem(t *testing.T) {
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth("https://login.example.test")
+	auth := newOIDCDeviceAuthenticatorWithStore("production", authConfig, http.DefaultClient, store)
+
+	legacy, err := json.Marshal(map[string]interface{}{
+		"version":       1,
+		"access_token":  "legacy-access",
+		"refresh_token": "legacy-refresh",
+		"expires_in":    3600,
+		"obtained_at":   time.Now().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.items[auth.legacyAccount] = legacy
+
+	token, err := auth.Token(context.Background())
+	if err != nil {
+		t.Fatalf("Token() error: %v", err)
+	}
+	if token.AccessToken != "legacy-access" {
+		t.Fatalf("AccessToken = %q, want the migrated token", token.AccessToken)
+	}
+	if _, ok := store.items[auth.legacyAccount]; ok {
+		t.Fatal("legacy credential-store item was left behind")
+	}
+	migrated, err := unmarshalPersistedOIDCToken(store.items[auth.account], auth.identity)
+	if err != nil {
+		t.Fatalf("migrated token: %v", err)
+	}
+	if migrated.RefreshToken != "legacy-refresh" {
+		t.Fatalf("migrated RefreshToken = %q", migrated.RefreshToken)
+	}
+}
+
+// Windows Credential Manager caps a credential blob at 2560 bytes, which real
+// JWTs exceed. The save drops the tokens that are not needed to restore the
+// login rather than failing and silently degrading to memory-only credentials.
+func TestOIDCPersistShrinksPayloadToFitCredentialStore(t *testing.T) {
+	large := strings.Repeat("j", 1200)
+	token := &oidcToken{
+		AccessToken:  "access-" + large,
+		IDToken:      "id-" + large,
+		RefreshToken: "refresh-" + large,
+		TokenType:    "Bearer",
+		ExpiresIn:    3600,
+		obtainedAt:   time.Now(),
+	}
+
+	encoded, err := marshalPersistedOIDCTokenWithin(token, "identity", false, 2560)
+	if err != nil {
+		t.Fatalf("marshalPersistedOIDCTokenWithin() error: %v", err)
+	}
+	if len(encoded) > 2560 {
+		t.Fatalf("payload is %d bytes, above the 2560 byte limit", len(encoded))
+	}
+	stored, err := unmarshalPersistedOIDCToken(encoded, "identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.RefreshToken != token.RefreshToken {
+		t.Fatal("the refresh token must always survive: it is what restores the login")
+	}
+	if stored.IDToken != "" {
+		t.Fatal("the unused ID token should be dropped first")
+	}
+	if stored.AccessToken != "" {
+		t.Fatal("the access token should be dropped once the ID token is not enough")
+	}
+	if !stored.expired() {
+		t.Fatal("a payload without the configured token must force a refresh on restore")
+	}
+
+	if _, err := marshalPersistedOIDCTokenWithin(token, "identity", false, 64); err == nil {
+		t.Fatal("expected an error when even a refresh-only payload does not fit")
+	}
+}
+
+// With use_id_token, the ID token is the credential the source sends, so the
+// access token is the one to drop first.
+func TestOIDCPersistKeepsConfiguredTokenWhenShrinking(t *testing.T) {
+	large := strings.Repeat("j", 1200)
+	token := &oidcToken{
+		AccessToken:  "access-" + large,
+		IDToken:      "id-" + large,
+		RefreshToken: "refresh-short",
+		ExpiresIn:    3600,
+		obtainedAt:   time.Now(),
+	}
+
+	encoded, err := marshalPersistedOIDCTokenWithin(token, "identity", true, 2560)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := unmarshalPersistedOIDCToken(encoded, "identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.IDToken != token.IDToken {
+		t.Fatalf("configured ID token was dropped before the access token")
+	}
+	if stored.AccessToken != "" {
+		t.Fatal("access token should have been dropped to fit")
+	}
+	if stored.expired() {
+		t.Fatal("the configured token is still present, so the login must stay usable")
 	}
 }
 
@@ -100,7 +288,7 @@ func TestOIDCRestoresValidTokenWithoutNetwork(t *testing.T) {
 	store := newMemoryTokenStore()
 	authConfig := persistentTestAuth("https://login.example.test")
 	auth := newOIDCDeviceAuthenticatorWithStore("production", authConfig, http.DefaultClient, store)
-	saveTestToken(t, store, auth.account, &oidcToken{
+	saveTestToken(t, store, auth, &oidcToken{
 		AccessToken:  "saved-access",
 		RefreshToken: "saved-refresh",
 		TokenType:    "Bearer",
@@ -145,7 +333,7 @@ func TestOIDCRefreshRotatesAndPersistsRefreshToken(t *testing.T) {
 
 	store := newMemoryTokenStore()
 	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth(server.URL), server.Client(), store)
-	saveTestToken(t, store, auth.account, &oidcToken{
+	saveTestToken(t, store, auth, &oidcToken{
 		AccessToken:  "expired-access",
 		RefreshToken: "old-refresh",
 		ExpiresIn:    60,
@@ -162,7 +350,7 @@ func TestOIDCRefreshRotatesAndPersistsRefreshToken(t *testing.T) {
 	if !strings.Contains(refreshBody, "refresh_token=old-refresh") {
 		t.Fatalf("refresh request did not use saved refresh token: %s", refreshBody)
 	}
-	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account])
+	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account], auth.identity)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +377,7 @@ func TestOIDCRefreshPreservesRefreshTokenWhenResponseOmitsIt(t *testing.T) {
 
 	store := newMemoryTokenStore()
 	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth(server.URL), server.Client(), store)
-	saveTestToken(t, store, auth.account, &oidcToken{
+	saveTestToken(t, store, auth, &oidcToken{
 		RefreshToken: "keep-refresh",
 		ExpiresIn:    60,
 		obtainedAt:   time.Now().Add(-time.Hour),
@@ -226,7 +414,7 @@ func TestOIDCRefreshPreservesIDTokenAndUnknownExpiryForcesRefresh(t *testing.T) 
 	authConfig := persistentTestAuth(server.URL)
 	authConfig.UseIDToken = true
 	auth := newOIDCDeviceAuthenticatorWithStore("production", authConfig, server.Client(), store)
-	saveTestToken(t, store, auth.account, &oidcToken{
+	saveTestToken(t, store, auth, &oidcToken{
 		IDToken:      "saved-id",
 		RefreshToken: "saved-refresh",
 		ExpiresIn:    0,
@@ -245,7 +433,7 @@ func TestOIDCRefreshPreservesIDTokenAndUnknownExpiryForcesRefresh(t *testing.T) 
 	if refreshRequests != 2 {
 		t.Fatalf("refresh requests = %d, want 2 for unknown expiry", refreshRequests)
 	}
-	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account])
+	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account], auth.identity)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +458,7 @@ func TestOIDCRefreshRejectsMissingConfiguredTokenBeforePersisting(t *testing.T) 
 
 	store := newMemoryTokenStore()
 	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth(server.URL), server.Client(), store)
-	saveTestToken(t, store, auth.account, &oidcToken{RefreshToken: "saved-refresh", obtainedAt: time.Now()})
+	saveTestToken(t, store, auth, &oidcToken{RefreshToken: "saved-refresh", obtainedAt: time.Now()})
 	original := slices.Clone(store.items[auth.account])
 
 	if _, err := auth.Token(context.Background()); err == nil || !strings.Contains(err.Error(), "configured token") {
@@ -304,7 +492,7 @@ func TestOIDCTransientRefreshFailurePreservesSavedLogin(t *testing.T) {
 
 	store := newMemoryTokenStore()
 	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth(server.URL), server.Client(), store)
-	saveTestToken(t, store, auth.account, &oidcToken{
+	saveTestToken(t, store, auth, &oidcToken{
 		RefreshToken: "keep-refresh",
 		ExpiresIn:    60,
 		obtainedAt:   time.Now().Add(-time.Hour),
@@ -376,26 +564,30 @@ func TestOIDCInvalidRefreshTokenDeletesSavedLoginAndReauthenticates(t *testing.T
 
 	store := newMemoryTokenStore()
 	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth(server.URL), server.Client(), store)
-	saveTestToken(t, store, auth.account, &oidcToken{
+	saveTestToken(t, store, auth, &oidcToken{
 		RefreshToken: "invalid-refresh",
 		ExpiresIn:    60,
 		obtainedAt:   time.Now().Add(-time.Hour),
 	})
 
-	token, err := auth.Token(context.Background())
-	if err != nil {
-		t.Fatalf("Token() error: %v", err)
+	// A rejected refresh discards the dead login and reports it; the sign-in it
+	// makes necessary starts on the next attempt rather than inside this one.
+	if _, err := auth.Token(context.Background()); err == nil || !strings.Contains(err.Error(), "no longer valid") {
+		t.Fatalf("Token() error = %v, want the saved login reported as invalid", err)
 	}
+	token := tokenWhenSignedIn(t, auth)
 	if refreshRequests != 1 || deviceRequests != 1 {
 		t.Fatalf("requests refresh=%d device=%d, want 1 each", refreshRequests, deviceRequests)
 	}
-	if store.deleteCalls != 1 {
-		t.Fatalf("Delete calls = %d, want 1", store.deleteCalls)
+	// Both the current slot and the legacy one are cleared, so logging out
+	// cannot leave an item behind that a later start would migrate back in.
+	if store.deleteCalls != 2 {
+		t.Fatalf("Delete calls = %d, want 2 (current + legacy slot)", store.deleteCalls)
 	}
 	if token.AccessToken != "new-access" {
 		t.Fatalf("AccessToken = %q, want reauthenticated token", token.AccessToken)
 	}
-	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account])
+	stored, err := unmarshalPersistedOIDCToken(store.items[auth.account], auth.identity)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,8 +656,10 @@ func TestOIDCPersistenceDisabledDoesNotReadOrWriteButForgetDeletes(t *testing.T)
 	if err := auth.Forget(); err != nil {
 		t.Fatal(err)
 	}
-	if store.deleteCalls != 1 {
-		t.Fatalf("Delete calls = %d, want 1", store.deleteCalls)
+	// Both the current slot and the legacy one are cleared, so logging out
+	// cannot leave an item behind that a later start would migrate back in.
+	if store.deleteCalls != 2 {
+		t.Fatalf("Delete calls = %d, want 2 (current + legacy slot)", store.deleteCalls)
 	}
 }
 
@@ -486,8 +680,10 @@ func TestOIDCForgetClearsMemoryAndSavedToken(t *testing.T) {
 	if _, ok := store.items[auth.account]; ok {
 		t.Fatal("Forget() retained the saved token")
 	}
-	if store.deleteCalls != 1 {
-		t.Fatalf("Delete calls = %d, want 1", store.deleteCalls)
+	// Both the current slot and the legacy one are cleared, so logging out
+	// cannot leave an item behind that a later start would migrate back in.
+	if store.deleteCalls != 2 {
+		t.Fatalf("Delete calls = %d, want 2 (current + legacy slot)", store.deleteCalls)
 	}
 }
 

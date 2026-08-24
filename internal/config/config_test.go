@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -833,4 +834,74 @@ func TestLoadConfigUIScaleInvalidMode(t *testing.T) {
 
 func minimalConfigWithUIScale(scaleBody string) string {
 	return strings.Replace(minimalConfig, "  show_silenced: true\n", "  show_silenced: true\n  scale:\n"+scaleBody, 1)
+}
+
+// A source URL over plain HTTP is already warned about; the OIDC endpoints
+// deserve the same treatment, because a cleartext issuer lets an on-path
+// attacker pick the real endpoints and cleartext device/token endpoints carry
+// the client_id and client_secret in an HTTP Basic header.
+func TestLoadConfigWarnsAboutCleartextOIDCEndpoints(t *testing.T) {
+	yaml := `
+sources:
+  - name: sso
+    type: alertmanager
+    url: https://alerts.example.test
+    auth:
+      type: oidc
+      flow: device
+      issuer_url: http://login.example.test
+      client_id: foghorn
+  - name: manual
+    type: alertmanager
+    url: https://alerts.example.test
+    auth:
+      type: oidc
+      flow: device
+      device_authorization_url: http://sso.example.test/device
+      token_url: http://sso.example.test/token
+      client_id: foghorn
+  - name: local
+    type: alertmanager
+    url: https://alerts.example.test
+    auth:
+      type: oidc
+      flow: device
+      issuer_url: http://127.0.0.1:8080
+      client_id: foghorn
+  - name: secure
+    type: alertmanager
+    url: https://alerts.example.test
+    auth:
+      type: oidc
+      flow: device
+      issuer_url: https://login.example.test
+      client_id: foghorn
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs strings.Builder
+	original := log.Writer()
+	log.SetOutput(&logs)
+	defer log.SetOutput(original)
+
+	if _, err := Load(path); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	output := logs.String()
+	for _, want := range []string{"issuer_url", "device_authorization_url", "token_url"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("no cleartext warning for auth.%s in:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "127.0.0.1") {
+		t.Errorf("loopback issuer must not warn:\n%s", output)
+	}
+	if strings.Contains(output, `source "secure"`) {
+		t.Errorf("https issuer must not warn:\n%s", output)
+	}
 }

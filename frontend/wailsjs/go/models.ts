@@ -573,6 +573,7 @@ export namespace provider {
 	    configured: boolean;
 	    active: boolean;
 	    saved: boolean;
+	    loginPending: boolean;
 	    persistenceEnabled: boolean;
 	    storageBackend?: string;
 	    storageError?: string;
@@ -587,6 +588,7 @@ export namespace provider {
 	        this.configured = source["configured"];
 	        this.active = source["active"];
 	        this.saved = source["saved"];
+	        this.loginPending = source["loginPending"];
 	        this.persistenceEnabled = source["persistenceEnabled"];
 	        this.storageBackend = source["storageBackend"];
 	        this.storageError = source["storageError"];
