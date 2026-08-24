@@ -210,10 +210,17 @@ jobs:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
           BODY_FILE="${RUNNER_TEMP}/release-notes.md"
-          # Use the annotated tag message body (everything after the subject line)
-          # as the release notes; fall back to auto-generated notes if the tag
-          # is lightweight or carries no message (e.g. a dev workflow_dispatch).
-          if git for-each-ref "refs/tags/${TAG}" --format='%(contents:body)' > "$BODY_FILE" && [ -s "$BODY_FILE" ]; then
+
+          # actions/checkout peels an annotated tag and rewrites refs/tags/$TAG
+          # to the target commit. Fetch the remote tag into a separate ref so
+          # the release notes always come from the tag object, never the commit.
+          RELEASE_TAG_REF="refs/release-tags/${TAG}"
+          if git fetch --force --no-tags origin \
+              "refs/tags/${TAG}:${RELEASE_TAG_REF}" &&
+            [ "$(git cat-file -t "${RELEASE_TAG_REF}")" = "tag" ] &&
+            git for-each-ref "${RELEASE_TAG_REF}" \
+              --format='%(contents:body)' > "$BODY_FILE" &&
+            grep -q '[^[:space:]]' "$BODY_FILE"; then
             echo "generate=false" >> "$GITHUB_OUTPUT"
           else
             : > "$BODY_FILE"
