@@ -204,6 +204,64 @@ sources:
 
 See `config.example.yaml` for the full reference, including severity mapping, display/grouping options, notification rules, and Better Stack-specific fields.
 
+### Resolver subprocesses
+
+Resolvers may call a local process to replace a field value for display,
+grouping, sorting, and filtering. The executable, arguments, and environment are
+static. Alert data goes to the process on standard input with an explicit
+`stdin: value` or `stdin: json` setting. The JSON form has this shape:
+
+```json
+{
+  "version": 1,
+  "ref": "label:cluster",
+  "kind": "label",
+  "name": "cluster",
+  "value": "cluster-01",
+  "alert": {
+    "id": "8f4d",
+    "source": "production",
+    "sourceType": "alertmanager",
+    "name": "HighCPU",
+    "severity": "warning",
+    "state": "firing",
+    "labels": {"alertname": "HighCPU", "cluster": "cluster-01"},
+    "annotations": {"summary": "CPU usage is high"},
+    "startsAt": "2026-08-24T12:00:00Z",
+    "updatedAt": "2026-08-24T12:05:00Z",
+    "generatorURL": "https://prometheus.example/graph",
+    "silencedBy": [],
+    "inhibitedBy": [],
+    "receivers": ["on-call"]
+  },
+  "labels": {"alertname": "HighCPU", "cluster": "cluster-01"},
+  "annotations": {"summary": "CPU usage is high"}
+}
+```
+
+Foghorn rejects templates in resolver `command`, `args`, and `env`. Migrate an
+old resolver that passed `"{{.Value}}"` as an argument by removing that argument,
+setting `stdin: value`, and updating the resolver program to read standard input.
+The program must treat that input as data, not shell or interpreter source code.
+
+### Local alert actions
+
+Foghorn has removed shell actions and does not expose action execution to the
+webview. There is no action UI, so the old Wails methods gave scripts running in
+the webview backend capability that the product did not need.
+
+The shell action format also mixed remote alert fields with shell syntax in one
+rendered string. A malicious label or annotation could therefore change the
+command. The renderer could not tell intended syntax from substitutions that
+needed escaping. Requiring every user to quote every template correctly was not
+a security boundary, so Foghorn will probably not support string-templated local
+commands again. Old `type: shell` configurations now fail validation.
+
+The non-command `url` and `clipboard` types remain in the configuration model,
+but Foghorn has no UI for them yet. If local command actions return, they will
+need a fixed executable and static arguments, alert data on standard input, and
+a confirmation enforced by the Go backend.
+
 ### Command line
 
 Foghorn can report its version and manage saved cookie and OIDC logins without
