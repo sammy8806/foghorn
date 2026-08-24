@@ -65,7 +65,7 @@ resolvers:
   - name: cluster-name
     field: label:cluster
     command: ./resolve-cluster
-    args: ["{{.Value}}"]
+    stdin: value
     timeout: 500ms
     cache_ttl: 24h
 
@@ -121,6 +121,9 @@ ui:
 	if cfg.Resolvers[0].Field != "label:cluster" {
 		t.Fatalf("expected resolver field label:cluster, got %q", cfg.Resolvers[0].Field)
 	}
+	if cfg.Resolvers[0].Stdin != "value" {
+		t.Fatalf("expected resolver stdin value, got %q", cfg.Resolvers[0].Stdin)
+	}
 	if cfg.Resolvers[0].CacheTTL != 24*time.Hour {
 		t.Fatalf("expected resolver cache_ttl 24h, got %v", cfg.Resolvers[0].CacheTTL)
 	}
@@ -145,6 +148,93 @@ ui:
 	if cfg.Display.Badges[0].Label != "Ack" {
 		t.Fatalf("expected display badge label Ack, got %q", cfg.Display.Badges[0].Label)
 	}
+}
+
+func TestValidateRejectsShellActions(t *testing.T) {
+	cfg := Default()
+	cfg.Actions = []ActionConfig{
+		{
+			Name: "runbook",
+			Action: ActionDef{
+				Type: "shell",
+			},
+		},
+	}
+
+	err := validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "shell actions are no longer supported") {
+		t.Fatalf("validate() error = %v, want shell-action migration error", err)
+	}
+}
+
+func TestValidateRejectsResolverProcessTemplates(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver ResolverConfig
+		want     string
+	}{
+		{
+			name: "command",
+			resolver: ResolverConfig{
+				Field: "label:cluster", Command: "{{.Value}}", Stdin: "value",
+			},
+			want: "templates in command",
+		},
+		{
+			name: "argument",
+			resolver: ResolverConfig{
+				Field: "label:cluster", Command: "./resolve-cluster", Args: []string{"{{.Value}}"}, Stdin: "value",
+			},
+			want: "templates in args[0]",
+		},
+		{
+			name: "environment",
+			resolver: ResolverConfig{
+				Field: "label:cluster", Command: "./resolve-cluster", Env: map[string]string{"VALUE": "{{.Value}}"}, Stdin: "value",
+			},
+			want: "templates in env.VALUE",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Resolvers = []ResolverConfig{tt.resolver}
+			err := validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("validate() error = %v, want error containing %q", err, tt.want)
+			}
+			if !strings.Contains(err.Error(), "read stdin") {
+				t.Fatalf("validate() error = %v, want stdin migration guidance", err)
+			}
+		})
+	}
+}
+
+func TestValidateResolverStdin(t *testing.T) {
+	t.Run("required", func(t *testing.T) {
+		cfg := Default()
+		cfg.Resolvers = []ResolverConfig{{Field: "label:cluster", Command: "./resolve-cluster"}}
+		err := validate(cfg)
+		if err == nil || !strings.Contains(err.Error(), "stdin is required") {
+			t.Fatalf("validate() error = %v, want required-stdin error", err)
+		}
+	})
+
+	t.Run("normalizes json", func(t *testing.T) {
+		cfg := Default()
+		cfg.Resolvers = []ResolverConfig{{
+			Field: " label:cluster ", Command: " ./resolve-cluster ", Args: []string{"--lookup"},
+			Env: map[string]string{"MODE": "fixed"}, Stdin: " JSON ",
+		}}
+		if err := validate(cfg); err != nil {
+			t.Fatalf("validate() error: %v", err)
+		}
+		resolver := cfg.Resolvers[0]
+		if resolver.Field != "label:cluster" || resolver.Command != "./resolve-cluster" || resolver.Stdin != "json" {
+			t.Fatalf("resolver was not normalized: %#v", resolver)
+		}
+	})
 }
 
 func TestLoadConfigSourceTimeout(t *testing.T) {

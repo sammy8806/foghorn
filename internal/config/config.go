@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/user"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -99,8 +100,8 @@ func expandEnvVars(input string) string {
 }
 
 // warnInsecureSourceURL logs a warning for sources fetched over plain HTTP to a
-// non-local host. Alert payloads drive links, notifications and (if configured)
-// resolver/action commands, and the auth credentials go out with every request —
+// non-local host. Alert payloads drive links, notifications and configured
+// resolver processes, and the auth credentials go out with every request —
 // over cleartext HTTP anyone on the network path can read or rewrite all of it.
 func warnInsecureSourceURL(name, rawURL string) {
 	trimmed := strings.TrimSpace(rawURL)
@@ -206,6 +207,12 @@ func validate(cfg *Config) error {
 		enabledSources = append(enabledSources, src)
 	}
 	cfg.Sources = enabledSources
+	if err := validateActions(cfg.Actions); err != nil {
+		return err
+	}
+	if err := validateResolvers(cfg.Resolvers); err != nil {
+		return err
+	}
 	if cfg.UI.PopupWidth == 0 {
 		cfg.UI.PopupWidth = 800
 	}
@@ -271,6 +278,80 @@ func validate(cfg *Config) error {
 		return err
 	}
 	return nil
+}
+
+func validateActions(actions []ActionConfig) error {
+	for i := range actions {
+		action := &actions[i]
+		actionType := strings.ToLower(strings.TrimSpace(action.Action.Type))
+		action.Action.Type = actionType
+
+		switch actionType {
+		case "url", "clipboard":
+			if strings.TrimSpace(action.Action.Template) == "" {
+				return fmt.Errorf("actions[%d] %q: %s action requires a template", i, action.Name, actionType)
+			}
+		case "shell":
+			return fmt.Errorf("actions[%d] %q: shell actions are no longer supported because remote alert fields could become shell syntax; use a url or clipboard action", i, action.Name)
+		case "":
+			return fmt.Errorf("actions[%d] %q: action type is required", i, action.Name)
+		default:
+			return fmt.Errorf("actions[%d] %q: unsupported action type %q; use url or clipboard", i, action.Name, action.Action.Type)
+		}
+	}
+	return nil
+}
+
+func validateResolvers(resolvers []ResolverConfig) error {
+	for i := range resolvers {
+		resolver := &resolvers[i]
+		resolver.Field = strings.TrimSpace(resolver.Field)
+		resolver.Command = strings.TrimSpace(resolver.Command)
+		resolver.Stdin = strings.ToLower(strings.TrimSpace(resolver.Stdin))
+
+		if resolver.Field == "" {
+			return fmt.Errorf("resolvers[%d] %q: field is required", i, resolver.Name)
+		}
+		if resolver.Command == "" {
+			return fmt.Errorf("resolvers[%d] %q: command is required", i, resolver.Name)
+		}
+		if hasProcessTemplate(resolver.Command) {
+			return resolverTemplateError(i, resolver.Name, "command")
+		}
+		for argIndex, arg := range resolver.Args {
+			if hasProcessTemplate(arg) {
+				return resolverTemplateError(i, resolver.Name, fmt.Sprintf("args[%d]", argIndex))
+			}
+		}
+
+		envKeys := make([]string, 0, len(resolver.Env))
+		for key := range resolver.Env {
+			envKeys = append(envKeys, key)
+		}
+		sort.Strings(envKeys)
+		for _, key := range envKeys {
+			if hasProcessTemplate(resolver.Env[key]) {
+				return resolverTemplateError(i, resolver.Name, fmt.Sprintf("env.%s", key))
+			}
+		}
+
+		switch resolver.Stdin {
+		case "value", "json":
+		case "":
+			return fmt.Errorf("resolvers[%d] %q: stdin is required; use stdin: value for the selected field or stdin: json for structured alert data", i, resolver.Name)
+		default:
+			return fmt.Errorf("resolvers[%d] %q: stdin %q must be value or json", i, resolver.Name, resolver.Stdin)
+		}
+	}
+	return nil
+}
+
+func hasProcessTemplate(value string) bool {
+	return strings.Contains(value, "{{") || strings.Contains(value, "}}")
+}
+
+func resolverTemplateError(index int, name, field string) error {
+	return fmt.Errorf("resolvers[%d] %q: templates in %s are no longer supported; use stdin: value or stdin: json and update the resolver program to read stdin", index, name, field)
 }
 
 func normalizeUIScale(scale *UIScale) error {
