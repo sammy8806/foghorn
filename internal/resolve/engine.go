@@ -3,13 +3,15 @@ package resolve
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"foghorn/internal/config"
@@ -32,6 +34,7 @@ type resolver struct {
 	command  string
 	args     []string
 	env      map[string]string
+	stdin    string
 	timeout  time.Duration
 	cacheTTL time.Duration
 }
@@ -42,14 +45,15 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-type templateData struct {
-	Ref         string
-	Kind        string
-	Name        string
-	Value       string
-	Alert       model.Alert
-	Labels      map[string]string
-	Annotations map[string]string
+type resolverJSONInput struct {
+	Version     int               `json:"version"`
+	Ref         string            `json:"ref"`
+	Kind        string            `json:"kind"`
+	Name        string            `json:"name"`
+	Value       string            `json:"value"`
+	Alert       model.Alert       `json:"alert"`
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
 }
 
 func New(cfgs []config.ResolverConfig) *Engine {
@@ -79,6 +83,7 @@ func New(cfgs []config.ResolverConfig) *Engine {
 			command:  command,
 			args:     append([]string(nil), cfg.Args...),
 			env:      cloneStringMap(cfg.Env),
+			stdin:    normalizeStdinMode(cfg.Stdin),
 			timeout:  timeout,
 			cacheTTL: cfg.CacheTTL,
 		})
@@ -139,7 +144,8 @@ func (e *Engine) ResolveAlert(alert model.Alert) model.Alert {
 
 func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (string, error) {
 	kind, name := config.ResolveFieldRef(item.field)
-	data := templateData{
+	input, err := resolverInput(item.stdin, resolverJSONInput{
+		Version:     1,
 		Ref:         item.field,
 		Kind:        kind,
 		Name:        name,
@@ -147,20 +153,9 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 		Alert:       alert,
 		Labels:      alert.Labels,
 		Annotations: alert.Annotations,
-	}
-
-	command, err := render(item.command, data)
+	})
 	if err != nil {
 		return "", err
-	}
-
-	args := make([]string, 0, len(item.args))
-	for _, arg := range item.args {
-		rendered, err := render(arg, data)
-		if err != nil {
-			return "", err
-		}
-		args = append(args, rendered)
 	}
 
 	envKeys := make([]string, 0, len(item.env))
@@ -171,15 +166,10 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 
 	env := make([]string, 0, len(item.env))
 	for _, key := range envKeys {
-		value := item.env[key]
-		rendered, err := render(value, data)
-		if err != nil {
-			return "", err
-		}
-		env = append(env, key+"="+rendered)
+		env = append(env, key+"="+item.env[key])
 	}
 
-	cacheKey := item.name + "\x00" + command + "\x00" + strings.Join(args, "\x00") + "\x00" + strings.Join(env, "\x00")
+	cacheKey := resolverCacheKey(item, env, input)
 	if cached, ok := e.cache.Load(cacheKey); ok {
 		entry := cached.(cacheEntry)
 		if entry.expiresAt.IsZero() || timeNow().Before(entry.expiresAt) {
@@ -191,11 +181,12 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 	ctx, cancel := context.WithTimeout(context.Background(), item.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := exec.CommandContext(ctx, item.command, item.args...)
+	cmd.Stdin = bytes.NewReader(input)
 	if len(env) > 0 {
 		cmd.Env = append(cmd.Environ(), env...)
 	}
-	log.Printf("resolver: executing name=%q field=%q value=%q command=%q args=%q", item.name, item.field, raw, command, args)
+	log.Printf("resolver: executing name=%q field=%q value=%q command=%q args=%q", item.name, item.field, raw, item.command, item.args)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -220,17 +211,47 @@ func (e *Engine) resolveValue(item resolver, alert model.Alert, raw string) (str
 	return value, nil
 }
 
-func render(tmpl string, data templateData) (string, error) {
-	t, err := template.New("resolver").Parse(tmpl)
-	if err != nil {
-		return "", err
+func normalizeStdinMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return "value"
 	}
+	return mode
+}
 
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, data); err != nil {
-		return "", err
+func resolverInput(mode string, data resolverJSONInput) ([]byte, error) {
+	switch mode {
+	case "value":
+		return []byte(data.Value), nil
+	case "json":
+		return json.Marshal(data)
+	default:
+		return nil, fmt.Errorf("resolver %q: unsupported stdin mode %q", data.Ref, mode)
 	}
-	return buf.String(), nil
+}
+
+func resolverCacheKey(item resolver, env []string, input []byte) string {
+	var key strings.Builder
+	appendCacheKeyPart(&key, item.name)
+	appendCacheKeyPart(&key, item.command)
+	appendCacheKeyPart(&key, strconv.Itoa(len(item.args)))
+	for _, arg := range item.args {
+		appendCacheKeyPart(&key, arg)
+	}
+	appendCacheKeyPart(&key, strconv.Itoa(len(env)))
+	for _, variable := range env {
+		appendCacheKeyPart(&key, variable)
+	}
+	appendCacheKeyPart(&key, item.stdin)
+	inputDigest := sha256.Sum256(input)
+	appendCacheKeyPart(&key, string(inputDigest[:]))
+	return key.String()
+}
+
+func appendCacheKeyPart(key *strings.Builder, part string) {
+	key.WriteString(strconv.Itoa(len(part)))
+	key.WriteByte(':')
+	key.WriteString(part)
 }
 
 func resolveRawField(alert model.Alert, ref string) string {

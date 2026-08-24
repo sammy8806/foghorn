@@ -333,8 +333,6 @@ type ActionConfig struct {
 type ActionDef struct {
 	Type     string `yaml:"type"`
 	Template string `yaml:"template"`
-	Command  string `yaml:"command"`
-	Terminal bool   `yaml:"terminal"`
 }
 
 type ResolverConfig struct {
@@ -343,6 +341,7 @@ type ResolverConfig struct {
 	Command  string            `yaml:"command"`
 	Args     []string          `yaml:"args"`
 	Env      map[string]string `yaml:"env"`
+	Stdin    string            `yaml:"stdin"`
 	Timeout  time.Duration     `yaml:"timeout"`
 	CacheTTL time.Duration     `yaml:"cache_ttl"`
 }

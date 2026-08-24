@@ -167,6 +167,10 @@ func supported() bool { return true }
 
 func backendName() string { return "macOS Keychain" }
 
+// MaxSecretSize is unlimited in practice: keychain items are capped far above
+// any realistic token set.
+func (s *macOSStore) MaxSecretSize() int { return 0 }
+
 func (s *macOSStore) Get(account string) ([]byte, error) {
 	serviceValue := C.CString(s.service)
 	accountValue := C.CString(account)

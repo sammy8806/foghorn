@@ -18,6 +18,14 @@ func newStore(service string) Store { return windowsStore{service: service} }
 func supported() bool               { return true }
 func backendName() string           { return "Windows Credential Manager" }
 
+// WindowsMaxSecretSize is the Credential Manager blob limit
+// (CRED_MAX_CREDENTIAL_BLOB_SIZE, 5*512 bytes). go-keyring rejects anything
+// larger with ErrSetDataTooBig, and it counts raw bytes: the blob is written as
+// []byte(secret) with no UTF-16 expansion.
+const WindowsMaxSecretSize = 2560
+
+func (s windowsStore) MaxSecretSize() int { return WindowsMaxSecretSize }
+
 func (s windowsStore) Get(account string) ([]byte, error) {
 	secret, err := native.Get(s.service, account)
 	if errors.Is(err, native.ErrNotFound) {

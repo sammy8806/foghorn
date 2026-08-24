@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +14,14 @@ import (
 	"time"
 
 	"foghorn/internal/config"
+	"foghorn/internal/model"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestAlertmanagerOIDCDeviceFlowUsesAccessToken(t *testing.T) {
 	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
@@ -75,8 +84,7 @@ func TestAlertmanagerOIDCDeviceFlowUsesAccessToken(t *testing.T) {
 	}
 	am := NewAlertmanager(cfg)
 
-	_, err := am.Fetch(context.Background())
-	if err != nil {
+	if _, err := fetchAfterLogin(t, am); err != nil {
 		t.Fatalf("Fetch() error: %v", err)
 	}
 
@@ -147,7 +155,7 @@ func TestAlertmanagerOIDCReusesCachedToken(t *testing.T) {
 	am := NewAlertmanager(cfg)
 
 	for i := 0; i < 2; i++ {
-		if _, err := am.Fetch(context.Background()); err != nil {
+		if _, err := fetchAfterLogin(t, am); err != nil {
 			t.Fatalf("Fetch #%d error: %v", i+1, err)
 		}
 	}
@@ -209,7 +217,7 @@ func TestAlertmanagerOIDCRejectsEndpointRedirects(t *testing.T) {
 				},
 			})
 
-			if _, err := am.Fetch(context.Background()); err == nil {
+			if _, err := fetchAfterLogin(t, am); err == nil {
 				t.Fatal("expected redirected OIDC endpoint request to fail")
 			}
 			if redirectedRequests.Load() != 0 {
@@ -236,6 +244,24 @@ func readFormBody(t *testing.T, r *http.Request) string {
 }
 
 func testBoolPointer(value bool) *bool { return &value }
+
+// fetchAfterLogin polls a source the way the engine does. The first fetch that
+// triggers a device login fails fast with ErrLoginPending while the sign-in runs
+// in the background, so a caller retries instead of holding the fetch open.
+func fetchAfterLogin(t *testing.T, am *alertmanagerAPI) ([]model.Alert, error) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		alerts, err := am.Fetch(context.Background())
+		if !errors.Is(err, ErrLoginPending) {
+			return alerts, err
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("device login never finished")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
 
 func TestOIDCDeviceAuthFailsBeforeExpiry(t *testing.T) {
 	auth := newOIDCDeviceAuthenticator("oidc-am", config.AuthConfig{
@@ -274,7 +300,7 @@ func TestOIDCDiscoveryRejectsCrossOriginEndpoints(t *testing.T) {
 		PersistTokens: testBoolPointer(false),
 	}, server.Client())
 
-	_, err := auth.Token(context.Background())
+	_, err := oidcTokenAfterLogin(t, auth)
 	if err == nil {
 		t.Fatal("expected an error for cross-origin discovery endpoints")
 	}
@@ -309,7 +335,7 @@ func TestOIDCDiscoveryRejectsNonHTTPSEndpoint(t *testing.T) {
 		PersistTokens: testBoolPointer(false),
 	}, server.Client())
 
-	_, err := auth.Token(context.Background())
+	_, err := oidcTokenAfterLogin(t, auth)
 	if err == nil {
 		t.Fatal("expected an error for a non-loopback http discovery endpoint")
 	}
@@ -374,5 +400,385 @@ func TestDecodeOIDCAuthorizationClaimsFiltersIdentityClaims(t *testing.T) {
 func TestDecodeOIDCAuthorizationClaimsRejectsNonJWT(t *testing.T) {
 	if _, err := decodeOIDCAuthorizationClaims("opaque-access-token"); err == nil {
 		t.Fatal("expected non-JWT access token to be rejected")
+	}
+}
+
+// F1: the poll engine bounds a fetch with the source's timeout (10s by
+// default), but a device login waits on a person completing SSO and MFA. The
+// login must run on its own lifetime, or it can never finish.
+func TestOIDCLoginIsNotBoundByCallerDeadline(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"device_authorization_endpoint": "http://" + r.Host + "/device",
+				"token_endpoint":                "http://" + r.Host + "/token",
+			})
+		case "/device":
+			// Outlive any deadline the caller could reasonably impose.
+			time.Sleep(50 * time.Millisecond)
+			writeJSON(t, w, map[string]interface{}{
+				"device_code":      "device-123",
+				"user_code":        "ABCD-EFGH",
+				"verification_uri": "https://login.example.test/device",
+				"expires_in":       600,
+			})
+		case "/token":
+			writeJSON(t, w, map[string]interface{}{
+				"access_token": "late-access",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", config.AuthConfig{
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
+	}, server.Client(), newMemoryTokenStore())
+
+	expiring, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	if _, err := auth.Token(expiring); !errors.Is(err, ErrLoginPending) {
+		t.Fatalf("Token() error = %v, want ErrLoginPending", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		short, cancelShort := context.WithTimeout(context.Background(), 5*time.Millisecond)
+		token, err := auth.Token(short)
+		cancelShort()
+		if err == nil {
+			if token.AccessToken != "late-access" {
+				t.Fatalf("AccessToken = %q", token.AccessToken)
+			}
+			return
+		}
+		if !errors.Is(err, ErrLoginPending) {
+			t.Fatalf("login failed under a short caller deadline: %v", err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("login never completed")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func TestOIDCRefreshIsBoundByCallerDeadline(t *testing.T) {
+	requestCanceled := make(chan struct{})
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+		close(requestCanceled)
+		return nil, req.Context().Err()
+	})}
+
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth("")
+	authConfig.DeviceAuthorizationURL = "http://localhost/device"
+	authConfig.TokenURL = "http://localhost/token"
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", authConfig, client, store)
+	saveTestToken(t, store, auth, &oidcToken{
+		RefreshToken: "saved-refresh",
+		ExpiresIn:    60,
+		obtainedAt:   time.Now().Add(-time.Hour),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := auth.Token(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Token() error = %v, want caller deadline", err)
+	}
+	select {
+	case <-requestCanceled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refresh HTTP request outlived the caller deadline")
+	}
+}
+
+func TestOIDCCloseCancelsInFlightLoginWithoutSaving(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	tokenRequestStarted := make(chan struct{})
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/device" {
+			body := `{"device_code":"device-123","verification_uri":"https://login.example.test/device","expires_in":600}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    req,
+			}, nil
+		}
+		close(tokenRequestStarted)
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})}
+
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth("")
+	authConfig.DeviceAuthorizationURL = "http://localhost/device"
+	authConfig.TokenURL = "http://localhost/token"
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", authConfig, client, store)
+	if _, err := auth.Token(context.Background()); !errors.Is(err, ErrLoginPending) {
+		t.Fatalf("Token() error = %v, want ErrLoginPending", err)
+	}
+	select {
+	case <-tokenRequestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("login never reached token polling")
+	}
+
+	auth.Close()
+	if _, err := auth.Token(context.Background()); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("Token() after Close error = %v, want closed authenticator", err)
+	}
+	waitFor(t, func() bool {
+		auth.mu.Lock()
+		defer auth.mu.Unlock()
+		return auth.flight == nil
+	}, "closed login flight did not stop")
+	if _, ok := store.items[auth.account]; ok {
+		t.Fatal("closed authenticator saved a stale login")
+	}
+}
+
+// F1: while a login is pending, further polls must join it. Minting a fresh
+// device code per poll opened a browser tab every poll interval, each showing a
+// different user code and only the newest one working.
+func TestOIDCPendingLoginOpensOneBrowserTab(t *testing.T) {
+	var deviceRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"device_authorization_endpoint": "http://" + r.Host + "/device",
+				"token_endpoint":                "http://" + r.Host + "/token",
+			})
+		case "/device":
+			deviceRequests.Add(1)
+			writeJSON(t, w, map[string]interface{}{
+				"device_code":      "device-123",
+				"user_code":        "ABCD-EFGH",
+				"verification_uri": "https://login.example.test/device",
+				"expires_in":       600,
+				"interval":         1,
+			})
+		case "/token":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	var opened atomic.Int32
+	original := browserOpenURL
+	browserOpenURL = func(string) error {
+		opened.Add(1)
+		return nil
+	}
+	defer func() { browserOpenURL = original }()
+
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", config.AuthConfig{
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
+	}, server.Client(), newMemoryTokenStore())
+
+	for i := 0; i < 10; i++ {
+		if _, err := auth.Token(context.Background()); !errors.Is(err, ErrLoginPending) {
+			t.Fatalf("poll %d: error = %v, want ErrLoginPending", i+1, err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if got := opened.Load(); got != 1 {
+		t.Fatalf("opened %d browser tabs during one pending login, want 1", got)
+	}
+	if got := deviceRequests.Load(); got != 1 {
+		t.Fatalf("started %d device authorizations during one pending login, want 1", got)
+	}
+}
+
+// F3: the authenticator mutex used to be held across the whole interactive
+// flow, so the settings view (GetOIDCSessions) and the log-out button
+// (ForgetOIDCLogin) hung until the login finished.
+func TestOIDCSessionQueriesStayResponsiveDuringLogin(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	var tokenPolls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"device_authorization_endpoint": "http://" + r.Host + "/device",
+				"token_endpoint":                "http://" + r.Host + "/token",
+			})
+		case "/device":
+			writeJSON(t, w, map[string]interface{}{
+				"device_code":      "device-123",
+				"user_code":        "ABCD-EFGH",
+				"verification_uri": "https://login.example.test/device",
+				"expires_in":       600,
+			})
+		case "/token":
+			tokenPolls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", config.AuthConfig{
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
+	}, server.Client(), newMemoryTokenStore())
+
+	if _, err := auth.Token(context.Background()); !errors.Is(err, ErrLoginPending) {
+		t.Fatalf("Token() error = %v, want ErrLoginPending", err)
+	}
+	// Wait until the login is parked between token polls, which is exactly where
+	// the old code sat holding the mutex.
+	waitFor(t, func() bool { return tokenPolls.Load() > 0 }, "login never reached the token poll")
+	if !auth.SessionInfo().LoginPending {
+		t.Fatal("SessionInfo did not report the pending sign-in")
+	}
+
+	done := make(chan OIDCSessionInfo, 1)
+	go func() {
+		info := auth.SessionInfo()
+		_ = auth.Forget()
+		done <- info
+	}()
+
+	select {
+	case info := <-done:
+		if !info.LoginPending {
+			t.Fatal("SessionInfo did not report the pending sign-in")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SessionInfo/Forget blocked on the in-flight login")
+	}
+}
+
+// F3: logging out is also how a user abandons a login they no longer want, so
+// it cancels the in-flight one and does not leave the retry backoff armed.
+func TestOIDCForgetCancelsInFlightLogin(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	var deviceRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"device_authorization_endpoint": "http://" + r.Host + "/device",
+				"token_endpoint":                "http://" + r.Host + "/token",
+			})
+		case "/device":
+			deviceRequests.Add(1)
+			writeJSON(t, w, map[string]interface{}{
+				"device_code":      "device-123",
+				"user_code":        "ABCD-EFGH",
+				"verification_uri": "https://login.example.test/device",
+				"expires_in":       600,
+			})
+		case "/token":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", config.AuthConfig{
+		Type:          "oidc",
+		Flow:          "device",
+		IssuerURL:     server.URL,
+		ClientID:      "foghorn-test",
+		PersistTokens: testBoolPointer(false),
+	}, server.Client(), newMemoryTokenStore())
+
+	if _, err := auth.Token(context.Background()); !errors.Is(err, ErrLoginPending) {
+		t.Fatalf("Token() error = %v, want ErrLoginPending", err)
+	}
+	waitFor(t, func() bool { return deviceRequests.Load() > 0 }, "login never requested a device code")
+	if err := auth.Forget(); err != nil {
+		t.Fatalf("Forget() error: %v", err)
+	}
+
+	// A new sign-in must start immediately rather than waiting out the backoff
+	// that a genuinely failed login would arm.
+	deadline := time.Now().Add(5 * time.Second)
+	for deviceRequests.Load() < 2 {
+		if _, err := auth.Token(context.Background()); err != nil && !errors.Is(err, ErrLoginPending) {
+			t.Fatalf("Token() after Forget: %v", err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cancelled login did not release: device requests = %d", deviceRequests.Load())
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// F2: manually configured endpoints bypassed discovery, and with it every
+// transport check, while newFormRequest still sends client_id and
+// client_secret to them in an HTTP Basic header.
+func TestOIDCRejectsInsecureManualEndpoints(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", config.AuthConfig{
+		Type:                   "oidc",
+		Flow:                   "device",
+		DeviceAuthorizationURL: "http://sso.example.test/device",
+		TokenURL:               "http://sso.example.test/token",
+		ClientID:               "foghorn-test",
+		ClientSecret:           "super-secret",
+		PersistTokens:          testBoolPointer(false),
+	}, http.DefaultClient, newMemoryTokenStore())
+
+	_, err := oidcTokenAfterLogin(t, auth)
+	if err == nil {
+		t.Fatal("expected cleartext manual endpoints to be rejected")
+	}
+	if !strings.Contains(err.Error(), "must be https") {
+		t.Fatalf("error = %v, want an https requirement", err)
+	}
+}
+
+// Loopback stays exempt: local development issuers commonly run without TLS.
+func TestOIDCAllowsLoopbackManualEndpoints(t *testing.T) {
+	for _, endpoint := range []string{"http://127.0.0.1:9000/device", "http://localhost:9000/device"} {
+		if _, err := requireSecureEndpoint("device_authorization_url", endpoint); err != nil {
+			t.Errorf("requireSecureEndpoint(%q) = %v, want allowed", endpoint, err)
+		}
+	}
+	if _, err := requireSecureEndpoint("token_url", "https://sso.example.test/token"); err != nil {
+		t.Errorf("https endpoint rejected: %v", err)
+	}
+}
+
+// waitFor blocks until cond holds, failing the test if it never does.
+func waitFor(t *testing.T, cond func() bool, message string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal(message)
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 }

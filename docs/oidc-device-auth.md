@@ -21,14 +21,25 @@ sources:
       # a refresh token. Foghorn does not add OAuth scopes automatically.
       scopes: [openid, offline_access]
     poll_interval: 30s
-    # The source timeout also covers the interactive login. The normal 10s
-    # default is too short for a user to complete SSO or MFA.
-    timeout: 5m
 ```
 
 Foghorn discovers the device authorization and token endpoints from the
 issuer, opens the verification page in the system browser, polls for the
 token, and sends the access token as `Authorization: Bearer <token>`.
+
+The interactive login runs in the background, on its own lifetime rather than
+the source's `timeout`, so the normal 10s default is fine: a source does not
+have to wait out SSO and MFA. Polls that happen while a sign-in is pending fail
+with "browser sign-in is pending" and the source is shown as unhealthy until the
+user finishes. Only one sign-in runs per source at a time, so exactly one browser
+tab is opened per device code no matter how many polls elapse. A sign-in that
+fails is retried no sooner than five minutes later; forgetting the login clears
+that delay and starts a new sign-in immediately.
+
+`issuer_url`, `device_authorization_url` and `token_url` must be `https` unless
+they point at loopback. Foghorn sends `client_id` and `client_secret` to the
+device and token endpoints, so a cleartext endpoint would expose them; plain-HTTP
+endpoints are warned about at config load and rejected when used.
 
 `openid` is the only scope Foghorn itself requires. Add another scope only
 when the identity provider requires it for refresh tokens or exposes a required
@@ -52,7 +63,12 @@ service `de.sammy8806.foghorn.oidc`.
   in the user's graphical session. Foghorn does not invoke `secret-tool` or put
   token material in command-line arguments.
 - **Windows:** the item is stored in Windows Credential Manager for the current
-  user.
+  user, which caps a credential at 2560 bytes. A single JWT carrying group
+  claims can approach that on its own, so Foghorn shrinks what it saves to fit:
+  it drops the token the source does not send, then the other one, keeping the
+  refresh token, which is what actually restores a login. If even a refresh
+  token alone does not fit, the source falls back to memory-only credentials and
+  the About view reports why.
 
 The credential store lets Foghorn reuse a still-valid token after an app or
 source configuration restart. When the access token expires, Foghorn uses the
@@ -62,10 +78,18 @@ previous one. Refreshing still requires network access to the identity
 provider; "offline" login means the user does not need to repeat browser
 authentication.
 
-Saved credentials are isolated by source name, issuer/endpoints, client ID,
-sorted scopes, and whether `use_id_token` is enabled. Renaming a source or
-changing one of those settings creates a new login identity and leaves the old
-credential-store item untouched.
+Each source occupies one credential-store item, keyed by its name. The login it
+was issued for — issuer/endpoints, client ID, sorted scopes, and whether
+`use_id_token` is enabled — is fingerprinted into the saved payload and checked
+on load: if it no longer matches the configuration, the saved token is discarded
+unused and replaced by a fresh sign-in. Editing any of those settings therefore
+reuses the source's item instead of stranding the old one.
+
+Renaming a source is the exception: the item follows the name, so the old one is
+left behind. Run `foghorn auth clear <old-name>` before renaming, or remove the
+item with the operating system's own credential tool. Items saved by older
+Foghorn versions, which keyed the item by the whole login identity, are migrated
+into the new layout the first time the source loads and the old item is removed.
 
 To disable persistence for one source:
 

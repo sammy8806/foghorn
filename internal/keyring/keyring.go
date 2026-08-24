@@ -15,10 +15,15 @@ var (
 // Store is the minimal secret-store contract used by the OIDC authenticator.
 // Get returns ErrNotFound for a missing or empty item, Delete is idempotent,
 // and implementations must never include secret values in returned errors.
+//
+// MaxSecretSize reports the largest secret Set accepts, in bytes, or 0 when the
+// backend imposes no practical limit. Callers use it to shrink a payload before
+// saving rather than discovering the limit as an opaque Set failure.
 type Store interface {
 	Get(account string) ([]byte, error)
 	Set(account string, secret []byte) error
 	Delete(account string) error
+	MaxSecretSize() int
 }
 
 // NewOIDCStore returns the platform store used for persisted OIDC tokens.

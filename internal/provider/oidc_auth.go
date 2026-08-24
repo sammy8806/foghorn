@@ -27,23 +27,69 @@ const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 // verify what promptUser hands it without actually opening a browser.
 var browserOpenURL = browser.OpenURL
 
+// ErrLoginPending reports that an interactive device login is running in the
+// background and has not finished yet. A caller on a poll deadline must fail
+// fast with this rather than wait: the login waits on a human, so blocking
+// would fail the poll anyway and abandon a login that is still completable.
+var ErrLoginPending = errors.New("browser sign-in is pending")
+
+const (
+	// oidcNetworkTimeout bounds the machine-speed steps of a login (discovery,
+	// device authorization, refresh). Waiting for the user is bounded separately
+	// by the device code's own expiry.
+	oidcNetworkTimeout = 30 * time.Second
+
+	// oidcLoginRetryBackoff throttles device logins after a failed attempt, so an
+	// app nobody is watching cannot reopen a browser tab every poll interval.
+	oidcLoginRetryBackoff = 5 * time.Minute
+)
+
 type oidcDeviceAuthenticator struct {
 	source             string
 	cfg                config.AuthConfig
 	client             *http.Client
 	store              keyring.Store
 	account            string
+	legacyAccount      string
+	identity           string
 	persistenceEnabled bool
 	storeSupported     bool
 	storageBackend     string
 
-	mu           sync.Mutex
-	discovery    *oidcDiscovery
-	token        *oidcToken
-	tokenDirty   bool
-	loadComplete bool
-	persisted    bool
-	storageError string
+	// discovery is resolved outside a.mu: it is reached from a login running in
+	// the background, which must not block session queries.
+	discoveryMu sync.Mutex
+	discovery   *oidcDiscovery
+
+	mu            sync.Mutex
+	token         *oidcToken
+	tokenDirty    bool
+	loadComplete  bool
+	persisted     bool
+	legacyPending bool
+	storageError  string
+	closed        bool
+
+	// flight is the one in-progress token acquisition. Serializing acquisitions
+	// keeps exactly one browser tab open per device code, and stops two
+	// concurrent refreshes from each rotating the other's refresh token.
+	flight       *tokenFlight
+	retryAfter   time.Time
+	lastLoginErr error
+	// forgetGen invalidates a flight that finishes after the user logged out, so
+	// a login completing moments later cannot resurrect the session.
+	forgetGen   uint64
+	loginCtx    context.Context
+	loginCancel context.CancelFunc
+}
+
+// tokenFlight is a single in-progress acquisition of a usable token, shared by
+// every caller that arrives while it runs.
+type tokenFlight struct {
+	done        chan struct{}
+	interactive bool
+	token       *oidcToken
+	err         error
 }
 
 type oidcDiscovery struct {
@@ -97,15 +143,22 @@ func newOIDCDeviceAuthenticatorWithStore(source string, auth config.AuthConfig, 
 	if client == nil {
 		client = http.DefaultClient
 	}
+	// A device login outlives the request that starts it, so it runs on a
+	// context the authenticator owns rather than the caller's poll deadline.
+	loginCtx, loginCancel := context.WithCancel(context.Background())
 	return &oidcDeviceAuthenticator{
 		source:             source,
 		cfg:                auth,
 		client:             client,
 		store:              store,
-		account:            OIDCTokenAccount(source, auth),
+		account:            OIDCTokenAccount(source),
+		legacyAccount:      OIDCLegacyTokenAccount(source, auth),
+		identity:           OIDCTokenIdentity(source, auth),
 		persistenceEnabled: auth.PersistTokens == nil || *auth.PersistTokens,
 		storeSupported:     true,
 		storageBackend:     keyring.BackendName(),
+		loginCtx:           loginCtx,
+		loginCancel:        loginCancel,
 	}
 }
 
@@ -135,6 +188,7 @@ func (a *oidcDeviceAuthenticator) SessionInfo() OIDCSessionInfo {
 		Configured:         true,
 		Active:             a.token != nil,
 		Saved:              a.persisted,
+		LoginPending:       a.flight != nil && a.flight.interactive,
 		PersistenceEnabled: a.persistenceEnabled,
 		StorageBackend:     a.storageBackend,
 		StorageError:       a.storageError,
@@ -153,69 +207,217 @@ func (a *oidcDeviceAuthenticator) expireAccessToken() {
 
 func (a *oidcDeviceAuthenticator) Forget() error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	a.token = nil
 	a.tokenDirty = false
 	a.loadComplete = true
-	return a.deletePersistedTokenLocked()
+	// Logging out is also how a user cancels a login they no longer want, and it
+	// clears the backoff so signing in again is immediate rather than throttled.
+	a.retryAfter = time.Time{}
+	a.lastLoginErr = nil
+	a.forgetGen++
+	cancel := a.loginCancel
+	a.loginCtx, a.loginCancel = context.WithCancel(context.Background())
+	err := a.deletePersistedTokenLocked()
+	a.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	return err
 }
 
+// Close permanently stops authenticator-owned background work without
+// deleting the saved login. Provider instances call it when config reload or
+// application shutdown replaces them.
+func (a *oidcDeviceAuthenticator) Close() {
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return
+	}
+	a.closed = true
+	a.forgetGen++
+	cancel := a.loginCancel
+	a.loginCancel = nil
+	a.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// Token returns a usable token, starting a refresh or a device login when there
+// is none. Acquisitions are serialized into a single flight so that concurrent
+// callers share one login rather than each minting a device code of its own.
 func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	if a.closed {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("oidc: source %q: authenticator is closed", a.source)
+	}
 
 	a.loadPersistedTokenLocked()
 	if a.token != nil && !a.token.expired() {
 		a.savePersistedTokenLocked()
-		return a.token, nil
-	}
-	if a.token != nil && a.token.RefreshToken != "" {
-		if token, err := a.refresh(ctx, a.token); err == nil {
-			a.token = token
-			a.tokenDirty = true
-			a.savePersistedTokenLocked()
-			logOIDCTokenAuthorizationClaims(token)
-			return token, nil
-		} else if isNonRetryableOIDCRefreshError(err) {
-			log.Printf("oidc: saved login for source %q is no longer valid; starting device authorization", a.source)
-			a.token = nil
-			a.tokenDirty = false
-			if deleteErr := a.deletePersistedTokenLocked(); deleteErr != nil {
-				log.Printf("oidc: source %q could not remove the invalid saved login: %v", a.source, deleteErr)
-			}
-		} else {
-			return nil, fmt.Errorf("oidc: refreshing saved login for source %q: %w", a.source, err)
-		}
+		token := a.token
+		a.mu.Unlock()
+		return token, nil
 	}
 
-	discovery, err := a.discover(ctx)
+	if flight := a.flight; flight != nil {
+		a.mu.Unlock()
+		return a.awaitFlight(ctx, flight)
+	}
+
+	interactive := a.token == nil || a.token.RefreshToken == ""
+	if interactive && time.Now().Before(a.retryAfter) {
+		err := fmt.Errorf("oidc: source %q: sign-in failed and will be retried in %s: %w",
+			a.source, time.Until(a.retryAfter).Round(time.Second), a.lastLoginErr)
+		a.mu.Unlock()
+		return nil, err
+	}
+
+	flight := &tokenFlight{done: make(chan struct{}), interactive: interactive}
+	a.flight = flight
+	previous := a.token
+	flightCtx := ctx
+	if interactive {
+		flightCtx = a.loginCtx
+	}
+	generation := a.forgetGen
+	a.mu.Unlock()
+
+	go a.runFlight(flightCtx, flight, previous, generation)
+	return a.awaitFlight(ctx, flight)
+}
+
+// awaitFlight blocks only for acquisitions that run at machine speed. An
+// interactive login waits on a person, so its callers are told the login is
+// pending and left to retry on their own schedule.
+func (a *oidcDeviceAuthenticator) awaitFlight(ctx context.Context, flight *tokenFlight) (*oidcToken, error) {
+	if flight.interactive {
+		select {
+		case <-flight.done:
+			return flight.token, flight.err
+		default:
+			return nil, fmt.Errorf("oidc: source %q: %w", a.source, ErrLoginPending)
+		}
+	}
+	select {
+	case <-flight.done:
+		return flight.token, flight.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// runFlight performs one acquisition off a.mu, so that session queries and
+// logout stay responsive while a login or refresh is in progress.
+func (a *oidcDeviceAuthenticator) runFlight(ctx context.Context, flight *tokenFlight, previous *oidcToken, generation uint64) {
+	var token *oidcToken
+	var err error
+	if flight.interactive {
+		token, err = a.performDeviceLogin(ctx)
+	} else {
+		token, err = a.performRefresh(ctx, previous)
+	}
+
+	a.mu.Lock()
+	switch {
+	case generation != a.forgetGen:
+		// The user logged out while this ran; its result is no longer wanted.
+		if err == nil {
+			err = fmt.Errorf("oidc: source %q: sign-in was cancelled", a.source)
+			token = nil
+		}
+	case err == nil:
+		a.token = token
+		a.tokenDirty = true
+		a.savePersistedTokenLocked()
+		a.retryAfter = time.Time{}
+		a.lastLoginErr = nil
+	case flight.interactive && !errors.Is(err, context.Canceled):
+		a.retryAfter = time.Now().Add(oidcLoginRetryBackoff)
+		a.lastLoginErr = err
+	}
+	a.flight = nil
+	a.mu.Unlock()
+
+	if err == nil {
+		logOIDCTokenAuthorizationClaims(token)
+	}
+	flight.token, flight.err = token, err
+	close(flight.done)
+}
+
+// performRefresh exchanges the saved refresh token. A refresh rejected as
+// invalid (4xx) means the saved login is dead: it is discarded so the next call
+// starts a device login, while a transient failure keeps it for a later retry.
+func (a *oidcDeviceAuthenticator) performRefresh(ctx context.Context, previous *oidcToken) (*oidcToken, error) {
+	refreshCtx, cancel := context.WithTimeout(ctx, oidcNetworkTimeout)
+	defer cancel()
+
+	token, err := a.refresh(refreshCtx, previous)
+	if err == nil {
+		return token, nil
+	}
+	if !isNonRetryableOIDCRefreshError(err) {
+		return nil, fmt.Errorf("oidc: refreshing saved login for source %q: %w", a.source, err)
+	}
+
+	log.Printf("oidc: saved login for source %q is no longer valid; a new sign-in is required", a.source)
+	a.mu.Lock()
+	a.token = nil
+	a.tokenDirty = false
+	if deleteErr := a.deletePersistedTokenLocked(); deleteErr != nil {
+		log.Printf("oidc: source %q could not remove the invalid saved login: %v", a.source, deleteErr)
+	}
+	a.mu.Unlock()
+	return nil, fmt.Errorf("oidc: saved login for source %q is no longer valid; signing in again: %w", a.source, err)
+}
+
+// performDeviceLogin runs the RFC 8628 device flow. Its network steps are
+// bounded by oidcNetworkTimeout; the wait for the user is bounded only by the
+// device code's expiry, which is what makes a login survive a source timeout
+// far shorter than a person needs to complete SSO and MFA.
+func (a *oidcDeviceAuthenticator) performDeviceLogin(ctx context.Context) (*oidcToken, error) {
+	setupCtx, cancel := context.WithTimeout(ctx, oidcNetworkTimeout)
+	defer cancel()
+
+	discovery, err := a.discover(setupCtx)
 	if err != nil {
 		return nil, err
 	}
-	device, err := a.startDeviceAuthorization(ctx, discovery.DeviceAuthorizationEndpoint)
+	device, err := a.startDeviceAuthorization(setupCtx, discovery.DeviceAuthorizationEndpoint)
 	if err != nil {
 		return nil, err
 	}
 	a.promptUser(device)
 
-	token, err := a.pollToken(ctx, discovery.TokenEndpoint, device)
-	if err != nil {
-		return nil, err
-	}
-	a.token = token
-	a.tokenDirty = true
-	a.savePersistedTokenLocked()
-	logOIDCTokenAuthorizationClaims(token)
-	return token, nil
+	return a.pollToken(ctx, discovery.TokenEndpoint, device)
 }
 
 func (a *oidcDeviceAuthenticator) discover(ctx context.Context) (*oidcDiscovery, error) {
+	a.discoveryMu.Lock()
+	defer a.discoveryMu.Unlock()
+
 	if a.discovery != nil {
 		return a.discovery, nil
 	}
 	if a.cfg.DeviceAuthorizationURL != "" && a.cfg.TokenURL != "" {
-		a.discovery = &oidcDiscovery{DeviceAuthorizationEndpoint: a.cfg.DeviceAuthorizationURL, TokenEndpoint: a.cfg.TokenURL}
+		// Manually configured endpoints skip discovery, but newFormRequest still
+		// sends client_id and client_secret to them via HTTP Basic auth, so they
+		// need the same transport guarantee. There is no discovery document to
+		// distrust here, hence no issuer-origin pin.
+		deviceEndpoint, err := requireSecureEndpoint("device_authorization_url", a.cfg.DeviceAuthorizationURL)
+		if err != nil {
+			return nil, err
+		}
+		tokenEndpoint, err := requireSecureEndpoint("token_url", a.cfg.TokenURL)
+		if err != nil {
+			return nil, err
+		}
+		a.discovery = &oidcDiscovery{DeviceAuthorizationEndpoint: deviceEndpoint, TokenEndpoint: tokenEndpoint}
 		return a.discovery, nil
 	}
 	issuer := strings.TrimRight(strings.TrimSpace(a.cfg.IssuerURL), "/")
@@ -267,13 +469,13 @@ func (a *oidcDeviceAuthenticator) discover(ctx context.Context) (*oidcDiscovery,
 // credentials). It must share the issuer's origin, and be https unless it is a
 // loopback address (local dev/test issuers commonly run without TLS).
 func validateDiscoveredEndpoint(kind, issuer, endpoint string) (string, error) {
-	trimmed := strings.TrimSpace(endpoint)
+	trimmed, err := requireSecureEndpoint(kind, endpoint)
+	if err != nil {
+		return "", err
+	}
 	parsed, err := url.Parse(trimmed)
 	if err != nil {
 		return "", fmt.Errorf("oidc discovery: %s %q is not a valid URL: %w", kind, trimmed, err)
-	}
-	if !strings.EqualFold(parsed.Scheme, "https") && !isLoopbackHost(parsed.Hostname()) {
-		return "", fmt.Errorf("oidc discovery: %s %q must be https", kind, trimmed)
 	}
 	issuerURL, err := url.Parse(issuer)
 	if err != nil || issuerURL.Host == "" {
@@ -281,6 +483,21 @@ func validateDiscoveredEndpoint(kind, issuer, endpoint string) (string, error) {
 	}
 	if !strings.EqualFold(issuerURL.Host, parsed.Host) {
 		return "", fmt.Errorf("oidc discovery: %s %q is not on the issuer's origin (%s)", kind, trimmed, issuerURL.Host)
+	}
+	return trimmed, nil
+}
+
+// requireSecureEndpoint rejects an OIDC endpoint that would carry client
+// credentials in cleartext. Loopback is exempt because local development
+// issuers commonly run without TLS.
+func requireSecureEndpoint(kind, endpoint string) (string, error) {
+	trimmed := strings.TrimSpace(endpoint)
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("oidc: %s %q is not a valid URL: %w", kind, trimmed, err)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") && !isLoopbackHost(parsed.Hostname()) {
+		return "", fmt.Errorf("oidc: %s %q must be https: client credentials and tokens would otherwise be sent in cleartext", kind, trimmed)
 	}
 	return trimmed, nil
 }

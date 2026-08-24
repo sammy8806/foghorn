@@ -102,8 +102,6 @@ export function buildBridgeInit(scenario) {
     silence_editor: { always_visible_matchers: ['alertname', 'cluster'], collapse_matchers: true },
   };
 
-  const actions = scenario.actions || [];
-  const actionsForAll = scenario.actionsForAll ?? false;
   const health = scenario.health === 'failing' ? failingSources() : healthySources();
 
   return `
@@ -138,13 +136,6 @@ export function buildBridgeInit(scenario) {
           GetUIConfig: async () => (${JSON.stringify(uiConfig)}),
           GetUIScale: async () => ({ factor: 1, mode: 'fonts', apply_to_popup: true }),
           GetNotificationPermissionStatus: async () => 'authorized',
-          GetActionsForAlert: async (id, source) => {
-            const scenarioActions = ${JSON.stringify(actions)};
-            const forAll = ${JSON.stringify(actionsForAll)};
-            if (forAll) return scenarioActions;
-            return (id === '1' && source === 'prod-am') ? scenarioActions : [];
-          },
-          ExecuteAction: async (name) => 'opened runbook URL',
           RefreshAlerts: async () => {},
           LayoutPopup: async () => {},
           GetAbout: async () => ({ name: 'Foghorn', version: 'screenshot', description: 'Demo', repoURL: 'https://github.com/sammy8806/foghorn', copyright: '' }),

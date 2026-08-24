@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 	"testing"
 
 	"foghorn/internal/config"
@@ -48,8 +51,10 @@ func TestResolveDiffResolvesFrontendPayloads(t *testing.T) {
 			{
 				Name:    "cluster-name",
 				Field:   "label:cluster",
-				Command: "sh",
-				Args:    []string{"-c", "printf '%s' \"$1-resolved\"", "--", "{{.Value}}"},
+				Command: os.Args[0],
+				Args:    []string{"-test.run=^TestAppResolverHelperProcess$"},
+				Env:     map[string]string{"GO_WANT_APP_RESOLVER_HELPER": "1"},
+				Stdin:   "value",
 			},
 		},
 	}, state.New())
@@ -70,6 +75,20 @@ func TestResolveDiffResolvesFrontendPayloads(t *testing.T) {
 	if got := diff.Resolved[0].ResolvedLabels["cluster"]; got != "customer-1-resolved" {
 		t.Fatalf("expected resolved cluster label in diff payload, got %q", got)
 	}
+}
+
+func TestAppResolverHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_APP_RESOLVER_HELPER") != "1" {
+		return
+	}
+
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	_, _ = fmt.Fprintf(os.Stdout, "%s-resolved", input)
+	os.Exit(0)
 }
 
 func TestGetSourceCapabilitiesReflectsProviders(t *testing.T) {

@@ -7,15 +7,9 @@ import {provider} from '../models';
 
 export function CreateSilence(arg1:string,arg2:Array<model.Matcher>,arg3:string,arg4:string,arg5:string):Promise<string>;
 
-export function ExecuteAction(arg1:string,arg2:string,arg3:string):Promise<string>;
-
 export function ForgetOIDCLogin(arg1:string):Promise<void>;
 
 export function GetAbout():Promise<main.AboutInfo>;
-
-export function GetActions():Promise<Array<config.ActionConfig>>;
-
-export function GetActionsForAlert(arg1:string,arg2:string):Promise<Array<config.ActionConfig>>;
 
 export function GetAlerts():Promise<Array<model.Alert>>;
 

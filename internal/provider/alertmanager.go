@@ -73,6 +73,15 @@ func (a *alertmanagerAPI) Name() string          { return a.cfg.Name }
 func (a *alertmanagerAPI) Type() string          { return a.kind }
 func (a *alertmanagerAPI) SupportsSilence() bool { return true }
 
+// Close stops authenticator-owned background work. In particular, a device
+// login from a provider replaced during config reload must not later overwrite
+// the replacement provider's credential-store slot.
+func (a *alertmanagerAPI) Close() {
+	if a.oidc != nil {
+		a.oidc.Close()
+	}
+}
+
 func (a *alertmanagerAPI) OIDCSessionInfo() OIDCSessionInfo {
 	if a.oidc == nil {
 		return OIDCSessionInfo{Source: a.cfg.Name}

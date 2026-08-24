@@ -58,6 +58,7 @@
   function sessionStatus(session: provider.OIDCSessionInfo): string {
     const backend = session.storageBackend || 'System keyring';
     if (session.storageError) return `${backend} error: ${session.storageError}`;
+    if (session.loginPending) return 'Waiting for browser sign-in…';
     if (session.saved) return `Saved in ${backend}`;
     if (session.active) return 'Active in memory only';
     if (!session.persistenceEnabled) return 'Persistent storage disabled';
@@ -116,7 +117,7 @@
                 <button
                   class:danger={confirmSource === session.source}
                   type="button"
-                  disabled={forgettingSource === session.source || (!session.active && !session.saved && !session.storageError)}
+                  disabled={forgettingSource === session.source || (!session.active && !session.saved && !session.loginPending && !session.storageError)}
                   on:click={() => forgetLogin(session.source)}
                 >
                   {#if forgettingSource === session.source}

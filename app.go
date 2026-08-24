@@ -6,7 +6,6 @@ import (
 	"log"
 	"sync"
 
-	"foghorn/internal/action"
 	"foghorn/internal/config"
 	"foghorn/internal/hide"
 	"foghorn/internal/model"
@@ -26,7 +25,6 @@ type App struct {
 	store      *state.Store
 	providers  map[string]provider.Provider
 	silenceMgr *silence.Manager
-	actionEng  *action.Engine
 	resolveEng *resolve.Engine
 	hideEng    *hide.Engine
 
@@ -42,7 +40,6 @@ func NewApp(cfg *config.Config, store *state.Store) *App {
 	app := &App{
 		cfg:        cfg,
 		store:      store,
-		actionEng:  action.New(cfg.Actions),
 		resolveEng: resolve.New(cfg.Resolvers),
 		hideEng:    buildHideEngine(cfg.Hide),
 	}
@@ -92,13 +89,12 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(_ context.Context) {}
 
 // updateConfig replaces the active config (called on hot-reload). Unexported
-// for the same reason as setProviders — bound, it would let any script in the
-// webview install its own actions/resolvers and then run them.
+// for the same reason as setProviders. If bound, it would let any script in the
+// webview replace the local resolver process configuration.
 func (a *App) updateConfig(cfg *config.Config) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cfg = cfg
-	a.actionEng = action.New(cfg.Actions)
 	a.resolveEng = resolve.New(cfg.Resolvers)
 	a.hideEng = buildHideEngine(cfg.Hide)
 }
@@ -238,13 +234,6 @@ func (a *App) GetDisplayConfig() config.NormalizedDisplayConfig {
 	return a.cfg.Display.Normalize()
 }
 
-// GetActions returns configured actions.
-func (a *App) GetActions() []config.ActionConfig {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.cfg.Actions
-}
-
 // GetUIConfig returns UI preferences.
 func (a *App) GetUIConfig() config.UIConfig {
 	a.mu.RLock()
@@ -363,37 +352,4 @@ func (a *App) Unsilence(source, silenceID string) error {
 		return fmt.Errorf("silence manager not initialized")
 	}
 	return silenceMgr.Unsilence(ctx, source, silenceID)
-}
-
-// GetActionsForAlert returns actions that match the given alert.
-func (a *App) GetActionsForAlert(alertID, source string) []config.ActionConfig {
-	a.mu.RLock()
-	actionEng := a.actionEng
-	a.mu.RUnlock()
-
-	for _, alert := range a.store.All() {
-		if alert.ID == alertID && alert.Source == source {
-			return actionEng.ActionsForAlert(alert)
-		}
-	}
-	return nil
-}
-
-// ExecuteAction runs a configured action for a given alert.
-func (a *App) ExecuteAction(actionName, alertID, source string) (string, error) {
-	a.mu.RLock()
-	actionEng := a.actionEng
-	a.mu.RUnlock()
-
-	for _, alert := range a.store.All() {
-		if alert.ID == alertID && alert.Source == source {
-			for _, act := range actionEng.ActionsForAlert(alert) {
-				if act.Name == actionName {
-					return actionEng.Execute(act, alert)
-				}
-			}
-			return "", fmt.Errorf("action %q not found for alert", actionName)
-		}
-	}
-	return "", fmt.Errorf("alert %s/%s not found", source, alertID)
 }

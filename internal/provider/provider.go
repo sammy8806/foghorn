@@ -16,6 +16,12 @@ type Provider interface {
 	Health(ctx context.Context) model.ProviderHealth
 }
 
+// ProviderCloser is implemented by providers with background work that must be
+// stopped when a config reload replaces the provider instance.
+type ProviderCloser interface {
+	Close()
+}
+
 // SilenceProvider is implemented by sources that can fetch silence details.
 type SilenceProvider interface {
 	FetchSilences(ctx context.Context) ([]model.SilenceInfo, error)
@@ -30,10 +36,13 @@ type OnCallProvider interface {
 // Token values and the opaque credential-store account identifier never leave the
 // provider package.
 type OIDCSessionInfo struct {
-	Source             string `json:"source"`
-	Configured         bool   `json:"configured"`
-	Active             bool   `json:"active"`
-	Saved              bool   `json:"saved"`
+	Source     string `json:"source"`
+	Configured bool   `json:"configured"`
+	Active     bool   `json:"active"`
+	Saved      bool   `json:"saved"`
+	// LoginPending reports a device sign-in waiting on the user right now, so the
+	// UI can distinguish "not signed in" from "finish the sign-in in your browser".
+	LoginPending       bool   `json:"loginPending"`
 	PersistenceEnabled bool   `json:"persistenceEnabled"`
 	StorageBackend     string `json:"storageBackend,omitempty"`
 	StorageError       string `json:"storageError,omitempty"`

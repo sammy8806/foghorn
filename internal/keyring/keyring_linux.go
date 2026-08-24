@@ -42,6 +42,10 @@ func supported() bool { return true }
 
 func backendName() string { return "Linux Secret Service" }
 
+// MaxSecretSize is unlimited in practice: Secret Service items are capped far
+// above any realistic token set.
+func (s *linuxStore) MaxSecretSize() int { return 0 }
+
 func (s *linuxStore) Get(account string) ([]byte, error) {
 	secret, err := s.backend.Get(s.service, account)
 	if errors.Is(err, systemkeyring.ErrNotFound) {

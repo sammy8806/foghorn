@@ -6,24 +6,12 @@ export function CreateSilence(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['CreateSilence'](arg1, arg2, arg3, arg4, arg5);
 }
 
-export function ExecuteAction(arg1, arg2, arg3) {
-  return window['go']['main']['App']['ExecuteAction'](arg1, arg2, arg3);
-}
-
 export function ForgetOIDCLogin(arg1) {
   return window['go']['main']['App']['ForgetOIDCLogin'](arg1);
 }
 
 export function GetAbout() {
   return window['go']['main']['App']['GetAbout']();
-}
-
-export function GetActions() {
-  return window['go']['main']['App']['GetActions']();
-}
-
-export function GetActionsForAlert(arg1, arg2) {
-  return window['go']['main']['App']['GetActionsForAlert'](arg1, arg2);
 }
 
 export function GetAlerts() {
