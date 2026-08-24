@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"foghorn/internal/keyring"
 	"foghorn/internal/provider"
@@ -120,7 +122,17 @@ func TestHandleCLIAuthListAndClearOIDCKeyring(t *testing.T) {
 		t.Fatal(err)
 	}
 	account := provider.OIDCTokenAccount(cfg.Sources[0].Name)
-	store.items[account] = []byte(`{"refresh_token":"secret"}`)
+	identity := provider.OIDCTokenIdentity(cfg.Sources[0].Name, cfg.Sources[0].Auth)
+	storedToken, err := json.Marshal(map[string]interface{}{
+		"version":       2,
+		"identity":      identity,
+		"refresh_token": "secret",
+		"obtained_at":   time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.items[account] = storedToken
 	oldStore, oldSupported := newCLIKeyringStore, cliKeyringSupported
 	newCLIKeyringStore = func() keyring.Store { return store }
 	cliKeyringSupported = func() bool { return true }
@@ -144,6 +156,19 @@ func TestHandleCLIAuthListAndClearOIDCKeyring(t *testing.T) {
 	if code != 0 || !strings.Contains(stdout.String(), `"source": "sso"`) ||
 		!strings.Contains(stdout.String(), `"storage": "`+platformKeyringName()+`"`) {
 		t.Fatalf("auth list --json code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	store.items[account], err = json.Marshal(map[string]interface{}{
+		"version":       2,
+		"identity":      "identity-from-an-old-configuration",
+		"refresh_token": "secret",
+		"obtained_at":   time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := loginStatus(cfg.Sources[0], store); status != "not saved" {
+		t.Fatalf("identity-mismatched login status = %q, want not saved", status)
 	}
 
 	stdout.Reset()

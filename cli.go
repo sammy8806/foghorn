@@ -269,15 +269,29 @@ func loginStatus(src config.SourceConfig, store keyring.Store) (status, location
 			return "unsupported", location
 		}
 		// Check the legacy layout too, so a login saved before the credential
-		// store moved to one item per source is still reported as saved.
+		// store moved to one item per source is still reported as saved. Validate
+		// each payload exactly as the provider does: the source-only v2 slot may
+		// contain a token issued for an older issuer/client/scope configuration.
 		var notFound bool
-		for _, account := range oidcAccounts(src) {
+		for i, account := range oidcAccounts(src) {
 			secret, err := store.Get(account)
-			for i := range secret {
-				secret[i] = 0
-			}
 			if err == nil {
-				return "saved", location
+				identity := ""
+				if i == 0 {
+					identity = provider.OIDCTokenIdentity(src.Name, src.Auth)
+				}
+				matches, validateErr := provider.OIDCTokenCredentialMatches(secret, identity)
+				for j := range secret {
+					secret[j] = 0
+				}
+				if validateErr != nil {
+					return "unavailable", location
+				}
+				if matches {
+					return "saved", location
+				}
+				notFound = true
+				continue
 			}
 			if errors.Is(err, keyring.ErrNotFound) {
 				notFound = true

@@ -68,6 +68,7 @@ type oidcDeviceAuthenticator struct {
 	persisted     bool
 	legacyPending bool
 	storageError  string
+	closed        bool
 
 	// flight is the one in-progress token acquisition. Serializing acquisitions
 	// keeps exactly one browser tab open per device code, and stops two
@@ -225,11 +226,35 @@ func (a *oidcDeviceAuthenticator) Forget() error {
 	return err
 }
 
+// Close permanently stops authenticator-owned background work without
+// deleting the saved login. Provider instances call it when config reload or
+// application shutdown replaces them.
+func (a *oidcDeviceAuthenticator) Close() {
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return
+	}
+	a.closed = true
+	a.forgetGen++
+	cancel := a.loginCancel
+	a.loginCancel = nil
+	a.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+}
+
 // Token returns a usable token, starting a refresh or a device login when there
 // is none. Acquisitions are serialized into a single flight so that concurrent
 // callers share one login rather than each minting a device code of its own.
 func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error) {
 	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("oidc: source %q: authenticator is closed", a.source)
+	}
 
 	a.loadPersistedTokenLocked()
 	if a.token != nil && !a.token.expired() {
@@ -255,11 +280,14 @@ func (a *oidcDeviceAuthenticator) Token(ctx context.Context) (*oidcToken, error)
 	flight := &tokenFlight{done: make(chan struct{}), interactive: interactive}
 	a.flight = flight
 	previous := a.token
-	loginCtx := a.loginCtx
+	flightCtx := ctx
+	if interactive {
+		flightCtx = a.loginCtx
+	}
 	generation := a.forgetGen
 	a.mu.Unlock()
 
-	go a.runFlight(loginCtx, flight, previous, generation)
+	go a.runFlight(flightCtx, flight, previous, generation)
 	return a.awaitFlight(ctx, flight)
 }
 

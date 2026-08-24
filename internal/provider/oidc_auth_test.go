@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,12 @@ import (
 	"foghorn/internal/config"
 	"foghorn/internal/model"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestAlertmanagerOIDCDeviceFlowUsesAccessToken(t *testing.T) {
 	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
@@ -461,6 +468,83 @@ func TestOIDCLoginIsNotBoundByCallerDeadline(t *testing.T) {
 			t.Fatal("login never completed")
 		}
 		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func TestOIDCRefreshIsBoundByCallerDeadline(t *testing.T) {
+	requestCanceled := make(chan struct{})
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+		close(requestCanceled)
+		return nil, req.Context().Err()
+	})}
+
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth("")
+	authConfig.DeviceAuthorizationURL = "http://localhost/device"
+	authConfig.TokenURL = "http://localhost/token"
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", authConfig, client, store)
+	saveTestToken(t, store, auth, &oidcToken{
+		RefreshToken: "saved-refresh",
+		ExpiresIn:    60,
+		obtainedAt:   time.Now().Add(-time.Hour),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := auth.Token(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Token() error = %v, want caller deadline", err)
+	}
+	select {
+	case <-requestCanceled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refresh HTTP request outlived the caller deadline")
+	}
+}
+
+func TestOIDCCloseCancelsInFlightLoginWithoutSaving(t *testing.T) {
+	t.Setenv("FOGHORN_OIDC_SKIP_BROWSER", "1")
+	tokenRequestStarted := make(chan struct{})
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/device" {
+			body := `{"device_code":"device-123","verification_uri":"https://login.example.test/device","expires_in":600}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    req,
+			}, nil
+		}
+		close(tokenRequestStarted)
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})}
+
+	store := newMemoryTokenStore()
+	authConfig := persistentTestAuth("")
+	authConfig.DeviceAuthorizationURL = "http://localhost/device"
+	authConfig.TokenURL = "http://localhost/token"
+	auth := newOIDCDeviceAuthenticatorWithStore("oidc-am", authConfig, client, store)
+	if _, err := auth.Token(context.Background()); !errors.Is(err, ErrLoginPending) {
+		t.Fatalf("Token() error = %v, want ErrLoginPending", err)
+	}
+	select {
+	case <-tokenRequestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("login never reached token polling")
+	}
+
+	auth.Close()
+	if _, err := auth.Token(context.Background()); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("Token() after Close error = %v, want closed authenticator", err)
+	}
+	waitFor(t, func() bool {
+		auth.mu.Lock()
+		defer auth.mu.Unlock()
+		return auth.flight == nil
+	}, "closed login flight did not stop")
+	if _, ok := store.items[auth.account]; ok {
+		t.Fatal("closed authenticator saved a stale login")
 	}
 }
 

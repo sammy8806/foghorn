@@ -59,6 +59,7 @@ func main() {
 
 	var runtimeMu sync.Mutex
 	var stopRuntime context.CancelFunc
+	var activeProviders map[string]provider.Provider
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
 	startHidden := tray.StartHiddenByDefault()
@@ -173,6 +174,7 @@ func main() {
 				if stopRuntime != nil {
 					stopRuntime()
 				}
+				closeProviders(activeProviders)
 
 				app.updateConfig(nextCfg)
 				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
@@ -193,7 +195,8 @@ func main() {
 				// The UI, silence manager, and poller intentionally share the same
 				// provider instances. This lets a user-facing OIDC logout clear the
 				// exact in-memory token used by background polling.
-				providers := buildProviders(nextCfg.Sources)
+				activeProviders = buildProviders(nextCfg.Sources)
+				providers := activeProviders
 				app.setProviders(providers)
 				pollEng := poll.New(store, nextCfg.Sources, func(source string, _ poll.Provider) poll.Provider {
 					return providers[source]
@@ -244,6 +247,7 @@ func main() {
 			if stopRuntime != nil {
 				stopRuntime()
 			}
+			closeProviders(activeProviders)
 			runtimeMu.Unlock()
 			trayMgr.Close()
 			app.shutdown(ctx)
@@ -297,6 +301,14 @@ func buildProviders(sources []config.SourceConfig) map[string]provider.Provider 
 		}
 	}
 	return providers
+}
+
+func closeProviders(providers map[string]provider.Provider) {
+	for _, p := range providers {
+		if closer, ok := p.(provider.ProviderCloser); ok {
+			closer.Close()
+		}
+	}
 }
 
 // filterHiddenFromDiff drops alerts tagged with HiddenBy from each diff

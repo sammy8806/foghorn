@@ -16,6 +16,12 @@ type Provider interface {
 	Health(ctx context.Context) model.ProviderHealth
 }
 
+// ProviderCloser is implemented by providers with background work that must be
+// stopped when a config reload replaces the provider instance.
+type ProviderCloser interface {
+	Close()
+}
+
 // SilenceProvider is implemented by sources that can fetch silence details.
 type SilenceProvider interface {
 	FetchSilences(ctx context.Context) ([]model.SilenceInfo, error)

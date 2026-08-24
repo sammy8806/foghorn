@@ -226,6 +226,19 @@ func unmarshalPersistedOIDCToken(encoded []byte, wantIdentity string) (*oidcToke
 	}, nil
 }
 
+// OIDCTokenCredentialMatches reports whether an encoded saved login is valid
+// for identity. A different embedded v2 identity is a clean non-match; malformed
+// or unsupported payloads are returned as errors. Passing an empty identity is
+// intended for validating a credential read from the identity-derived legacy
+// account, whose account name already proves the match.
+func OIDCTokenCredentialMatches(encoded []byte, identity string) (bool, error) {
+	_, err := unmarshalPersistedOIDCToken(encoded, identity)
+	if errors.Is(err, errOIDCIdentityMismatch) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (a *oidcDeviceAuthenticator) loadPersistedTokenLocked() {
 	if !a.persistenceEnabled || a.loadComplete || a.token != nil {
 		return
