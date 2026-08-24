@@ -271,22 +271,35 @@ func (a *oidcDeviceAuthenticator) loadPersistedTokenLocked() {
 }
 
 // loadLegacyTokenLocked migrates a pre-v2 item, whose account name encoded the
-// whole login identity, into the slot keyed by source name. The legacy item is
-// removed only after the migrated copy has been saved, so a failed save cannot
-// lose the login.
+// whole login identity, into the slot keyed by source name. It returns true
+// whenever the legacy lookup was handled, including read and decode failures,
+// so the caller does not mistake those failures for a missing saved login. The
+// legacy item is removed only after the migrated copy has been saved, so a
+// failed save cannot lose the login.
 func (a *oidcDeviceAuthenticator) loadLegacyTokenLocked() bool {
 	if a.legacyAccount == "" {
 		return false
 	}
 	encoded, err := a.store.Get(a.legacyAccount)
-	if err != nil {
+	if errors.Is(err, keyring.ErrNotFound) {
 		return false
+	}
+	if err != nil {
+		// Leave loadComplete false so a temporary credential-store outage is
+		// retried on the next session query or token request.
+		a.recordStorageErrorLocked("read", err)
+		return true
 	}
 	// The legacy account name is itself derived from the identity, so reaching a
 	// stored item under it already proves the configuration matches.
 	token, err := unmarshalPersistedOIDCToken(encoded, "")
 	if err != nil {
-		return false
+		// Match the current-layout behavior: the item exists, but is unusable,
+		// so report it as saved and surface the decode error to the user.
+		a.loadComplete = true
+		a.persisted = true
+		a.recordStorageErrorLocked("decode", err)
+		return true
 	}
 	a.token = token
 	a.tokenDirty = true

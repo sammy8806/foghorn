@@ -18,6 +18,7 @@ import (
 type memoryTokenStore struct {
 	items       map[string][]byte
 	getErr      error
+	getErrors   map[string]error
 	setFailures int
 	deleteErr   error
 	setCalls    int
@@ -28,12 +29,18 @@ type memoryTokenStore struct {
 func (s *memoryTokenStore) MaxSecretSize() int { return s.maxSecret }
 
 func newMemoryTokenStore() *memoryTokenStore {
-	return &memoryTokenStore{items: make(map[string][]byte)}
+	return &memoryTokenStore{
+		items:     make(map[string][]byte),
+		getErrors: make(map[string]error),
+	}
 }
 
 func (s *memoryTokenStore) Get(account string) ([]byte, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if err := s.getErrors[account]; err != nil {
+		return nil, err
 	}
 	value, ok := s.items[account]
 	if !ok {
@@ -207,6 +214,31 @@ func TestOIDCMigratesLegacyTokenAndRemovesOldItem(t *testing.T) {
 	}
 	if migrated.RefreshToken != "legacy-refresh" {
 		t.Fatalf("migrated RefreshToken = %q", migrated.RefreshToken)
+	}
+}
+
+func TestOIDCLegacyKeyringReadFailureIsReportedAndRetried(t *testing.T) {
+	store := newMemoryTokenStore()
+	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth("https://login.example.test"), http.DefaultClient, store)
+	store.getErrors[auth.legacyAccount] = errors.New("test legacy keyring locked")
+
+	if info := auth.SessionInfo(); info.StorageError == "" || info.Saved {
+		t.Fatalf("unexpected session state after legacy read failure: %#v", info)
+	}
+	delete(store.getErrors, auth.legacyAccount)
+	if info := auth.SessionInfo(); info.StorageError != "" || info.Saved {
+		t.Fatalf("legacy read was not retried after recovery: %#v", info)
+	}
+}
+
+func TestOIDCCorruptLegacyTokenIsReportedAsSaved(t *testing.T) {
+	store := newMemoryTokenStore()
+	auth := newOIDCDeviceAuthenticatorWithStore("production", persistentTestAuth("https://login.example.test"), http.DefaultClient, store)
+	store.items[auth.legacyAccount] = []byte("not-json")
+
+	info := auth.SessionInfo()
+	if info.StorageError == "" || !info.Saved || info.Active {
+		t.Fatalf("unexpected session state for corrupt legacy token: %#v", info)
 	}
 }
 
