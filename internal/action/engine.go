@@ -52,13 +52,6 @@ func (e *Engine) Execute(action config.ActionConfig, alert model.Alert) (string,
 		}
 		return target, openURL(target)
 
-	case "shell":
-		cmd, err := renderTemplate(action.Action.Command, alert)
-		if err != nil {
-			return "", fmt.Errorf("rendering command template: %w", err)
-		}
-		return cmd, runShell(cmd, action.Action.Terminal)
-
 	case "clipboard":
 		text, err := renderTemplate(action.Action.Template, alert)
 		if err != nil {
@@ -142,10 +135,6 @@ var openURL = func(url string) error {
 		return err
 	}
 	return exec.Command(spec.name, spec.args...).Start()
-}
-
-var runShell = func(cmd string, _ bool) error {
-	return exec.Command("sh", "-c", cmd).Start()
 }
 
 var copyToClipboard = func(text string) error {

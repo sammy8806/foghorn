@@ -19,7 +19,7 @@ From the repo root, on the feature branch you want to screenshot:
 node scripts/pr-screenshots/capture.mjs <branch-key>
 ```
 
-Branch keys: `wire-show-resolved-silenced`, `theme-support`, `source-health-banner`, `empty-state-filters`, `persist-ui-prefs`, `search-syntax-help`, `group-silence-menu`, `alert-actions-ui`, `accessibility-improvements`.
+Branch keys: `wire-show-resolved-silenced`, `theme-support`, `source-health-banner`, `empty-state-filters`, `persist-ui-prefs`, `search-syntax-help`, `group-silence-menu`, `accessibility-improvements`.
 
 Output defaults to `/opt/cursor/artifacts/pr-screenshots/`. Override with `SCREENSHOT_OUT=/path/to/dir`.
 

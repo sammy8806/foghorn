@@ -131,6 +131,17 @@ func TestExecute_ClipboardAction(t *testing.T) {
 	}
 }
 
+func TestExecute_ShellActionIsUnsupported(t *testing.T) {
+	action := config.ActionConfig{
+		Action: config.ActionDef{Type: "shell"},
+	}
+
+	_, err := New(nil).Execute(action, makeAlert("HighMem", "warning", "prod"))
+	if err == nil {
+		t.Fatal("expected shell action to be rejected")
+	}
+}
+
 func TestBrowserOpenCommand(t *testing.T) {
 	tests := []struct {
 		goos string

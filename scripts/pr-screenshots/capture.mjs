@@ -190,21 +190,6 @@ const shots = {
       },
     },
   ],
-  'alert-actions-ui': [
-    {
-      file: '14-alert-actions',
-      scenario: {
-        actions: [{ Name: 'Open runbook', Match: {}, Action: { Type: 'url', Template: 'https://wiki.example/runbooks/disk' }, Icon: '' }],
-        actionsForAll: false,
-      },
-      action: async (page) => {
-        await page.locator('.group-header').first().click();
-        await page.waitForTimeout(200);
-        await page.locator('.alert-header').filter({ hasText: 'DiskSpaceLow' }).click();
-        await page.waitForTimeout(500);
-      },
-    },
-  ],
   'accessibility-improvements': [
     {
       file: '15-verbose-toggle-focused',
