@@ -296,6 +296,33 @@ func TestValidateResolverStdin(t *testing.T) {
 	})
 }
 
+func TestLoadDropsInvalidSourceKeepsValidNeighbor(t *testing.T) {
+	yamlBody := `
+sources:
+  - name: broken
+    type: alertmanager
+  - name: good
+    type: alertmanager
+    url: http://localhost:9093
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlBody), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, diags, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if len(cfg.Sources) != 1 || cfg.Sources[0].Name != "good" {
+		t.Fatalf("sources = %#v, want only the valid neighbour to survive", cfg.Sources)
+	}
+	if len(diags) != 1 || !diags[0].Dropped {
+		t.Fatalf("diags = %#v, want exactly one dropped diagnostic", diags)
+	}
+}
+
 func TestLoadConfigSourceTimeout(t *testing.T) {
 	yaml := `
 sources:

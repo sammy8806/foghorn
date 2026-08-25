@@ -186,15 +186,15 @@ func validate(cfg *Config, diags *Diagnostics) error {
 			continue
 		}
 		if src.Name == "" {
-			diags.Drop(fmt.Sprintf("source[%d]", i), "name is required")
+			diags.Drop(fmt.Sprintf("sources[%d]", i), "name is required")
 			continue
 		}
 		if src.Type == "" {
-			diags.Drop(fmt.Sprintf("source[%d] %q", i, src.Name), "type is required")
+			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "type is required")
 			continue
 		}
 		if src.URL == "" && !strings.EqualFold(src.Type, "betterstack") {
-			diags.Drop(fmt.Sprintf("source[%d] %q", i, src.Name), "url is required")
+			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "url is required")
 			continue
 		}
 		if src.URL == "" && strings.EqualFold(src.Type, "betterstack") {
@@ -284,8 +284,8 @@ func validate(cfg *Config, diags *Diagnostics) error {
 }
 
 // validateActions returns the actions that are usable, recording a diagnostic
-// for each one it drops. Normalization of the surviving entries happens in
-// place, as before.
+// for each one it drops. It returns normalized copies of the survivors; the
+// input slice is not modified, so the caller must reassign the result.
 func validateActions(actions []ActionConfig, diags *Diagnostics) []ActionConfig {
 	surviving := make([]ActionConfig, 0, len(actions))
 	for i := range actions {
