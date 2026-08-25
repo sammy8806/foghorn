@@ -152,18 +152,14 @@ func (d *DisplayConfig) Normalize() NormalizedDisplayConfig {
 }
 
 // finalizeVisibleEntries validates and sorts the visible_annotations and
-// visible_labels lists in place. Called from validate() at config load time so
-// downstream consumers see normalized, ordered entries.
-func (d *DisplayConfig) finalizeVisibleEntries() error {
-	if err := validateVisibleEntries("display.visible_annotations", d.VisibleAnnotations); err != nil {
-		return err
-	}
-	if err := validateVisibleEntries("display.visible_labels", d.VisibleLabels); err != nil {
-		return err
-	}
+// visible_labels lists in place, dropping unusable entries. Called from
+// validate() at config load time so downstream consumers see normalized,
+// ordered entries.
+func (d *DisplayConfig) finalizeVisibleEntries(diags *Diagnostics) {
+	d.VisibleAnnotations = validateVisibleEntries("display.visible_annotations", d.VisibleAnnotations, diags)
+	d.VisibleLabels = validateVisibleEntries("display.visible_labels", d.VisibleLabels, diags)
 	sortVisibleEntries(d.VisibleAnnotations)
 	sortVisibleEntries(d.VisibleLabels)
-	return nil
 }
 
 func (d *DisplayConfig) OverrideKeyMode() string {

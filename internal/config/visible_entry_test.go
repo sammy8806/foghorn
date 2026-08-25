@@ -82,15 +82,22 @@ func TestValidateVisibleEntriesEmptySource(t *testing.T) {
 		{Source: "summary"},
 		{Source: ""},
 	}
-	err := validateVisibleEntries("display.visible_annotations", entries)
-	if err == nil {
-		t.Fatal("expected error for empty source, got nil")
+	var diags Diagnostics
+	surviving := validateVisibleEntries("display.visible_annotations", entries, &diags)
+	if len(surviving) != 1 || surviving[0].Source != "summary" {
+		t.Fatalf("surviving = %#v, want only the valid entry", surviving)
 	}
-	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
-		t.Errorf("error message missing positional context: %v", err)
+	if len(diags) != 1 {
+		t.Fatalf("diags = %#v, want exactly one", diags)
 	}
-	if !strings.Contains(err.Error(), "source is required") {
-		t.Errorf("error message missing 'source is required': %v", err)
+	if !diags[0].Dropped {
+		t.Errorf("Dropped = false, want true for a dropped entry")
+	}
+	if !strings.Contains(diags[0].Field, "display.visible_annotations[1]") {
+		t.Errorf("field missing positional context: %v", diags[0].Field)
+	}
+	if !strings.Contains(diags[0].Message, "source is required") {
+		t.Errorf("message missing 'source is required': %v", diags[0].Message)
 	}
 }
 
@@ -99,15 +106,22 @@ func TestValidateVisibleEntriesUnknownStyle(t *testing.T) {
 		{Source: "summary"},
 		{Source: "description", Style: []EntryStyle{StylePull, "ominous"}},
 	}
-	err := validateVisibleEntries("display.visible_annotations", entries)
-	if err == nil {
-		t.Fatal("expected error for unknown style, got nil")
+	var diags Diagnostics
+	surviving := validateVisibleEntries("display.visible_annotations", entries, &diags)
+	if len(surviving) != 1 || surviving[0].Source != "summary" {
+		t.Fatalf("surviving = %#v, want only the valid entry", surviving)
 	}
-	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
-		t.Errorf("error message missing positional context: %v", err)
+	if len(diags) != 1 {
+		t.Fatalf("diags = %#v, want exactly one", diags)
 	}
-	if !strings.Contains(err.Error(), `"ominous"`) {
-		t.Errorf("error message missing the bad token: %v", err)
+	if !diags[0].Dropped {
+		t.Errorf("Dropped = false, want true for a dropped entry")
+	}
+	if !strings.Contains(diags[0].Field, "display.visible_annotations[1]") {
+		t.Errorf("field missing positional context: %v", diags[0].Field)
+	}
+	if !strings.Contains(diags[0].Message, `"ominous"`) {
+		t.Errorf("message missing the bad token: %v", diags[0].Message)
 	}
 }
 
@@ -116,8 +130,13 @@ func TestValidateVisibleEntriesAllValid(t *testing.T) {
 		{Source: "summary"},
 		{Source: "description", Style: []EntryStyle{StyleMuted, StylePull, StyleDanger, StyleWarning, StyleInfo}},
 	}
-	if err := validateVisibleEntries("display.visible_annotations", entries); err != nil {
-		t.Errorf("expected no error, got: %v", err)
+	var diags Diagnostics
+	surviving := validateVisibleEntries("display.visible_annotations", entries, &diags)
+	if len(surviving) != len(entries) {
+		t.Fatalf("surviving = %#v, want all entries to survive", surviving)
+	}
+	if len(diags) != 0 {
+		t.Errorf("diags = %#v, want none", diags)
 	}
 }
 

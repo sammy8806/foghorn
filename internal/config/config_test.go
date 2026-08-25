@@ -258,6 +258,81 @@ func TestValidateDropsSourcesMissingRequiredFields(t *testing.T) {
 	}
 }
 
+func TestValidateDropsBrokenHideRules(t *testing.T) {
+	cfg := Default()
+	cfg.Hide = []HideRule{
+		{Name: "no-matchers"},
+		{Name: "bad-age", Matchers: []string{"alertname=Watchdog"}, MinAge: "not-a-duration"},
+		{Name: "negative-age", Matchers: []string{"alertname=Watchdog"}, MinAge: "-5m"},
+		{Name: "good", Matchers: []string{"alertname=Watchdog"}, MinAge: "30m"},
+	}
+
+	var diags Diagnostics
+	if err := validate(cfg, &diags); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+	if len(cfg.Hide) != 1 || cfg.Hide[0].Name != "good" {
+		t.Fatalf("hide = %#v, want only the valid rule to survive", cfg.Hide)
+	}
+	if cfg.Hide[0].ParsedMinAge != 30*time.Minute {
+		t.Errorf("ParsedMinAge = %v, want 30m", cfg.Hide[0].ParsedMinAge)
+	}
+	if len(diags) != 3 {
+		t.Fatalf("diags = %#v, want one per broken rule", diags)
+	}
+}
+
+func TestValidateSubstitutesDefaultsForBrokenUIFields(t *testing.T) {
+	cfg := Default()
+	cfg.UI.PopupPosition = "middle"
+	cfg.UI.Scale.Mode = "sideways"
+	cfg.UI.Scale.Factor = 9
+
+	var diags Diagnostics
+	if err := validate(cfg, &diags); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+	if cfg.UI.PopupPosition != "top_right" {
+		t.Errorf("PopupPosition = %q, want top_right", cfg.UI.PopupPosition)
+	}
+	if cfg.UI.Scale.Mode != "fonts" {
+		t.Errorf("Scale.Mode = %q, want fonts", cfg.UI.Scale.Mode)
+	}
+	if cfg.UI.Scale.Factor != 2.0 {
+		t.Errorf("Scale.Factor = %v, want it clamped to 2.0", cfg.UI.Scale.Factor)
+	}
+	if len(diags) != 3 {
+		t.Fatalf("diags = %#v, want one per substituted field", diags)
+	}
+	for _, diag := range diags {
+		if diag.Dropped {
+			t.Errorf("diag %#v has Dropped = true, want false for a substitution", diag)
+		}
+	}
+}
+
+func TestValidateSubstitutesDefaultSeveritiesWhenInvalid(t *testing.T) {
+	cfg := Default()
+	cfg.Severities = SeverityConfig{
+		Default: "info",
+		Levels: []SeverityLevel{
+			{Name: "critical", Aliases: []string{"p1"}},
+			{Name: "warning", Aliases: []string{"p1"}},
+		},
+	}
+
+	var diags Diagnostics
+	if err := validate(cfg, &diags); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+	if len(diags) != 1 || diags[0].Dropped || diags[0].Field != "severities" {
+		t.Fatalf("diags = %#v, want one substitution diagnostic for severities", diags)
+	}
+	if len(cfg.Severities.Levels) == 0 {
+		t.Fatal("severity levels are empty, want the built-in defaults")
+	}
+}
+
 func TestValidateResolverStdin(t *testing.T) {
 	t.Run("required", func(t *testing.T) {
 		cfg := Default()
@@ -602,14 +677,28 @@ ui:
 		t.Fatal(err)
 	}
 
-	_, _, err := Load(path)
-	if err == nil {
-		t.Fatal("expected invalid popup_position config to fail")
+	cfg, diags, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
 	}
-	msg := err.Error()
-	for _, want := range []string{`ui.popup_position "Sideways"`, `normalized: "sideways"`} {
-		if !strings.Contains(msg, want) {
-			t.Fatalf("expected error to contain %q, got %q", want, msg)
+	if cfg.UI.PopupPosition != "top_right" {
+		t.Fatalf("PopupPosition = %q, want the top_right default", cfg.UI.PopupPosition)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %#v, want exactly one", diags)
+	}
+	if diags[0].Field != "ui.popup_position" {
+		t.Errorf("field = %q, want ui.popup_position", diags[0].Field)
+	}
+	if diags[0].Dropped {
+		t.Errorf("Dropped = true, want false for a substituted default")
+	}
+	// The raw value keeps the casing the env var supplied (YAML strips the
+	// surrounding spaces), so the diagnostic must show both forms — that is
+	// what makes an env-var typo diagnosable.
+	for _, want := range []string{`"Sideways"`, `normalized: "sideways"`} {
+		if !strings.Contains(diags[0].Message, want) {
+			t.Errorf("message = %q, want it to contain %q", diags[0].Message, want)
 		}
 	}
 }
@@ -761,7 +850,7 @@ func TestDefaultPopulatesSilenceEditor(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejectsDuplicateSeverityAliases(t *testing.T) {
+func TestLoadConfigSubstitutesDefaultsForDuplicateSeverityAliases(t *testing.T) {
 	yaml := `
 sources:
   - name: test
@@ -799,8 +888,20 @@ ui:
 		t.Fatal(err)
 	}
 
-	if _, _, err := Load(path); err == nil {
-		t.Fatal("expected duplicate severity alias config to fail")
+	cfg, diags, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if len(diags) != 1 || diags[0].Field != "severities" || diags[0].Dropped {
+		t.Fatalf("diags = %#v, want one substitution diagnostic for severities", diags)
+	}
+	for _, want := range []string{`alias "sev1"`, "already assigned"} {
+		if !strings.Contains(diags[0].Message, want) {
+			t.Errorf("message = %q, want it to contain %q", diags[0].Message, want)
+		}
+	}
+	if len(cfg.Severities.Levels) == 0 {
+		t.Fatal("severity levels are empty, want the built-in defaults")
 	}
 }
 
@@ -904,15 +1005,21 @@ ui:
 		t.Fatal(err)
 	}
 
-	_, _, err := Load(path)
-	if err == nil {
-		t.Fatal("expected Load() to fail with unknown style, got nil")
+	cfg, diags, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
 	}
-	if !strings.Contains(err.Error(), "display.visible_annotations[1]") {
-		t.Errorf("error missing positional context: %v", err)
+	if len(cfg.Display.VisibleAnnotations) != 1 || cfg.Display.VisibleAnnotations[0].Source != "summary" {
+		t.Fatalf("visible_annotations = %#v, want only the valid entry to survive", cfg.Display.VisibleAnnotations)
 	}
-	if !strings.Contains(err.Error(), `"ominous"`) {
-		t.Errorf("error missing bad token: %v", err)
+	if len(diags) != 1 {
+		t.Fatalf("diags = %#v, want exactly one", diags)
+	}
+	if !diags[0].Dropped {
+		t.Errorf("Dropped = false, want true for a dropped entry")
+	}
+	if !strings.Contains(diags[0].Message, "unknown style") {
+		t.Errorf("message = %q, want it to contain %q", diags[0].Message, "unknown style")
 	}
 }
 
@@ -980,12 +1087,24 @@ func TestLoadConfigUIScaleClampsFactor(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cfg, _, err := Load(path)
+			cfg, diags, err := Load(path)
 			if err != nil {
 				t.Fatalf("Load() error: %v", err)
 			}
 			if cfg.UI.Scale.Factor != tt.want {
 				t.Fatalf("expected scale factor %v, got %v", tt.want, cfg.UI.Scale.Factor)
+			}
+			found := false
+			for _, diag := range diags {
+				if diag.Field == "ui.scale.factor" {
+					found = true
+					if diag.Dropped {
+						t.Errorf("diag %#v has Dropped = true, want false for a substitution", diag)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("diags = %#v, want a ui.scale.factor diagnostic", diags)
 			}
 		})
 	}
@@ -999,12 +1118,15 @@ func TestLoadConfigUIScaleInvalidMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err := Load(path)
-	if err == nil {
-		t.Fatal("expected Load() to fail with invalid ui.scale.mode, got nil")
+	cfg, diags, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
 	}
-	if !strings.Contains(err.Error(), "ui.scale.mode") {
-		t.Fatalf("expected ui.scale.mode error, got %v", err)
+	if cfg.UI.Scale.Mode != "fonts" {
+		t.Fatalf("Scale.Mode = %q, want fonts", cfg.UI.Scale.Mode)
+	}
+	if len(diags) != 1 || diags[0].Field != "ui.scale.mode" || diags[0].Dropped {
+		t.Fatalf("diags = %#v, want one substitution diagnostic for ui.scale.mode", diags)
 	}
 }
 

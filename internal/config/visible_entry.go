@@ -63,21 +63,32 @@ var validStyles = map[EntryStyle]struct{}{
 	StyleInfo:    {},
 }
 
-// validateVisibleEntries enforces that every entry has a non-empty source and
-// only references known style tokens. The field argument is used to produce
-// positional error messages like "display.visible_annotations[2]: ...".
-func validateVisibleEntries(field string, entries []VisibleEntry) error {
+// validateVisibleEntries returns the entries that have a non-empty source and
+// only reference known style tokens, recording a diagnostic for each entry it
+// drops. The field argument produces positional diagnostics like
+// "display.visible_annotations[2]".
+func validateVisibleEntries(field string, entries []VisibleEntry, diags *Diagnostics) []VisibleEntry {
+	surviving := make([]VisibleEntry, 0, len(entries))
 	for i, e := range entries {
+		location := fmt.Sprintf("%s[%d]", field, i)
 		if strings.TrimSpace(e.Source) == "" {
-			return fmt.Errorf("%s[%d]: source is required", field, i)
+			diags.Drop(location, "source is required")
+			continue
 		}
+		unknown := ""
 		for _, s := range e.Style {
 			if _, ok := validStyles[s]; !ok {
-				return fmt.Errorf("%s[%d]: unknown style %q", field, i, s)
+				unknown = string(s)
+				break
 			}
 		}
+		if unknown != "" {
+			diags.Drop(location, "unknown style %q", unknown)
+			continue
+		}
+		surviving = append(surviving, e)
 	}
-	return nil
+	return surviving
 }
 
 // sortVisibleEntries sorts in place by Order ascending, with original list

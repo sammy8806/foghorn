@@ -166,7 +166,12 @@ func isLoopbackHost(host string) bool {
 func validate(cfg *Config, diags *Diagnostics) error {
 	normalizedSeverities, err := NormalizeSeverityConfig(cfg.Severities)
 	if err != nil {
-		return err
+		diags.Substitute("severities", "%v; using the built-in severity levels", err)
+		cfg.Severities = DefaultSeverityConfig()
+		normalizedSeverities, err = NormalizeSeverityConfig(DefaultSeverityConfig())
+		if err != nil {
+			return fmt.Errorf("normalizing built-in severity defaults: %w", err)
+		}
 	}
 	cfg.Severities = SeverityConfig{
 		Default: normalizedSeverities.Default,
@@ -235,9 +240,11 @@ func validate(cfg *Config, diags *Diagnostics) error {
 		cfg.UI.PopupPosition = "bottom_left"
 	default:
 		if normalizedPopupPosition != rawPopupPosition {
-			return fmt.Errorf("ui.popup_position %q (normalized: %q) must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition, normalizedPopupPosition)
+			diags.Substitute("ui.popup_position", "%q (normalized: %q) must be one of top_right, top_left, bottom_right, bottom_left; using top_right", rawPopupPosition, normalizedPopupPosition)
+		} else {
+			diags.Substitute("ui.popup_position", "%q must be one of top_right, top_left, bottom_right, bottom_left; using top_right", rawPopupPosition)
 		}
-		return fmt.Errorf("ui.popup_position %q must be one of top_right, top_left, bottom_right, bottom_left", rawPopupPosition)
+		cfg.UI.PopupPosition = "top_right"
 	}
 	if cfg.Notifications.BatchThreshold == 0 {
 		cfg.Notifications.BatchThreshold = 5
@@ -260,26 +267,34 @@ func validate(cfg *Config, diags *Diagnostics) error {
 	if cfg.UI.PopupFollowCursor == nil {
 		cfg.UI.PopupFollowCursor = ptrTo(true)
 	}
-	if err := normalizeUIScale(&cfg.UI.Scale); err != nil {
-		return err
-	}
+	normalizeUIScale(&cfg.UI.Scale, diags)
+
+	survivingHide := make([]HideRule, 0, len(cfg.Hide))
 	for i := range cfg.Hide {
-		rule := &cfg.Hide[i]
+		rule := cfg.Hide[i]
+		field := fmt.Sprintf("hide[%d]", i)
+		if rule.Name != "" {
+			field = fmt.Sprintf("hide[%d] %q", i, rule.Name)
+		}
 		if len(rule.Matchers) == 0 {
-			return fmt.Errorf("hide[%d]: at least one matcher is required", i)
+			diags.Drop(field, "at least one matcher is required")
+			continue
 		}
 		parsed, err := duration.Parse(rule.MinAge)
 		if err != nil {
-			return fmt.Errorf("hide[%d] min_age: invalid duration %q: %w", i, rule.MinAge, err)
+			diags.Drop(field, "min_age: invalid duration %q: %v", rule.MinAge, err)
+			continue
 		}
 		if parsed < 0 {
-			return fmt.Errorf("hide[%d] min_age: %q must be non-negative", i, rule.MinAge)
+			diags.Drop(field, "min_age: %q must be non-negative", rule.MinAge)
+			continue
 		}
 		rule.ParsedMinAge = parsed
+		survivingHide = append(survivingHide, rule)
 	}
-	if err := cfg.Display.finalizeVisibleEntries(); err != nil {
-		return err
-	}
+	cfg.Hide = survivingHide
+
+	cfg.Display.finalizeVisibleEntries(diags)
 	return nil
 }
 
@@ -389,16 +404,16 @@ func resolverTemplateMessage(field string) string {
 	return fmt.Sprintf("templates in %s are no longer supported; use stdin: value or stdin: json and update the resolver program to read stdin", field)
 }
 
-func normalizeUIScale(scale *UIScale) error {
+func normalizeUIScale(scale *UIScale, diags *Diagnostics) {
 	if scale.Factor == 0 {
 		scale.Factor = 1.0
 	}
 	if scale.Factor < 0.75 {
-		log.Printf("config: ui.scale.factor %.2f is outside [0.75, 2.0], clamped to 0.75", scale.Factor)
+		diags.Substitute("ui.scale.factor", "%.2f is outside [0.75, 2.0]; clamped to 0.75", scale.Factor)
 		scale.Factor = 0.75
 	}
 	if scale.Factor > 2.0 {
-		log.Printf("config: ui.scale.factor %.2f is outside [0.75, 2.0], clamped to 2.0", scale.Factor)
+		diags.Substitute("ui.scale.factor", "%.2f is outside [0.75, 2.0]; clamped to 2.0", scale.Factor)
 		scale.Factor = 2.0
 	}
 
@@ -409,9 +424,9 @@ func normalizeUIScale(scale *UIScale) error {
 	case "fonts", "interface":
 		scale.Mode = mode
 	default:
-		return fmt.Errorf("ui.scale.mode %q must be one of fonts, interface", scale.Mode)
+		diags.Substitute("ui.scale.mode", "%q must be one of fonts, interface; using fonts", scale.Mode)
+		scale.Mode = "fonts"
 	}
-	return nil
 }
 
 func CurrentUsername() string {
