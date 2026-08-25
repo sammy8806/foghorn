@@ -13,6 +13,8 @@ export function GetAbout():Promise<main.AboutInfo>;
 
 export function GetAlerts():Promise<Array<model.Alert>>;
 
+export function GetConfigDiagnostics():Promise<main.ConfigDiagnostics>;
+
 export function GetDisplayConfig():Promise<config.NormalizedDisplayConfig>;
 
 export function GetNotificationPermissionStatus():Promise<string>;

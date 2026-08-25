@@ -187,3 +187,18 @@ func TestGetAboutReturnsMetadata(t *testing.T) {
 		t.Error("Copyright is empty")
 	}
 }
+
+func TestGetConfigDiagnosticsReturnsPayloadCopy(t *testing.T) {
+	app := NewApp(&config.Config{}, state.New())
+	diags := config.Diagnostics{{Field: "sources[0]", Message: "name is required", Dropped: true}}
+	app.setConfigDiagnostics("/tmp/foghorn/config.yaml", diags)
+
+	payload := app.GetConfigDiagnostics()
+	if payload.Path != "/tmp/foghorn/config.yaml" || payload.Fingerprint != diags.Fingerprint() || len(payload.Items) != 1 {
+		t.Fatalf("payload = %#v", payload)
+	}
+	payload.Items[0].Message = "mutated"
+	if got := app.GetConfigDiagnostics().Items[0].Message; got != "name is required" {
+		t.Fatalf("stored diagnostic was mutated through payload: %q", got)
+	}
+}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,8 +43,10 @@ func TestWatcherDetectsChange(t *testing.T) {
 	}
 
 	changed := make(chan *Config, 1)
-	stop, err := Watch(path, func(cfg *Config) {
+	stop, err := Watch(path, func(cfg *Config, _ Diagnostics) {
 		changed <- cfg
+	}, func(err error) {
+		t.Errorf("unexpected onFailure: %v", err)
 	})
 	if err != nil {
 		t.Fatalf("Watch() error: %v", err)
@@ -75,8 +78,10 @@ func TestWatcherReloadsUIScale(t *testing.T) {
 	}
 
 	changed := make(chan *Config, 1)
-	stop, err := Watch(path, func(cfg *Config) {
+	stop, err := Watch(path, func(cfg *Config, _ Diagnostics) {
 		changed <- cfg
+	}, func(err error) {
+		t.Errorf("unexpected onFailure: %v", err)
 	})
 	if err != nil {
 		t.Fatalf("Watch() error: %v", err)
@@ -130,5 +135,117 @@ ui:
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for config change notification")
+	}
+}
+
+func TestWatcherReportsFailureAndKeepsWatching(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed := make(chan Diagnostics, 1)
+	failed := make(chan error, 1)
+	stop, err := Watch(path, func(_ *Config, diags Diagnostics) {
+		changed <- diags
+	}, func(err error) {
+		failed <- err
+	})
+	if err != nil {
+		t.Fatalf("Watch() error: %v", err)
+	}
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+	if err := os.WriteFile(path, []byte("sources: [oh no\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-failed:
+		if err == nil {
+			t.Fatal("onFailure called with nil error")
+		}
+	case diags := <-changed:
+		t.Fatalf("onChange called for an unparseable config: %#v", diags)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for onFailure")
+	}
+
+	// A later good write must still be picked up: one bad edit does not stop
+	// the watcher.
+	if err := os.WriteFile(path, []byte(minimalConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for recovery after a failed reload")
+	}
+}
+
+func TestWatcherPassesDiagnosticsToOnChange(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed := make(chan Diagnostics, 1)
+	stop, err := Watch(path, func(_ *Config, diags Diagnostics) {
+		changed <- diags
+	}, func(err error) {
+		t.Errorf("unexpected onFailure: %v", err)
+	})
+	if err != nil {
+		t.Fatalf("Watch() error: %v", err)
+	}
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+	broken := minimalConfig + "\nresolvers:\n  - name: cluster-name\n    field: label:cluster\n    command: ./resolve\n    args: ['{{.Value}}']\n    stdin: value\n"
+	if err := os.WriteFile(path, []byte(broken), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case diags := <-changed:
+		if len(diags) != 1 || !diags[0].Dropped {
+			t.Fatalf("diags = %#v, want one dropped resolver diagnostic", diags)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for onChange")
+	}
+}
+
+func TestWatcherReportsDeletedConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	failed := make(chan error, 1)
+	stop, err := Watch(path, func(_ *Config, _ Diagnostics) {
+		t.Error("onChange called for a deleted config")
+	}, func(err error) {
+		failed <- err
+	})
+	if err != nil {
+		t.Fatalf("Watch() error: %v", err)
+	}
+	defer stop()
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-failed:
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("failure = %v, want os.ErrNotExist", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for deletion failure")
 	}
 }

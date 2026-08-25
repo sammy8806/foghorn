@@ -9,12 +9,19 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// OnChangeFunc is called when the config file changes with the new config.
-type OnChangeFunc func(*Config)
+// OnChangeFunc is called when the config file changes and produced a usable
+// config. Diagnostics may be non-empty: entries that could not be loaded were
+// dropped from cfg.
+type OnChangeFunc func(*Config, Diagnostics)
 
-// Watch starts a file watcher on the config path and calls onChange when
-// the config is successfully reloaded. Runs until ctx is cancelled.
-func Watch(path string, onChange OnChangeFunc) (stop func(), err error) {
+// OnFailureFunc is called when a changed config file could not be read or
+// parsed at all. The caller keeps its running config — tearing a working
+// session down because of a half-saved file would be destructive.
+type OnFailureFunc func(error)
+
+// Watch starts a file watcher on the config path, calling onChange for every
+// successful reload and onFailure when a reload could not produce a config.
+func Watch(path string, onChange OnChangeFunc, onFailure OnFailureFunc) (stop func(), err error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -47,18 +54,24 @@ func Watch(path string, onChange OnChangeFunc) (stop func(), err error) {
 				if filepath.Base(event.Name) != base {
 					continue
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
 					debounce = time.After(300 * time.Millisecond)
 				}
 			case <-debounce:
-				cfg, err := Load(path)
+				debounce = nil
+				cfg, diags, err := Load(path)
 				if err != nil {
-					log.Printf("config: reload failed: %v", err)
+					log.Printf("config: reload failed, keeping running config: %v", err)
+					if onFailure != nil {
+						onFailure(err)
+					}
 					continue
 				}
 				log.Printf("config: reloaded from %s", path)
-				onChange(cfg)
-				debounce = nil
+				for _, diag := range diags {
+					log.Printf("config: %s: %s", diag.Field, diag.Message)
+				}
+				onChange(cfg, diags)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return

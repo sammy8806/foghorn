@@ -18,15 +18,17 @@ import (
 
 // App is the Wails-bound struct. Its exported methods become JS bindings.
 type App struct {
-	mu         sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
-	cfg        *config.Config
-	store      *state.Store
-	providers  map[string]provider.Provider
-	silenceMgr *silence.Manager
-	resolveEng *resolve.Engine
-	hideEng    *hide.Engine
+	mu          sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	cfg         *config.Config
+	configPath  string
+	diagnostics config.Diagnostics
+	store       *state.Store
+	providers   map[string]provider.Provider
+	silenceMgr  *silence.Manager
+	resolveEng  *resolve.Engine
+	hideEng     *hide.Engine
 
 	// refreshTrigger asks the poll engine to poll every source immediately,
 	// off its normal cycle. Wired by main.go to the current engine, re-set on
@@ -45,6 +47,21 @@ func NewApp(cfg *config.Config, store *state.Store) *App {
 	}
 	currentApp = app
 	return app
+}
+
+// ConfigDiagnostics is the shared payload used by the Wails binding, events,
+// and `foghorn config check --json`.
+type ConfigDiagnostics struct {
+	Path        string             `json:"path"`
+	Fingerprint string             `json:"fingerprint"`
+	Items       config.Diagnostics `json:"items"`
+}
+
+func (a *App) setConfigDiagnostics(path string, diags config.Diagnostics) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.configPath = path
+	a.diagnostics = append(config.Diagnostics(nil), diags...)
 }
 
 func buildHideEngine(rules []config.HideRule) *hide.Engine {
@@ -100,6 +117,20 @@ func (a *App) updateConfig(cfg *config.Config) {
 }
 
 // --- Wails-bound methods (called from Svelte frontend) ---
+
+// GetConfigDiagnostics returns the current config problems and the path of the
+// file the user should edit.
+func (a *App) GetConfigDiagnostics() ConfigDiagnostics {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	items := make(config.Diagnostics, len(a.diagnostics))
+	copy(items, a.diagnostics)
+	return ConfigDiagnostics{
+		Path:        a.configPath,
+		Fingerprint: items.Fingerprint(),
+		Items:       items,
+	}
+}
 
 // GetAlerts returns all current alerts.
 func (a *App) GetAlerts() []model.Alert {

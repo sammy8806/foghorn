@@ -20,6 +20,22 @@ export namespace config {
 	        this.source_types = source["source_types"];
 	    }
 	}
+	export class Diagnostic {
+	    field: string;
+	    message: string;
+	    dropped: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new Diagnostic(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.field = source["field"];
+	        this.message = source["message"];
+	        this.dropped = source["dropped"];
+	    }
+	}
 	export class DisplayPriority {
 	    mode: string;
 	    sources: string[];
@@ -275,6 +291,40 @@ export namespace main {
 	        this.repoURL = source["repoURL"];
 	        this.copyright = source["copyright"];
 	    }
+	}
+	export class ConfigDiagnostics {
+	    path: string;
+	    fingerprint: string;
+	    items: config.Diagnostic[];
+
+	    static createFrom(source: any = {}) {
+	        return new ConfigDiagnostics(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.fingerprint = source["fingerprint"];
+	        this.items = this.convertValues(source["items"], config.Diagnostic);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

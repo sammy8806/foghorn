@@ -44,25 +44,28 @@ func main() {
 
 	cfgPath := configPath()
 	config.MigrateLegacyPath(cfgPath)
-	cfg, err := config.Load(cfgPath)
+	cfg, startupDiags, err := config.Load(cfgPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("Config file not found at %s, using defaults", cfgPath)
 			cfg = config.Default()
 		} else {
-			log.Fatalf("Failed to load config: %v", err)
+			log.Printf("Failed to load config, using defaults: %v", err)
+			cfg = config.Default()
+			startupDiags = configFailureDiagnostics(err)
 		}
 	}
 
 	store := state.New()
 	app := NewApp(cfg, store)
+	app.setConfigDiagnostics(cfgPath, startupDiags)
 
 	var runtimeMu sync.Mutex
 	var stopRuntime context.CancelFunc
 	var activeProviders map[string]provider.Provider
 	var windowVisible atomic.Bool
 	var quitting atomic.Bool
-	startHidden := tray.StartHiddenByDefault()
+	startHidden := tray.StartHiddenByDefault() && len(startupDiags) == 0
 	windowVisible.Store(!startHidden)
 
 	// requestQuit marks the app as quitting and asks Wails to terminate. It is
@@ -165,9 +168,9 @@ func main() {
 		Mac: &mac.Options{},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
-			setDockIconVisible(!tray.StartHiddenByDefault())
+			setDockIconVisible(!startHidden)
 
-			restartRuntime := func(nextCfg *config.Config) {
+			restartRuntime := func(nextCfg *config.Config, diags config.Diagnostics) {
 				runtimeMu.Lock()
 				defer runtimeMu.Unlock()
 
@@ -177,6 +180,9 @@ func main() {
 				closeProviders(activeProviders)
 
 				app.updateConfig(nextCfg)
+				app.setConfigDiagnostics(cfgPath, diags)
+				trayMgr.SetConfigWarning(len(diags))
+				wailsruntime.EventsEmit(ctx, "config:diagnostics", app.GetConfigDiagnostics())
 				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
 				store.SyncSources(sourceNames(nextCfg.Sources))
 				severities, err := config.NormalizeSeverityConfig(nextCfg.Severities)
@@ -219,12 +225,18 @@ func main() {
 				}(bgCtx, diffCh, notifier)
 			}
 
-			restartRuntime(cfg)
+			restartRuntime(cfg, startupDiags)
 
 			// Config hot-reload: watch for changes and notify frontend
-			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config) {
-				restartRuntime(newCfg)
+			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config, diags config.Diagnostics) {
+				restartRuntime(newCfg, diags)
 				wailsruntime.EventsEmit(ctx, "config:reloaded")
+			}, func(err error) {
+				log.Printf("config: keeping running config after failed reload: %v", err)
+				diags := configFailureDiagnostics(err)
+				app.setConfigDiagnostics(cfgPath, diags)
+				trayMgr.SetConfigWarning(len(diags))
+				wailsruntime.EventsEmit(ctx, "config:diagnostics", app.GetConfigDiagnostics())
 			}); err != nil {
 				log.Printf("config: watcher not started: %v", err)
 			} else {

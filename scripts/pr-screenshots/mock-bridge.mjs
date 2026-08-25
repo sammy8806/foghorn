@@ -109,6 +109,7 @@ export function buildBridgeInit(scenario) {
       main: {
         App: {
           GetAlerts: async () => ${JSON.stringify(alerts)},
+          GetConfigDiagnostics: async () => ({ path: '', fingerprint: '', items: [] }),
           GetSeverityCounts: async () => ({ critical: 1, warning: 2, info: 1, unknown: 0 }),
           GetSourcesHealth: async () => ${JSON.stringify(health)},
           GetOnCallStatus: async () => [{ source: 'betterstack', scheduleID: 'default', scheduleName: 'Primary', teamName: 'Platform', users: [{ name: 'Alex Chen', email: 'alex@example.com' }], lastUpdated: new Date().toISOString() }],

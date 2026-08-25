@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,89 @@ import (
 	"foghorn/internal/keyring"
 	"foghorn/internal/provider"
 )
+
+func writeCLIConfig(t *testing.T, body string) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	path := configPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestHandleCLIConfigCheck(t *testing.T) {
+	t.Run("clean", func(t *testing.T) {
+		path := writeCLIConfig(t, "sources: []\n")
+		var stdout, stderr bytes.Buffer
+		handled, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
+		if !handled || code != 0 {
+			t.Fatalf("handleCLI() = (%v, %d), stderr=%q", handled, code, stderr.String())
+		}
+		if got, want := stdout.String(), path+": OK\n"; got != want {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("diagnostics json", func(t *testing.T) {
+		path := writeCLIConfig(t, "sources:\n  - type: alertmanager\n    url: https://alerts.example.test\n")
+		var stdout, stderr bytes.Buffer
+		_, code := handleCLI([]string{"config", "check", "--json"}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("code = %d, want 1; stderr=%q", code, stderr.String())
+		}
+		var payload ConfigDiagnostics
+		if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+			t.Fatalf("invalid JSON %q: %v", stdout.String(), err)
+		}
+		if payload.Path != path || payload.Fingerprint == "" || len(payload.Items) != 1 || !payload.Items[0].Dropped {
+			t.Fatalf("payload = %#v", payload)
+		}
+	})
+
+	t.Run("substitution is strict", func(t *testing.T) {
+		writeCLIConfig(t, "ui:\n  scale:\n    factor: 9\n")
+		var stdout, stderr bytes.Buffer
+		_, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
+		if code != 1 || !strings.Contains(stdout.String(), "ui.scale.factor") || !strings.Contains(stdout.String(), "using default") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+	})
+
+	t.Run("unparseable", func(t *testing.T) {
+		writeCLIConfig(t, "sources: [oh no\n")
+		var stdout, stderr bytes.Buffer
+		_, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
+		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "parsing config") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+		var stdout, stderr bytes.Buffer
+		_, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
+		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "reading config") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+	})
+}
+
+func TestAuthCLIWarnsAndContinuesForConfigDiagnostics(t *testing.T) {
+	writeCLIConfig(t, "resolvers:\n  - name: stale\n    field: label:cluster\n    command: ./resolve\n    args: ['{{.Value}}']\n    stdin: value\n")
+	var stdout, stderr bytes.Buffer
+	_, code := handleCLI([]string{"auth", "list"}, &stdout, &stderr)
+	if code != 0 || !strings.Contains(stderr.String(), "config warning") || !strings.Contains(stdout.String(), "No sources") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
 
 type fakeCLIKeyring struct {
 	items map[string][]byte
@@ -117,7 +201,7 @@ func TestHandleCLIAuthListAndClearOIDCKeyring(t *testing.T) {
 	}
 
 	store := &fakeCLIKeyring{items: map[string][]byte{}}
-	cfg, err := loadCLIConfig()
+	cfg, err := loadCLIConfig(io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

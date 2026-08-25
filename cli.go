@@ -18,12 +18,14 @@ import (
 
 const cliUsage = `Usage:
   foghorn [--version|-v]
+  foghorn config check [--json]
   foghorn auth list [--json]
   foghorn auth clear <source>
   foghorn auth clear --all
 
-Commands manage saved cookie and OIDC keyring logins.
-Configured passwords and API tokens are not modified.`
+The config command validates the active config file. Auth commands manage saved
+cookie and OIDC keyring logins; configured passwords and API tokens are not
+modified.`
 
 var (
 	newCLIKeyringStore  = keyring.NewOIDCStore
@@ -49,10 +51,82 @@ func handleCLI(args []string, stdout, stderr io.Writer) (handled bool, exitCode 
 		return true, 0
 	case "auth":
 		return handleAuthCLI(args[1:], stdout, stderr)
+	case "config":
+		return handleConfigCLI(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s\n", args[0], cliUsage)
 		return true, 2
 	}
+}
+
+func handleConfigCLI(args []string, stdout, stderr io.Writer) (bool, int) {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+		fmt.Fprintln(stdout, "usage: foghorn config check [--json]")
+		return true, 0
+	}
+	if args[0] != "check" || len(args) > 2 || len(args) == 2 && args[1] != "--json" {
+		fmt.Fprintln(stderr, "usage: foghorn config check [--json]")
+		return true, 2
+	}
+
+	path := configPath()
+	config.MigrateLegacyPath(path)
+	diags, err := checkCLIConfig(path)
+	if err != nil {
+		diags = configFailureDiagnostics(err)
+	}
+	if diags == nil {
+		diags = config.Diagnostics{}
+	}
+	payload := ConfigDiagnostics{
+		Path:        path,
+		Fingerprint: diags.Fingerprint(),
+		Items:       diags,
+	}
+
+	if len(args) == 2 {
+		encoded, marshalErr := json.MarshalIndent(payload, "", "  ")
+		if marshalErr != nil {
+			fmt.Fprintf(stderr, "foghorn: encoding config diagnostics: %v\n", marshalErr)
+			return true, 1
+		}
+		fmt.Fprintln(stdout, string(encoded))
+	} else if len(diags) == 0 {
+		fmt.Fprintf(stdout, "%s: OK\n", path)
+	} else {
+		fmt.Fprintf(stdout, "%s:\n", path)
+		for _, diag := range diags {
+			outcome := "using default"
+			if diag.Dropped {
+				outcome = "not loaded"
+			} else if diag.Field == "config" {
+				outcome = "config unusable"
+			}
+			fmt.Fprintf(stdout, "- %s: %s (%s)\n", diag.Field, diag.Message, outcome)
+		}
+	}
+
+	if len(diags) > 0 {
+		return true, 1
+	}
+	return true, 0
+}
+
+func checkCLIConfig(path string) (config.Diagnostics, error) {
+	logOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(logOutput)
+
+	_, diags, err := config.Load(path)
+	return diags, err
+}
+
+func configFailureDiagnostics(err error) config.Diagnostics {
+	return config.Diagnostics{{
+		Field:   "config",
+		Message: fmt.Sprintf("could not read or parse the config: %v", err),
+		Dropped: false,
+	}}
 }
 
 func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
@@ -65,7 +139,7 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 		return true, 2
 	}
 
-	cfg, err := loadCLIConfig()
+	cfg, err := loadCLIConfig(stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "foghorn: %v\n", err)
 		return true, 1
@@ -169,7 +243,7 @@ func handleAuthCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 	return true, 0
 }
 
-func loadCLIConfig() (*config.Config, error) {
+func loadCLIConfig(stderr io.Writer) (*config.Config, error) {
 	// Config resolution logs useful desktop-startup diagnostics. CLI commands
 	// should keep stdout/stderr stable and limited to their requested result.
 	logOutput := log.Writer()
@@ -178,9 +252,16 @@ func loadCLIConfig() (*config.Config, error) {
 
 	path := configPath()
 	config.MigrateLegacyPath(path)
-	cfg, err := config.Load(path)
+	cfg, diags, err := config.Load(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return config.Default(), nil
+	}
+	for _, diag := range diags {
+		outcome := "using default"
+		if diag.Dropped {
+			outcome = "not loaded"
+		}
+		fmt.Fprintf(stderr, "foghorn: config warning: %s: %s (%s)\n", diag.Field, diag.Message, outcome)
 	}
 	return cfg, err
 }

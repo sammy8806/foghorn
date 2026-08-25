@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
-  import { isWails } from './stores/alerts';
+  import { isWails, waitForBridge } from './stores/alerts';
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
+  import ConfigDiagnostics from './components/ConfigDiagnostics.svelte';
+  import { initConfigDiagnostics } from './stores/diagnostics';
   import { initUIScale, uiScale } from './stores/uiScale';
   import { safeExternalURL } from './utils/url';
 
@@ -18,12 +20,11 @@
   }
 
   onMount(() => {
-    if (!isWails()) return;
-
-    const unlistenScale = initUIScale();
-    const unlisten = EventsOn('about:show', () => {
-      view = 'about';
-    });
+    let unlistenScale = () => {};
+    let unlistenDiagnostics = () => {};
+    let unlistenAbout = () => {};
+    let clickInstalled = false;
+    let disposed = false;
 
     // Fail closed: every in-app anchor click is cancelled, and only URLs that
     // validate as http/https are handed to the system browser. Letting a click
@@ -39,22 +40,41 @@
         BrowserOpenURL(href);
       }
     };
-    document.addEventListener('click', onClick);
+
+    const init = async () => {
+      await waitForBridge();
+      if (disposed || !isWails()) return;
+
+      unlistenScale = initUIScale();
+      unlistenDiagnostics = initConfigDiagnostics();
+      unlistenAbout = EventsOn('about:show', () => {
+        view = 'about';
+      });
+      document.addEventListener('click', onClick);
+      clickInstalled = true;
+    };
+
+    void init();
 
     return () => {
+      disposed = true;
       unlistenScale();
-      unlisten();
-      document.removeEventListener('click', onClick);
+      unlistenDiagnostics();
+      unlistenAbout();
+      if (clickInstalled) document.removeEventListener('click', onClick);
     };
   });
 </script>
 
 <main>
-  {#if view === 'about'}
-    <About on:back={() => (view = 'list')} />
-  {:else}
-    <AlertList />
-  {/if}
+  <ConfigDiagnostics />
+  <div class="view">
+    {#if view === 'about'}
+      <About on:back={() => (view = 'list')} />
+    {:else}
+      <AlertList />
+    {/if}
+  </div>
 </main>
 
 <style>
@@ -78,5 +98,12 @@
 
   main {
     height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .view {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 </style>
