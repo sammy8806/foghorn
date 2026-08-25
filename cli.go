@@ -178,7 +178,7 @@ func loadCLIConfig() (*config.Config, error) {
 
 	path := configPath()
 	config.MigrateLegacyPath(path)
-	cfg, err := config.Load(path)
+	cfg, _, err := config.Load(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return config.Default(), nil
 	}

@@ -51,7 +51,7 @@ func Watch(path string, onChange OnChangeFunc) (stop func(), err error) {
 					debounce = time.After(300 * time.Millisecond)
 				}
 			case <-debounce:
-				cfg, err := Load(path)
+				cfg, _, err := Load(path)
 				if err != nil {
 					log.Printf("config: reload failed: %v", err)
 					continue

@@ -83,7 +83,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -150,24 +150,32 @@ ui:
 	}
 }
 
-func TestValidateRejectsShellActions(t *testing.T) {
+func TestValidateDropsShellActions(t *testing.T) {
 	cfg := Default()
 	cfg.Actions = []ActionConfig{
-		{
-			Name: "runbook",
-			Action: ActionDef{
-				Type: "shell",
-			},
-		},
+		{Name: "runbook", Action: ActionDef{Type: "shell"}},
+		{Name: "graph", Action: ActionDef{Type: "url", Template: "https://example.test"}},
 	}
 
-	err := validate(cfg)
-	if err == nil || !strings.Contains(err.Error(), "shell actions are no longer supported") {
-		t.Fatalf("validate() error = %v, want shell-action migration error", err)
+	var diags Diagnostics
+	if err := validate(cfg, &diags); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+	if len(cfg.Actions) != 1 || cfg.Actions[0].Name != "graph" {
+		t.Fatalf("actions = %#v, want only the url action to survive", cfg.Actions)
+	}
+	if len(diags) != 1 || !diags[0].Dropped {
+		t.Fatalf("diags = %#v, want exactly one dropped diagnostic", diags)
+	}
+	if !strings.Contains(diags[0].Message, "shell actions are no longer supported") {
+		t.Errorf("message = %q, want shell-action migration guidance", diags[0].Message)
+	}
+	if !strings.Contains(diags[0].Field, `"runbook"`) {
+		t.Errorf("field = %q, want the offending action name", diags[0].Field)
 	}
 }
 
-func TestValidateRejectsResolverProcessTemplates(t *testing.T) {
+func TestValidateDropsResolverProcessTemplates(t *testing.T) {
 	tests := []struct {
 		name     string
 		resolver ResolverConfig
@@ -176,21 +184,21 @@ func TestValidateRejectsResolverProcessTemplates(t *testing.T) {
 		{
 			name: "command",
 			resolver: ResolverConfig{
-				Field: "label:cluster", Command: "{{.Value}}", Stdin: "value",
+				Name: "cluster-name", Field: "label:cluster", Command: "{{.Value}}", Stdin: "value",
 			},
 			want: "templates in command",
 		},
 		{
 			name: "argument",
 			resolver: ResolverConfig{
-				Field: "label:cluster", Command: "./resolve-cluster", Args: []string{"{{.Value}}"}, Stdin: "value",
+				Name: "cluster-name", Field: "label:cluster", Command: "./resolve-cluster", Args: []string{"{{.Value}}"}, Stdin: "value",
 			},
 			want: "templates in args[0]",
 		},
 		{
 			name: "environment",
 			resolver: ResolverConfig{
-				Field: "label:cluster", Command: "./resolve-cluster", Env: map[string]string{"VALUE": "{{.Value}}"}, Stdin: "value",
+				Name: "cluster-name", Field: "label:cluster", Command: "./resolve-cluster", Env: map[string]string{"VALUE": "{{.Value}}"}, Stdin: "value",
 			},
 			want: "templates in env.VALUE",
 		},
@@ -199,25 +207,71 @@ func TestValidateRejectsResolverProcessTemplates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := Default()
-			cfg.Resolvers = []ResolverConfig{tt.resolver}
-			err := validate(cfg)
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("validate() error = %v, want error containing %q", err, tt.want)
+			cfg.Resolvers = []ResolverConfig{
+				tt.resolver,
+				{Name: "keeper", Field: "label:namespace", Command: "./resolve-ns", Stdin: "value"},
 			}
-			if !strings.Contains(err.Error(), "read stdin") {
-				t.Fatalf("validate() error = %v, want stdin migration guidance", err)
+
+			var diags Diagnostics
+			if err := validate(cfg, &diags); err != nil {
+				t.Fatalf("validate() error = %v, want nil", err)
+			}
+			if len(cfg.Resolvers) != 1 || cfg.Resolvers[0].Name != "keeper" {
+				t.Fatalf("resolvers = %#v, want only the valid resolver to survive", cfg.Resolvers)
+			}
+			if len(diags) != 1 || !diags[0].Dropped {
+				t.Fatalf("diags = %#v, want exactly one dropped diagnostic", diags)
+			}
+			if !strings.Contains(diags[0].Message, tt.want) {
+				t.Errorf("message = %q, want it to contain %q", diags[0].Message, tt.want)
+			}
+			if !strings.Contains(diags[0].Message, "read stdin") {
+				t.Errorf("message = %q, want stdin migration guidance", diags[0].Message)
 			}
 		})
+	}
+}
+
+func TestValidateDropsSourcesMissingRequiredFields(t *testing.T) {
+	cfg := Default()
+	cfg.Sources = []SourceConfig{
+		{Name: "", Type: "alertmanager", URL: "http://localhost:9093"},
+		{Name: "no-type", URL: "http://localhost:9093"},
+		{Name: "no-url", Type: "alertmanager"},
+		{Name: "good", Type: "alertmanager", URL: "http://localhost:9093"},
+	}
+
+	var diags Diagnostics
+	if err := validate(cfg, &diags); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+	if len(cfg.Sources) != 1 || cfg.Sources[0].Name != "good" {
+		t.Fatalf("sources = %#v, want only the valid source to survive", cfg.Sources)
+	}
+	if len(diags) != 3 {
+		t.Fatalf("diags = %#v, want one per broken source", diags)
+	}
+	for _, diag := range diags {
+		if !diag.Dropped {
+			t.Errorf("diag %#v has Dropped = false, want true", diag)
+		}
 	}
 }
 
 func TestValidateResolverStdin(t *testing.T) {
 	t.Run("required", func(t *testing.T) {
 		cfg := Default()
-		cfg.Resolvers = []ResolverConfig{{Field: "label:cluster", Command: "./resolve-cluster"}}
-		err := validate(cfg)
-		if err == nil || !strings.Contains(err.Error(), "stdin is required") {
-			t.Fatalf("validate() error = %v, want required-stdin error", err)
+		cfg.Resolvers = []ResolverConfig{{Name: "cluster-name", Field: "label:cluster", Command: "./resolve-cluster"}}
+
+		var diags Diagnostics
+		if err := validate(cfg, &diags); err != nil {
+			t.Fatalf("validate() error = %v, want nil", err)
+		}
+		if len(cfg.Resolvers) != 0 {
+			t.Fatalf("resolvers = %#v, want the resolver dropped", cfg.Resolvers)
+		}
+		if len(diags) != 1 || !strings.Contains(diags[0].Message, "stdin is required") {
+			t.Fatalf("diags = %#v, want a required-stdin diagnostic", diags)
 		}
 	})
 
@@ -227,8 +281,13 @@ func TestValidateResolverStdin(t *testing.T) {
 			Field: " label:cluster ", Command: " ./resolve-cluster ", Args: []string{"--lookup"},
 			Env: map[string]string{"MODE": "fixed"}, Stdin: " JSON ",
 		}}
-		if err := validate(cfg); err != nil {
+
+		var diags Diagnostics
+		if err := validate(cfg, &diags); err != nil {
 			t.Fatalf("validate() error: %v", err)
+		}
+		if len(diags) != 0 {
+			t.Fatalf("diags = %#v, want none", diags)
 		}
 		resolver := cfg.Resolvers[0]
 		if resolver.Field != "label:cluster" || resolver.Command != "./resolve-cluster" || resolver.Stdin != "json" {
@@ -273,7 +332,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -325,7 +384,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -372,7 +431,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -417,7 +476,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -469,7 +528,7 @@ ui:
 	path := filepath.Join(dir, "config.yaml")
 	os.WriteFile(path, []byte(yaml), 0644)
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -516,7 +575,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
+	_, _, err := Load(path)
 	if err == nil {
 		t.Fatal("expected invalid popup_position config to fail")
 	}
@@ -552,7 +611,7 @@ func writeAndLoad(t *testing.T, yamlBody string) *Config {
 	if err := os.WriteFile(path, []byte(yamlBody), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -713,7 +772,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	if _, err := Load(path); err == nil {
+	if _, _, err := Load(path); err == nil {
 		t.Fatal("expected duplicate severity alias config to fail")
 	}
 }
@@ -753,7 +812,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -818,7 +877,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
+	_, _, err := Load(path)
 	if err == nil {
 		t.Fatal("expected Load() to fail with unknown style, got nil")
 	}
@@ -837,7 +896,7 @@ func TestLoadConfigUIScaleDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -860,7 +919,7 @@ func TestLoadConfigUIScalePartialDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(path)
+	cfg, _, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -894,7 +953,7 @@ func TestLoadConfigUIScaleClampsFactor(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cfg, err := Load(path)
+			cfg, _, err := Load(path)
 			if err != nil {
 				t.Fatalf("Load() error: %v", err)
 			}
@@ -913,7 +972,7 @@ func TestLoadConfigUIScaleInvalidMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Load(path)
+	_, _, err := Load(path)
 	if err == nil {
 		t.Fatal("expected Load() to fail with invalid ui.scale.mode, got nil")
 	}
@@ -978,7 +1037,7 @@ sources:
 	log.SetOutput(&logs)
 	defer log.SetOutput(original)
 
-	if _, err := Load(path); err != nil {
+	if _, _, err := Load(path); err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
 

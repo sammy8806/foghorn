@@ -44,7 +44,7 @@ func main() {
 
 	cfgPath := configPath()
 	config.MigrateLegacyPath(cfgPath)
-	cfg, err := config.Load(cfgPath)
+	cfg, _, err := config.Load(cfgPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("Config file not found at %s, using defaults", cfgPath)

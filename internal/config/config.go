@@ -68,25 +68,29 @@ func Default() *Config {
 	}
 }
 
-// Load reads and parses a config file, expanding environment variables.
-func Load(path string) (*Config, error) {
+// Load reads and parses a config file, expanding environment variables. A
+// non-nil error means the file could not be read or parsed at all — every
+// other problem is reported as a Diagnostic against a config that is still
+// usable, with the offending entries dropped.
+func Load(path string) (*Config, Diagnostics, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading config: %w", err)
+		return nil, nil, fmt.Errorf("reading config: %w", err)
 	}
 
 	expanded := expandEnvVars(string(data))
 
 	cfg := *Default()
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+		return nil, nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	if err := validate(&cfg); err != nil {
-		return nil, fmt.Errorf("validating config: %w", err)
+	var diags Diagnostics
+	if err := validate(&cfg, &diags); err != nil {
+		return nil, nil, fmt.Errorf("validating config: %w", err)
 	}
 
-	return &cfg, nil
+	return &cfg, diags, nil
 }
 
 func expandEnvVars(input string) string {
@@ -159,7 +163,7 @@ func isLoopbackHost(host string) bool {
 	return false
 }
 
-func validate(cfg *Config) error {
+func validate(cfg *Config, diags *Diagnostics) error {
 	normalizedSeverities, err := NormalizeSeverityConfig(cfg.Severities)
 	if err != nil {
 		return err
@@ -182,13 +186,16 @@ func validate(cfg *Config) error {
 			continue
 		}
 		if src.Name == "" {
-			return fmt.Errorf("source[%d]: name is required", i)
+			diags.Drop(fmt.Sprintf("source[%d]", i), "name is required")
+			continue
 		}
 		if src.Type == "" {
-			return fmt.Errorf("source[%d] %q: type is required", i, src.Name)
+			diags.Drop(fmt.Sprintf("source[%d] %q", i, src.Name), "type is required")
+			continue
 		}
 		if src.URL == "" && !strings.EqualFold(src.Type, "betterstack") {
-			return fmt.Errorf("source[%d] %q: url is required", i, src.Name)
+			diags.Drop(fmt.Sprintf("source[%d] %q", i, src.Name), "url is required")
+			continue
 		}
 		if src.URL == "" && strings.EqualFold(src.Type, "betterstack") {
 			src.URL = "https://uptime.betterstack.com"
@@ -207,12 +214,8 @@ func validate(cfg *Config) error {
 		enabledSources = append(enabledSources, src)
 	}
 	cfg.Sources = enabledSources
-	if err := validateActions(cfg.Actions); err != nil {
-		return err
-	}
-	if err := validateResolvers(cfg.Resolvers); err != nil {
-		return err
-	}
+	cfg.Actions = validateActions(cfg.Actions, diags)
+	cfg.Resolvers = validateResolvers(cfg.Resolvers, diags)
 	if cfg.UI.PopupWidth == 0 {
 		cfg.UI.PopupWidth = 800
 	}
@@ -280,48 +283,72 @@ func validate(cfg *Config) error {
 	return nil
 }
 
-func validateActions(actions []ActionConfig) error {
+// validateActions returns the actions that are usable, recording a diagnostic
+// for each one it drops. Normalization of the surviving entries happens in
+// place, as before.
+func validateActions(actions []ActionConfig, diags *Diagnostics) []ActionConfig {
+	surviving := make([]ActionConfig, 0, len(actions))
 	for i := range actions {
-		action := &actions[i]
+		action := actions[i]
 		actionType := strings.ToLower(strings.TrimSpace(action.Action.Type))
 		action.Action.Type = actionType
+		field := fmt.Sprintf("actions[%d] %q", i, action.Name)
 
 		switch actionType {
 		case "url", "clipboard":
 			if strings.TrimSpace(action.Action.Template) == "" {
-				return fmt.Errorf("actions[%d] %q: %s action requires a template", i, action.Name, actionType)
+				diags.Drop(field, "%s action requires a template", actionType)
+				continue
 			}
 		case "shell":
-			return fmt.Errorf("actions[%d] %q: shell actions are no longer supported because remote alert fields could become shell syntax; use a url or clipboard action", i, action.Name)
+			diags.Drop(field, "shell actions are no longer supported because remote alert fields could become shell syntax; use a url or clipboard action")
+			continue
 		case "":
-			return fmt.Errorf("actions[%d] %q: action type is required", i, action.Name)
+			diags.Drop(field, "action type is required")
+			continue
 		default:
-			return fmt.Errorf("actions[%d] %q: unsupported action type %q; use url or clipboard", i, action.Name, action.Action.Type)
+			diags.Drop(field, "unsupported action type %q; use url or clipboard", actionType)
+			continue
 		}
+		surviving = append(surviving, action)
 	}
-	return nil
+	return surviving
 }
 
-func validateResolvers(resolvers []ResolverConfig) error {
+// validateResolvers returns the resolvers that are usable, recording a
+// diagnostic for each one it drops. Dropping is safe: resolve.Engine is
+// additive, so a missing resolver means the UI renders the raw field value.
+func validateResolvers(resolvers []ResolverConfig, diags *Diagnostics) []ResolverConfig {
+	surviving := make([]ResolverConfig, 0, len(resolvers))
 	for i := range resolvers {
-		resolver := &resolvers[i]
+		resolver := resolvers[i]
 		resolver.Field = strings.TrimSpace(resolver.Field)
 		resolver.Command = strings.TrimSpace(resolver.Command)
 		resolver.Stdin = strings.ToLower(strings.TrimSpace(resolver.Stdin))
+		field := fmt.Sprintf("resolvers[%d] %q", i, resolver.Name)
 
 		if resolver.Field == "" {
-			return fmt.Errorf("resolvers[%d] %q: field is required", i, resolver.Name)
+			diags.Drop(field, "field is required")
+			continue
 		}
 		if resolver.Command == "" {
-			return fmt.Errorf("resolvers[%d] %q: command is required", i, resolver.Name)
+			diags.Drop(field, "command is required")
+			continue
 		}
 		if hasProcessTemplate(resolver.Command) {
-			return resolverTemplateError(i, resolver.Name, "command")
+			diags.Drop(field, "%s", resolverTemplateMessage("command"))
+			continue
 		}
+		templated := false
 		for argIndex, arg := range resolver.Args {
 			if hasProcessTemplate(arg) {
-				return resolverTemplateError(i, resolver.Name, fmt.Sprintf("args[%d]", argIndex))
+				diags.Drop(field, "%s", resolverTemplateMessage(fmt.Sprintf("args[%d]", argIndex)))
+				templated = true
+				break
 			}
+		}
+		if templated {
+			continue
 		}
 
 		envKeys := make([]string, 0, len(resolver.Env))
@@ -331,27 +358,35 @@ func validateResolvers(resolvers []ResolverConfig) error {
 		sort.Strings(envKeys)
 		for _, key := range envKeys {
 			if hasProcessTemplate(resolver.Env[key]) {
-				return resolverTemplateError(i, resolver.Name, fmt.Sprintf("env.%s", key))
+				diags.Drop(field, "%s", resolverTemplateMessage(fmt.Sprintf("env.%s", key)))
+				templated = true
+				break
 			}
+		}
+		if templated {
+			continue
 		}
 
 		switch resolver.Stdin {
 		case "value", "json":
 		case "":
-			return fmt.Errorf("resolvers[%d] %q: stdin is required; use stdin: value for the selected field or stdin: json for structured alert data", i, resolver.Name)
+			diags.Drop(field, "stdin is required; use stdin: value for the selected field or stdin: json for structured alert data")
+			continue
 		default:
-			return fmt.Errorf("resolvers[%d] %q: stdin %q must be value or json", i, resolver.Name, resolver.Stdin)
+			diags.Drop(field, "stdin %q must be value or json", resolver.Stdin)
+			continue
 		}
+		surviving = append(surviving, resolver)
 	}
-	return nil
+	return surviving
 }
 
 func hasProcessTemplate(value string) bool {
 	return strings.Contains(value, "{{") || strings.Contains(value, "}}")
 }
 
-func resolverTemplateError(index int, name, field string) error {
-	return fmt.Errorf("resolvers[%d] %q: templates in %s are no longer supported; use stdin: value or stdin: json and update the resolver program to read stdin", index, name, field)
+func resolverTemplateMessage(field string) string {
+	return fmt.Sprintf("templates in %s are no longer supported; use stdin: value or stdin: json and update the resolver program to read stdin", field)
 }
 
 func normalizeUIScale(scale *UIScale) error {
