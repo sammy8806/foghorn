@@ -222,9 +222,11 @@ func main() {
 			restartRuntime(cfg)
 
 			// Config hot-reload: watch for changes and notify frontend
-			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config) {
+			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config, _ config.Diagnostics) {
 				restartRuntime(newCfg)
 				wailsruntime.EventsEmit(ctx, "config:reloaded")
+			}, func(err error) {
+				log.Printf("config: keeping running config after failed reload: %v", err)
 			}); err != nil {
 				log.Printf("config: watcher not started: %v", err)
 			} else {
