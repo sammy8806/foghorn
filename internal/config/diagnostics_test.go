@@ -37,6 +37,15 @@ func TestFingerprintIgnoresOrder(t *testing.T) {
 	}
 }
 
+func TestFingerprintIgnoresPositionalIndices(t *testing.T) {
+	a := Diagnostics{{Field: `sources[1] "production"`, Message: "type is required", Dropped: true}}
+	b := Diagnostics{{Field: `sources[8] "production"`, Message: "type is required", Dropped: true}}
+
+	if a.Fingerprint() != b.Fingerprint() {
+		t.Fatalf("Fingerprint() differs by display index: %q vs %q", a.Fingerprint(), b.Fingerprint())
+	}
+}
+
 func TestFingerprintChangesWithContent(t *testing.T) {
 	a := Diagnostics{{Field: "x", Message: "one"}}
 	b := Diagnostics{{Field: "x", Message: "two"}}

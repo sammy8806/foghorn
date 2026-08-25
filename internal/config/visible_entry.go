@@ -76,13 +76,15 @@ func validateVisibleEntries(field string, entries []VisibleEntry, diags *Diagnos
 			continue
 		}
 		unknown := ""
+		unknownFound := false
 		for _, s := range e.Style {
 			if _, ok := validStyles[s]; !ok {
 				unknown = string(s)
+				unknownFound = true
 				break
 			}
 		}
-		if unknown != "" {
+		if unknownFound {
 			diags.Drop(location, "unknown style %q", unknown)
 			continue
 		}
@@ -109,9 +111,6 @@ func (s *styleTokens) UnmarshalYAML(node *yaml.Node) error {
 	case yaml.ScalarNode:
 		for _, part := range strings.Split(node.Value, ",") {
 			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
 			*s = append(*s, EntryStyle(part))
 		}
 		return nil
@@ -122,9 +121,6 @@ func (s *styleTokens) UnmarshalYAML(node *yaml.Node) error {
 		}
 		for _, v := range raw {
 			v = strings.TrimSpace(v)
-			if v == "" {
-				continue
-			}
 			*s = append(*s, EntryStyle(v))
 		}
 		return nil

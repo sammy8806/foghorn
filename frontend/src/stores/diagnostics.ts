@@ -44,16 +44,38 @@ export function dismissConfigDiagnostics() {
   });
 }
 
+type DiagnosticsFetcher = () => Promise<ConfigDiagnosticsPayload>;
+type DiagnosticsSubscriber = (callback: (payload: ConfigDiagnosticsPayload) => void) => () => void;
+
+// Subscribe before fetching, and never allow the startup snapshot to overwrite
+// a newer reload event that arrived while the request was in flight.
+export function connectConfigDiagnostics(
+  fetchDiagnostics: DiagnosticsFetcher,
+  subscribe: DiagnosticsSubscriber,
+) {
+  let eventReceived = false;
+  const unlisten = subscribe(payload => {
+    eventReceived = true;
+    applyConfigDiagnostics(payload);
+  });
+
+  Promise.resolve()
+    .then(fetchDiagnostics)
+    .then(payload => {
+      if (!eventReceived) applyConfigDiagnostics(payload);
+    })
+    .catch(err => console.error('failed to load config diagnostics', err));
+
+  return unlisten;
+}
+
 export function initConfigDiagnostics() {
   if (!isWails()) return () => {};
 
-  GetConfigDiagnostics()
-    .then(payload => applyConfigDiagnostics(payload as ConfigDiagnosticsPayload))
-    .catch(err => console.error('failed to load config diagnostics', err));
-
-  return EventsOn('config:diagnostics', payload => {
-    applyConfigDiagnostics(payload as ConfigDiagnosticsPayload);
-  });
+  return connectConfigDiagnostics(
+    () => GetConfigDiagnostics() as Promise<ConfigDiagnosticsPayload>,
+    callback => EventsOn('config:diagnostics', payload => callback(payload as ConfigDiagnosticsPayload)),
+  );
 }
 
 // Keeps the store's module state deterministic between unit tests.

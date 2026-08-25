@@ -125,6 +125,18 @@ func TestValidateVisibleEntriesUnknownStyle(t *testing.T) {
 	}
 }
 
+func TestValidateVisibleEntriesEmptyStyle(t *testing.T) {
+	var entries []VisibleEntry
+	if err := yaml.Unmarshal([]byte("- source: summary\n  style: ['']\n"), &entries); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var diags Diagnostics
+	surviving := validateVisibleEntries("display.visible_annotations", entries, &diags)
+	if len(surviving) != 0 || len(diags) != 1 || !strings.Contains(diags[0].Message, `unknown style ""`) {
+		t.Fatalf("surviving=%#v diags=%#v, want one empty-style diagnostic", surviving, diags)
+	}
+}
+
 func TestValidateVisibleEntriesAllValid(t *testing.T) {
 	entries := []VisibleEntry{
 		{Source: "summary"},

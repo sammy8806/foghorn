@@ -4,9 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+var diagnosticPositionPattern = regexp.MustCompile(`\[\d+\]`)
 
 // Diagnostic is one problem found while loading a config that did not stop the
 // config from loading. Field locates the problem the way the YAML does
@@ -47,7 +50,11 @@ func (d Diagnostics) Fingerprint() string {
 	}
 	lines := make([]string, 0, len(d))
 	for _, item := range d {
-		lines = append(lines, fmt.Sprintf("%s\x00%s\x00%t", item.Field, item.Message, item.Dropped))
+		// Positional indices help users find a problem but are not part of its
+		// identity. Inserting an unrelated valid entry must not resurrect a
+		// dismissed warning for the same named/typed problem.
+		stableField := diagnosticPositionPattern.ReplaceAllString(item.Field, "[]")
+		lines = append(lines, fmt.Sprintf("%s\x00%s\x00%t", stableField, item.Message, item.Dropped))
 	}
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\x01")))

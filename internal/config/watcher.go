@@ -54,7 +54,7 @@ func Watch(path string, onChange OnChangeFunc, onFailure OnFailureFunc) (stop fu
 				if filepath.Base(event.Name) != base {
 					continue
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) || event.Has(fsnotify.Remove) {
 					debounce = time.After(300 * time.Millisecond)
 				}
 			case <-debounce:

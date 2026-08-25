@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -215,5 +216,36 @@ func TestWatcherPassesDiagnosticsToOnChange(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for onChange")
+	}
+}
+
+func TestWatcherReportsDeletedConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(minimalConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	failed := make(chan error, 1)
+	stop, err := Watch(path, func(_ *Config, _ Diagnostics) {
+		t.Error("onChange called for a deleted config")
+	}, func(err error) {
+		failed <- err
+	})
+	if err != nil {
+		t.Fatalf("Watch() error: %v", err)
+	}
+	defer stop()
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-failed:
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("failure = %v, want os.ErrNotExist", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for deletion failure")
 	}
 }

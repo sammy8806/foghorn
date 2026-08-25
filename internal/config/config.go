@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"foghorn/internal/duration"
+	"foghorn/internal/hidematcher"
 
 	"gopkg.in/yaml.v3"
 )
@@ -24,6 +25,13 @@ import (
 const DefaultSourceTimeout = 10 * time.Second
 
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+var supportedSourceTypes = map[string]struct{}{
+	"alertmanager": {},
+	"betterstack":  {},
+	"grafana":      {},
+	"prometheus":   {},
+}
 
 // ptrTo returns a pointer to a copy of v. Using a function avoids shared
 // mutable state when the same default value is needed in multiple places.
@@ -186,6 +194,7 @@ func validate(cfg *Config, diags *Diagnostics) error {
 	}
 
 	enabledSources := make([]SourceConfig, 0, len(cfg.Sources))
+	seenSourceNames := make(map[string]struct{}, len(cfg.Sources))
 	for i, src := range cfg.Sources {
 		if src.Enabled != nil && !*src.Enabled {
 			continue
@@ -194,16 +203,25 @@ func validate(cfg *Config, diags *Diagnostics) error {
 			diags.Drop(fmt.Sprintf("sources[%d]", i), "name is required")
 			continue
 		}
+		src.Type = strings.ToLower(strings.TrimSpace(src.Type))
 		if src.Type == "" {
 			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "type is required")
 			continue
 		}
-		if src.URL == "" && !strings.EqualFold(src.Type, "betterstack") {
+		if _, ok := supportedSourceTypes[src.Type]; !ok {
+			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "unsupported type %q; use alertmanager, grafana, betterstack, or prometheus", src.Type)
+			continue
+		}
+		if src.URL == "" && src.Type != "betterstack" {
 			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "url is required")
 			continue
 		}
-		if src.URL == "" && strings.EqualFold(src.Type, "betterstack") {
+		if src.URL == "" && src.Type == "betterstack" {
 			src.URL = "https://uptime.betterstack.com"
+		}
+		if src.PollInterval < 0 {
+			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "poll_interval must be positive")
+			continue
 		}
 		if src.PollInterval == 0 {
 			src.PollInterval = 30_000_000_000 // 30s default
@@ -214,6 +232,11 @@ func validate(cfg *Config, diags *Diagnostics) error {
 		if strings.TrimSpace(src.SeverityLabel) == "" {
 			src.SeverityLabel = "severity"
 		}
+		if _, duplicate := seenSourceNames[src.Name]; duplicate {
+			diags.Drop(fmt.Sprintf("sources[%d] %q", i, src.Name), "name duplicates an earlier enabled source")
+			continue
+		}
+		seenSourceNames[src.Name] = struct{}{}
 		warnInsecureSourceURL(src.Name, src.URL)
 		warnInsecureAuthURLs(src)
 		enabledSources = append(enabledSources, src)
@@ -278,6 +301,17 @@ func validate(cfg *Config, diags *Diagnostics) error {
 		}
 		if len(rule.Matchers) == 0 {
 			diags.Drop(field, "at least one matcher is required")
+			continue
+		}
+		invalidMatcher := false
+		for matcherIndex, raw := range rule.Matchers {
+			if _, err := hidematcher.Parse(raw); err != nil {
+				diags.Drop(field, "matcher[%d] %q: %v", matcherIndex, raw, err)
+				invalidMatcher = true
+				break
+			}
+		}
+		if invalidMatcher {
 			continue
 		}
 		parsed, err := duration.Parse(rule.MinAge)

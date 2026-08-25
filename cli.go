@@ -72,7 +72,7 @@ func handleConfigCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 	path := configPath()
 	config.MigrateLegacyPath(path)
 	diags, err := checkCLIConfig(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err != nil {
 		diags = configFailureDiagnostics(err)
 	}
 	if diags == nil {

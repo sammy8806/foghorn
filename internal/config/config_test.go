@@ -258,10 +258,41 @@ func TestValidateDropsSourcesMissingRequiredFields(t *testing.T) {
 	}
 }
 
+func TestValidateDropsUnsupportedDuplicateAndNegativeIntervalSources(t *testing.T) {
+	cfg := Default()
+	cfg.Sources = []SourceConfig{
+		{Name: "unsupported", Type: "mystery", URL: "https://alerts.example.test"},
+		{Name: "negative", Type: "alertmanager", URL: "https://alerts.example.test", PollInterval: -time.Second},
+		{Name: "duplicate", Type: "alertmanager", URL: "https://one.example.test"},
+		{Name: "duplicate", Type: "grafana", URL: "https://two.example.test"},
+		{Name: "normalized", Type: " GRAFANA ", URL: "https://grafana.example.test"},
+	}
+
+	var diags Diagnostics
+	if err := validate(cfg, &diags); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+	if len(cfg.Sources) != 2 || cfg.Sources[0].Name != "duplicate" || cfg.Sources[1].Name != "normalized" {
+		t.Fatalf("sources = %#v, want first duplicate and normalized source", cfg.Sources)
+	}
+	if cfg.Sources[1].Type != "grafana" {
+		t.Errorf("normalized source type = %q, want grafana", cfg.Sources[1].Type)
+	}
+	if len(diags) != 3 {
+		t.Fatalf("diags = %#v, want unsupported, negative interval, and duplicate diagnostics", diags)
+	}
+	for _, diag := range diags {
+		if !diag.Dropped {
+			t.Errorf("diag %#v has Dropped = false, want true", diag)
+		}
+	}
+}
+
 func TestValidateDropsBrokenHideRules(t *testing.T) {
 	cfg := Default()
 	cfg.Hide = []HideRule{
 		{Name: "no-matchers"},
+		{Name: "bad-matcher", Matchers: []string{"no-operator-here"}},
 		{Name: "bad-age", Matchers: []string{"alertname=Watchdog"}, MinAge: "not-a-duration"},
 		{Name: "negative-age", Matchers: []string{"alertname=Watchdog"}, MinAge: "-5m"},
 		{Name: "good", Matchers: []string{"alertname=Watchdog"}, MinAge: "30m"},
@@ -277,7 +308,7 @@ func TestValidateDropsBrokenHideRules(t *testing.T) {
 	if cfg.Hide[0].ParsedMinAge != 30*time.Minute {
 		t.Errorf("ParsedMinAge = %v, want 30m", cfg.Hide[0].ParsedMinAge)
 	}
-	if len(diags) != 3 {
+	if len(diags) != 4 {
 		t.Fatalf("diags = %#v, want one per broken rule", diags)
 	}
 }

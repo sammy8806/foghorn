@@ -476,7 +476,7 @@ export function waitForBridge(): Promise<void> {
   return new Promise((resolve) => {
     const deadline = Date.now() + 1500;
     const check = () => {
-      if ((window as any).runtime) {
+      if ((window as any).runtime && (window as any)['go']) {
         resolve();
       } else if (Date.now() > deadline) {
         // Running outside Wails (e.g. `npm run dev` in a browser) — proceed without bridge.

@@ -75,6 +75,17 @@ func TestHandleCLIConfigCheck(t *testing.T) {
 			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
 	})
+
+	t.Run("missing", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+		var stdout, stderr bytes.Buffer
+		_, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
+		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "reading config") {
+			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+	})
 }
 
 func TestAuthCLIWarnsAndContinuesForConfigDiagnostics(t *testing.T) {
