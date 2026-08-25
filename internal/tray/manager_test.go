@@ -73,6 +73,25 @@ func TestTrayTooltipActiveAndSilenced(t *testing.T) {
 	}
 }
 
+func TestTrayTooltipConfigWarningSetsAndClears(t *testing.T) {
+	m := newTestManager()
+	m.UpdateState(makeBreakdown(nil, nil))
+	m.SetConfigWarning(1)
+	if got, want := m.Tooltip(), "Foghorn - All clear - ⚠ 1 config problem"; got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+
+	m.SetConfigWarning(3)
+	if got, want := m.Tooltip(), "Foghorn - All clear - ⚠ 3 config problems"; got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+
+	m.SetConfigWarning(0)
+	if got, want := m.Tooltip(), "Foghorn - All clear"; got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
 func TestTrayIconIgnoresSilencedCritical(t *testing.T) {
 	m := newTestManager()
 	// Only silenced criticals exist; icon must stay green.
@@ -86,7 +105,7 @@ func TestTrayIconIgnoresSilencedCritical(t *testing.T) {
 func TestTrayIconUsesActiveHighestSeverity(t *testing.T) {
 	m := newTestManager()
 	m.UpdateState(makeBreakdown(
-		map[string]int{"warning": 1}, // highest active is warning
+		map[string]int{"warning": 1},  // highest active is warning
 		map[string]int{"critical": 5}, // silenced criticals must be ignored
 	))
 

@@ -18,6 +18,10 @@ export function GetAlerts() {
   return window['go']['main']['App']['GetAlerts']();
 }
 
+export function GetConfigDiagnostics() {
+  return window['go']['main']['App']['GetConfigDiagnostics']();
+}
+
 export function GetDisplayConfig() {
   return window['go']['main']['App']['GetDisplayConfig']();
 }

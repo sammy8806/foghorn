@@ -18,14 +18,15 @@ type platformTray interface {
 }
 
 type Manager struct {
-	mu        sync.RWMutex
-	onClick   OnClickFunc
-	onQuit    OnQuitFunc
-	onAbout   OnAboutFunc
-	breakdown model.SeverityBreakdown
-	ready     bool
-	platform  platformTray
-	scheme    config.SeverityScheme
+	mu                 sync.RWMutex
+	onClick            OnClickFunc
+	onQuit             OnQuitFunc
+	onAbout            OnAboutFunc
+	breakdown          model.SeverityBreakdown
+	ready              bool
+	platform           platformTray
+	scheme             config.SeverityScheme
+	configWarningCount int
 }
 
 func NewManager(onClick OnClickFunc, onQuit OnQuitFunc, onAbout OnAboutFunc) *Manager {
@@ -89,6 +90,21 @@ func (m *Manager) SetSeverityConfig(cfg config.NormalizedSeverityConfig) {
 	}
 }
 
+// SetConfigWarning sets the number of current config problems shown in the
+// tray tooltip. It remains set until a later clean reload clears it.
+func (m *Manager) SetConfigWarning(count int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if count < 0 {
+		count = 0
+	}
+	m.configWarningCount = count
+	if m.platform != nil {
+		_ = m.platform.update(m.iconLocked(), m.tooltipLocked())
+	}
+}
+
 func (m *Manager) Tooltip() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -122,6 +138,18 @@ func (m *Manager) handleAbout() {
 }
 
 func (m *Manager) tooltipLocked() string {
+	base := m.baseTooltipLocked()
+	if m.configWarningCount == 0 {
+		return base
+	}
+	noun := "problems"
+	if m.configWarningCount == 1 {
+		noun = "problem"
+	}
+	return fmt.Sprintf("%s - ⚠ %d config %s", base, m.configWarningCount, noun)
+}
+
+func (m *Manager) baseTooltipLocked() string {
 	if !m.ready {
 		return "Foghorn - Starting up"
 	}

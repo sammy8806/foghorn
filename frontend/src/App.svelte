@@ -4,6 +4,8 @@
   import { isWails } from './stores/alerts';
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
+  import ConfigDiagnostics from './components/ConfigDiagnostics.svelte';
+  import { initConfigDiagnostics } from './stores/diagnostics';
   import { initUIScale, uiScale } from './stores/uiScale';
   import { safeExternalURL } from './utils/url';
 
@@ -21,6 +23,7 @@
     if (!isWails()) return;
 
     const unlistenScale = initUIScale();
+    const unlistenDiagnostics = initConfigDiagnostics();
     const unlisten = EventsOn('about:show', () => {
       view = 'about';
     });
@@ -43,6 +46,7 @@
 
     return () => {
       unlistenScale();
+      unlistenDiagnostics();
       unlisten();
       document.removeEventListener('click', onClick);
     };
@@ -50,11 +54,14 @@
 </script>
 
 <main>
-  {#if view === 'about'}
-    <About on:back={() => (view = 'list')} />
-  {:else}
-    <AlertList />
-  {/if}
+  <ConfigDiagnostics />
+  <div class="view">
+    {#if view === 'about'}
+      <About on:back={() => (view = 'list')} />
+    {:else}
+      <AlertList />
+    {/if}
+  </div>
 </main>
 
 <style>
@@ -78,5 +85,12 @@
 
   main {
     height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .view {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 </style>
