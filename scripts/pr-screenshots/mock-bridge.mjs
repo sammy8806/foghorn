@@ -137,6 +137,8 @@ export function buildBridgeInit(scenario) {
           GetUIConfig: async () => (${JSON.stringify(uiConfig)}),
           GetUIScale: async () => ({ factor: 1, mode: 'fonts', apply_to_popup: true }),
           GetNotificationPermissionStatus: async () => 'authorized',
+          RequestNotificationPermission: async () => 'authorized',
+          OpenNotificationSettings: async () => {},
           RefreshAlerts: async () => {},
           LayoutPopup: async () => {},
           GetAbout: async () => ({ name: 'Foghorn', version: 'screenshot', description: 'Demo', repoURL: 'https://github.com/sammy8806/foghorn', copyright: '' }),

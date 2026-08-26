@@ -322,6 +322,10 @@ func (a *App) GetNotificationPermissionStatus() string {
 	return notify.NotificationPermissionStatus()
 }
 
+func (a *App) RequestNotificationPermission() (string, error) {
+	return notify.RequestNotificationPermission()
+}
+
 func (a *App) OpenNotificationSettings() error {
 	return notify.OpenNotificationSettings()
 }

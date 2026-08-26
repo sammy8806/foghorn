@@ -40,13 +40,14 @@
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
-  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings } from '../../wailsjs/go/main/App';
+  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
   import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
+  import { requestNotificationPermissionOrOpenSettings } from '../utils/notificationPermission';
   import defaultIdleImage from '../assets/images/this-is-fine.webp';
 
   const popupHorizontalMargin = 8;
@@ -57,6 +58,7 @@
   type PopupPosition = 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
   let notificationPermissionStatus = '';
   let notificationSettingsError = '';
+  let notificationPermissionActionPending = false;
   let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
@@ -371,6 +373,11 @@
     : notificationPermissionStatus === 'unsupported_legacy'
       ? 'This macOS version does not expose notification permission status directly. Open Notification settings and make sure Foghorn is allowed.'
       : 'macOS has not granted notification permission to Foghorn yet.';
+  $: notificationActionLabel = notificationPermissionActionPending
+    ? 'Requesting…'
+    : notificationPermissionStatus === 'not_determined'
+      ? 'Allow Notifications'
+      : 'Open Notification Settings';
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
@@ -524,12 +531,20 @@
     return Math.min(Math.max(value, min), max);
   }
 
-  async function handleOpenNotificationSettings() {
+  async function handleNotificationPermissionAction() {
+    if (notificationPermissionActionPending) return;
+    notificationPermissionActionPending = true;
     notificationSettingsError = '';
     try {
-      await OpenNotificationSettings();
-    } catch (e) {
-      notificationSettingsError = String(e);
+      const result = await requestNotificationPermissionOrOpenSettings(
+        notificationPermissionStatus,
+        RequestNotificationPermission,
+        OpenNotificationSettings,
+      );
+      notificationPermissionStatus = result.status;
+      notificationSettingsError = result.error;
+    } finally {
+      notificationPermissionActionPending = false;
     }
   }
 </script>
@@ -546,8 +561,8 @@
           <div class="info-card-detail-error">{notificationSettingsError}</div>
         {/if}
       </div>
-      <button class="info-card-action" on:click={handleOpenNotificationSettings}>
-        Open Notification Settings
+      <button class="info-card-action" on:click={handleNotificationPermissionAction} disabled={notificationPermissionActionPending}>
+        {notificationActionLabel}
       </button>
     </div>
   {/if}
