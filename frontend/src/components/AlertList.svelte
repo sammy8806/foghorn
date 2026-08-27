@@ -561,59 +561,6 @@
 <svelte:window on:click={closeAllMenus} on:keydown={handleGlobalKeydown} />
 
 <div class="alert-list-container">
-  {#if showNotificationInfoCard}
-    <div class="info-card info-card-warning titlebar-zone">
-      <div class="info-card-copy">
-        <div class="info-card-title">{notificationInfoTitle}</div>
-        <div class="info-card-text">{notificationInfoText}</div>
-        {#if notificationSettingsError}
-          <div class="info-card-detail-error">{notificationSettingsError}</div>
-        {/if}
-      </div>
-      <button class="info-card-action" on:click={handleNotificationPermissionAction} disabled={notificationPermissionActionPending}>
-        {notificationActionLabel}
-      </button>
-    </div>
-  {/if}
-
-  {#if showHealthBanner}
-    <div class="health-banner titlebar-zone" class:expanded={healthBannerExpanded} role="alert">
-      <button
-        class="health-banner-summary"
-        on:click={() => healthBannerExpanded = !healthBannerExpanded}
-        aria-expanded={healthBannerExpanded}
-        aria-controls="health-banner-details"
-      >
-        <span class="health-banner-heading">
-          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
-        </span>
-        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
-        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
-        {refreshing ? 'Retrying…' : 'Retry'}
-      </button>
-      {#if healthBannerExpanded}
-        <div class="health-banner-sources" id="health-banner-details">
-        {#each failingSources as health}
-          <div class="health-banner-source">
-            <div class="health-banner-source-title">
-              <span class="health-banner-source-name">{health.source}</span>
-              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
-            </div>
-            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
-            <span class="health-banner-source-meta">
-              {formatHealthLastPoll(health)}
-            </span>
-          </div>
-        {/each}
-      </div>
-      {/if}
-    </div>
-  {/if}
-
   <!-- Filter & view controls -->
   <div class="filter-bar titlebar-zone" bind:this={filterBarEl} on:dblclick={handleChromeDoubleClick}>
     <!-- Expanding search: collapsed to an icon, click to expand. -->
@@ -844,6 +791,62 @@
     {/if}
   </div>
 
+  <!-- Notification + health banners. These sit below the chrome rows (not
+     above the filter bar) so the filter bar stays the topmost element and the
+     macOS traffic lights always align with the same row. -->
+  {#if showNotificationInfoCard}
+    <div class="info-card info-card-warning">
+      <div class="info-card-copy">
+        <div class="info-card-title">{notificationInfoTitle}</div>
+        <div class="info-card-text">{notificationInfoText}</div>
+        {#if notificationSettingsError}
+          <div class="info-card-detail-error">{notificationSettingsError}</div>
+        {/if}
+      </div>
+      <button class="info-card-action" on:click={handleOpenNotificationSettings}>
+        Open Notification Settings
+      </button>
+    </div>
+  {/if}
+
+  {#if showHealthBanner}
+    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
+      <button
+        class="health-banner-summary"
+        on:click={() => healthBannerExpanded = !healthBannerExpanded}
+        aria-expanded={healthBannerExpanded}
+        aria-controls="health-banner-details"
+      >
+        <span class="health-banner-heading">
+          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
+        </span>
+        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
+        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
+        {refreshing ? 'Retrying…' : 'Retry'}
+      </button>
+      {#if healthBannerExpanded}
+        <div class="health-banner-sources" id="health-banner-details">
+        {#each failingSources as health}
+          <div class="health-banner-source">
+            <div class="health-banner-source-title">
+              <span class="health-banner-source-name">{health.source}</span>
+              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
+            </div>
+            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
+            <span class="health-banner-source-meta">
+              {formatHealthLastPoll(health)}
+            </span>
+          </div>
+        {/each}
+      </div>
+      {/if}
+    </div>
+  {/if}
+
   <!-- Alert content -->
   <div class="alerts-scroll">
     {#if $loading}
@@ -920,10 +923,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    /* Sits below the chrome rows, above the alert content. */
     margin: 8px 8px 0;
-    /* Clears the macOS traffic lights when this card is the topmost element.
-       Zero on other platforms and when a banner above it already claimed it. */
-    margin-top: calc(8px + var(--titlebar-clear-top));
     padding: 10px 12px;
     border-radius: 8px;
     border: 1px solid #7c2d12;
@@ -973,13 +974,13 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    /* Sits below the chrome rows, above the alert content. */
     margin: 8px 8px 0;
-    /* See .info-card: clears the traffic lights when topmost. */
-    margin-top: calc(8px + var(--titlebar-clear-top));
     padding: 7px 9px;
-    border: 1px solid #7f1d1d;
+    border: 1px solid rgba(248, 113, 113, 0.35);
     border-radius: 6px;
-    background: #1e1821;
+    background: rgba(127, 29, 29, 0.28);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   }
 
   .health-banner.expanded {
@@ -1110,7 +1111,7 @@
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 8px 10px;
     /* On macOS this row sits under the hidden titlebar, so it reserves space
        for the traffic lights and matches the inset titlebar's height. Both
@@ -1118,7 +1119,7 @@
     padding-left: calc(10px + var(--titlebar-inset-left));
     min-height: var(--titlebar-min-h);
     background: var(--chrome-tint);
-    border-bottom: 1px solid #1b2740;
+    border-bottom: 1px solid var(--chrome-hairline);
     flex-shrink: 0;
     /* Stay on one line; when it would overflow we strip the segment values
        (captions only) rather than wrapping onto a second row. */
@@ -1129,36 +1130,43 @@
     flex: 1;
   }
 
-  /* Expanding search: collapsed to a 28px icon button; expands to a field. */
+  /* Expanding search: a ghost icon while collapsed (no box — controls read as
+     part of the chrome band, not islands on it); expands into a sunken field. */
   .search {
     display: flex;
     align-items: center;
-    gap: 7px;
+    justify-content: center;
+    gap: 0;
     height: 28px;
     width: 28px;
     box-sizing: border-box;
-    padding: 0 0 0 7px;
+    padding: 0;
     border-radius: 6px;
-    border: 1px solid #2a3650;
-    background: #162033;
+    border: 1px solid transparent;
+    background: transparent;
     overflow: hidden;
-    cursor: text;
+    cursor: pointer;
     flex-shrink: 0;
-    transition: width 0.18s cubic-bezier(0.2, 0, 0.2, 1), padding 0.18s;
+    transition: width 0.18s cubic-bezier(0.2, 0, 0.2, 1), padding 0.18s, background 0.15s, border-color 0.15s;
+  }
+  .search:not(.open):hover {
+    background: var(--chrome-ctrl-hover);
   }
   .search.open {
     width: 200px;
-    padding-right: 4px;
-  }
-  .search:not(.open) {
-    justify-content: center;
-    gap: 0;
-    padding: 0;
-    cursor: pointer;
+    padding: 0 4px 0 8px;
+    justify-content: flex-start;
+    gap: 7px;
+    border-color: var(--chrome-field-border);
+    background: var(--chrome-field-bg);
+    cursor: text;
   }
   .search-icon {
-    stroke: #7c8aa3;
+    stroke: var(--ctrl-fg-dim);
     flex-shrink: 0;
+  }
+  .search.open .search-icon {
+    stroke: var(--ctrl-fg);
   }
   .search-input {
     flex: 1;
@@ -1189,14 +1197,14 @@
     padding: 0;
     border: none;
     border-radius: 50%;
-    background: #2a3650;
+    background: rgba(148, 163, 184, 0.22);
     color: #cbd5e1;
     font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
     line-height: 1;
     cursor: pointer;
   }
-  .search-clear:hover { background: #34425f; color: #f1f5f9; }
+  .search-clear:hover { background: rgba(148, 163, 184, 0.34); color: #f1f5f9; }
 
   .search-help {
     flex-shrink: 0;
@@ -1218,11 +1226,12 @@
   }
   .search-help:hover,
   .search-help.active {
-    background: #2a3650;
+    background: rgba(148, 163, 184, 0.24);
     color: #93c5fd;
   }
 
-  /* Square icon-button toggles (Show all, Verbose) */
+  /* Borderless icon toggles (Silence, Show all, Verbose): ghost until hovered,
+     tinted while active. One shared visual language with the search icon. */
   .icon-toggle {
     position: relative;
     width: 28px;
@@ -1232,20 +1241,19 @@
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    border: 1px solid #2a3650;
-    background: #162033;
-    color: #94a3b8;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ctrl-fg-dim);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.15s, color 0.15s;
   }
   .icon-toggle:hover {
-    color: #dbe4f0;
-    border-color: #3a496a;
+    color: var(--ctrl-fg);
+    background: var(--chrome-ctrl-hover);
   }
   .icon-toggle.active {
-    color: #bcd9ff;
-    background: rgba(47, 129, 247, 0.18);
-    border-color: rgba(47, 129, 247, 0.45);
+    color: var(--ctrl-fg-active);
+    background: var(--chrome-ctrl-on);
   }
   .icon-toggle:disabled {
     opacity: 0.4;
@@ -1253,8 +1261,8 @@
   }
   .icon-toggle-badge {
     position: absolute;
-    top: -5px;
-    right: -5px;
+    top: -4px;
+    right: -4px;
     min-width: 14px;
     height: 14px;
     padding: 0 3px;
@@ -1266,20 +1274,22 @@
     line-height: 14px;
     text-align: center;
     pointer-events: none;
-    box-shadow: 0 0 0 1px #0f172a;
+    box-shadow: 0 0 0 1px rgba(8, 14, 26, 0.9);
   }
 
-  /* Fused view block: Severity · [Source] · Group · Sort */
+  /* Fused view block: Severity · [Source] · Group · Sort. One quiet capsule
+     keyed to the chrome band instead of a heavy navy slab. */
   .view-block {
     display: inline-flex;
     height: 28px;
-    border: 1px solid #2a3650;
-    border-radius: 6px;
-    background: #162033;
+    border: 1px solid var(--chrome-hairline);
+    border-radius: 7px;
+    background: var(--chrome-capsule-bg);
     flex-shrink: 0;
   }
   .view-block.compact .segment {
     gap: 0;
+    padding: 0 8px;
   }
   .segment-wrap {
     position: relative;
@@ -1288,7 +1298,7 @@
   .segment-wrap + .segment-wrap::before {
     content: '';
     width: 1px;
-    background: #2a3650;
+    background: var(--chrome-hairline);
   }
   .segment {
     display: inline-flex;
@@ -1298,30 +1308,30 @@
     padding: 0 10px;
     background: transparent;
     border: none;
-    color: #dbe4f0;
+    color: var(--ctrl-fg);
     font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .segment-wrap:first-child .segment { border-radius: 5px 0 0 5px; }
-  .segment-wrap:last-child .segment { border-radius: 0 5px 5px 0; }
+  .segment-wrap:first-child .segment { border-radius: 6px 0 0 6px; }
+  .segment-wrap:last-child .segment { border-radius: 0 6px 6px 0; }
   .segment:hover,
   .segment.active {
-    background: rgba(47, 129, 247, 0.12);
+    background: var(--chrome-ctrl-hover);
     color: #f1f5f9;
   }
   .segment.filtered {
-    background: rgba(47, 129, 247, 0.18);
-    color: #bcd9ff;
+    background: var(--chrome-ctrl-on);
+    color: var(--ctrl-fg-active);
   }
   .segment-label {
     font-size: calc(8.5px * var(--font-scale, 1));
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #7c8aa3;
+    color: var(--ctrl-fg-dim);
   }
   .segment.filtered .segment-label { color: #9fc2f5; }
   /* Width tracks the current value's length (via --value-w, in ch), clamped
@@ -1374,9 +1384,9 @@
     box-sizing: border-box;
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
-    color: #475569;
+    color: #64748b;
     background: var(--chrome-tint);
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--chrome-hairline);
     flex-shrink: 0;
     /* Stay on one line: the on-call name truncates rather than wrapping the
        clock/refresh onto a second row. */
@@ -1531,15 +1541,17 @@
     justify-content: center;
     background: none;
     border: none;
-    color: #94a3b8;
+    border-radius: 4px;
+    color: var(--ctrl-fg-dim);
     font-size: calc(14px * var(--font-scale, 1));
     line-height: 1;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    padding: 0 2px;
+    padding: 0 3px;
     cursor: pointer;
+    transition: background 0.15s, color 0.15s;
   }
-  .refresh-btn:hover { background: #1e293b; color: #e2e8f0; }
+  .refresh-btn:hover { background: var(--chrome-ctrl-hover); color: #e2e8f0; }
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .refresh-icon { display: block; }

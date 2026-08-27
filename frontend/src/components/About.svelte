@@ -156,7 +156,7 @@
     padding-left: calc(12px + var(--titlebar-inset-left));
     min-height: var(--titlebar-min-h);
     background: var(--chrome-tint);
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--chrome-hairline);
   }
 
   .back {

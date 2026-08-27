@@ -5,14 +5,11 @@
   --ui-scale: 1;
 
   /* Window chrome geometry. Zero everywhere except macOS, where the titlebar
-     is hidden-inset and the app draws underneath the traffic lights.
-     Full-bleed rows (the filter bar) reserve width beside the lights and match
-     the inset titlebar's height; floating cards (the notification and health
-     banners) are rounded, so insetting their text would look wrong — they drop
-     below the lights instead. */
+     is hidden-inset and the app draws underneath the traffic lights. The
+     filter bar is always the row flush against the lights and reserves width
+     beside them. */
   --titlebar-inset-left: 0px;
   --titlebar-min-h: 0px;
-  --titlebar-clear-top: 0px;
 
   /* Surface layering. On opaque platforms every layer is solid slate; on macOS
      the base goes translucent so the NSVisualEffectView blurs through, and the
@@ -22,12 +19,24 @@
   --surface-alpha: 1;
   --surface-base: rgba(var(--surface-rgb), var(--surface-alpha));
   --chrome-tint: rgb(var(--surface-rgb));
+
+  /* Toolbar control primitives. White overlays (rather than solid navy fills)
+     so controls sit IN the chrome band instead of floating on it as islands;
+     they composite correctly on both the opaque slate and the macOS vibrancy. */
+  --chrome-hairline: rgba(148, 163, 184, 0.16);
+  --chrome-ctrl-hover: rgba(255, 255, 255, 0.07);
+  --chrome-ctrl-on: rgba(96, 165, 250, 0.16);
+  --chrome-capsule-bg: rgba(255, 255, 255, 0.05);
+  --chrome-field-bg: rgba(8, 14, 26, 0.55);
+  --chrome-field-border: rgba(148, 163, 184, 0.22);
+  --ctrl-fg: #dbe4f0;
+  --ctrl-fg-dim: #8fa0b8;
+  --ctrl-fg-active: #bcd9ff;
 }
 
 html[data-platform="darwin"] {
   --titlebar-inset-left: 76px;
   --titlebar-min-h: 52px;
-  --titlebar-clear-top: 30px;
   --surface-alpha: 0.72;
   --chrome-tint: rgba(255, 255, 255, 0.035);
 }
@@ -67,20 +76,14 @@ html[data-platform="darwin"], html[data-platform="darwin"] body {
   user-select: none;
 }
 
-/* Only the topmost row may claim the clearance; the rows beneath it get the
-   variables zeroed back out. They stay draggable — dragging the window by any
-   chrome row is useful on every platform.
-
-   Within a view the banners and the filter bar are siblings, so the general
-   sibling combinator picks the first one automatically and keeps working when
-   another banner is added later. */
-.titlebar-zone ~ .titlebar-zone,
-/* The config-diagnostics banner lives in <main>, a level above the view, so it
-   cannot be caught by the sibling rule. When it is showing it owns the top. */
+/* The filter bar is the topmost zone of the list view under every in-view
+   state — the notification and health banners render below the chrome rows —
+   so the only case where another row owns the top is the config-diagnostics
+   banner, which lives in <main>, a level above the view. When it is showing
+   it claims the traffic-light inset and the view's own rows are zeroed. */
 main.banner-on-top .view .titlebar-zone {
   --titlebar-inset-left: 0px;
   --titlebar-min-h: 0px;
-  --titlebar-clear-top: 0px;
 }
 
 /* --wails-draggable is a CSS custom property, so it INHERITS: without this,
