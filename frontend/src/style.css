@@ -11,6 +11,18 @@
   --titlebar-inset-left: 0px;
   --titlebar-min-h: 0px;
 
+  /* One horizontal grid for the whole window, so the chrome band lines up with
+     the list under it instead of using its own arbitrary padding.
+       --chrome-gutter  the window's content margin (matches .alerts-scroll),
+                        so a control's trailing edge lands on the same vertical
+                        line as an alert card's trailing edge.
+       --chrome-text-x  the text column. Set to the traffic lights' own left
+                        edge, so the lights, the alert count and the group
+                        dots below all hang off one line; .group-header trims
+                        its left padding to meet it. */
+  --chrome-gutter: 8px;
+  --chrome-text-x: 12px;
+
   /* Surface layering. On opaque platforms every layer is solid slate; on macOS
      the base goes translucent so the NSVisualEffectView blurs through, and the
      chrome rows switch from a solid fill to a light tint so they still read as
@@ -35,10 +47,17 @@
 }
 
 html[data-platform="darwin"] {
+  /* Measured off the real hidden-inset panel, not the standard document-window
+     figure: the lights are three 12px buttons running x=12..64 with 8px gaps
+     (a document window would start them at 20px). Reserving 76px leaves 12px
+     of clear space past the green light, which the toolbar's own gutter then
+     extends — the step from the lights to the first icon has to stay the
+     largest gap in the row, since it separates OS chrome from app chrome. */
   --titlebar-inset-left: 76px;
-  /* Floor sized so a bar padded 3px around 30px controls puts the controls'
-     optical center (18px) on the traffic lights' center, which macOS fixes
-     at ~18px from the window top in a hidden-inset titlebar. */
+  /* Floor sized so a 28px control box centres on the lights. Their centre
+     measures 18.8px from the window top, so the bar pads 5px above and 3px
+     below rather than 4/4 — symmetric padding lands the controls 0.8px high,
+     which is what made them read as floating in the first place. */
   --titlebar-min-h: 36px;
   --surface-alpha: 0.72;
   --chrome-tint: rgba(255, 255, 255, 0.035);

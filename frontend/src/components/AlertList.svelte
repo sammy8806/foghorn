@@ -561,235 +561,244 @@
 <svelte:window on:click={closeAllMenus} on:keydown={handleGlobalKeydown} />
 
 <div class="alert-list-container">
-  <!-- Filter & view controls -->
-  <div class="filter-bar titlebar-zone" bind:this={filterBarEl} on:dblclick={handleChromeDoubleClick}>
-    <!-- Expanding search: collapsed to an icon, click to expand. -->
-    <div
-      class="search"
-      bind:this={searchEl}
-      class:open={searchOpen}
-      on:click={openSearch}
-      on:focusout={onSearchFocusOut}
-      on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
-      on:transitionend={onSearchTransitionEnd}
-      role="button"
-      aria-label="Filter alerts"
-      title="Filter alerts (Ctrl/⌘+F)"
-      tabindex={searchOpen ? -1 : 0}
-    >
-      <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
-      <input
-        class="search-input"
-        type="text"
-        placeholder="Filter alerts…"
-        bind:this={searchInputEl}
-        bind:value={$filter.text}
-      />
-      {#if searchOpen}
-        <button
-          class="search-help"
-          type="button"
-          class:active={searchHelpOpen}
-          on:mousedown|stopPropagation={(e) => e.preventDefault()}
-          on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
-          title="Search syntax help"
-          aria-label="Search syntax help"
-          aria-expanded={searchHelpOpen}
-        >?</button>
-      {/if}
-      {#if hasSearchText}
-        <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
-      {/if}
-    </div>
-
-    <!-- Create a silence from the current search, or start one from scratch. -->
-    <button
-      class="icon-toggle"
-      disabled={!canOpenSilenceEditor}
-      on:click={silenceFromSearch}
-      title={silenceFromSearchTitle}
-      aria-label="Silence from search"
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
-    </button>
-
-    <!-- Icon-button toggles -->
-    <button
-      class="icon-toggle"
-      class:active={$filter.showAll}
-      on:click={toggleShowAll}
-      title={showAllTitle}
-      aria-label={$filter.showAll
-        ? 'Showing all alerts; return to default view'
-        : hiddenByFiltersCount > 0
-          ? `Show all alerts, ${hiddenByFiltersCount} hidden`
-          : 'Show all alerts'}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-      {#if hiddenByFiltersCount > 0}
-        <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
-      {/if}
-    </button>
-    <button
-      class="icon-toggle"
-      class:active={$verbose}
-      on:click={() => verbose.update(v => !v)}
-      title="Toggle verbose display"
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>
-    </button>
-
-    <div class="filter-spacer"></div>
-
-    <!-- Fused view block: Severity · [Source] · Group · Sort -->
-    <div class="view-block" class:compact={widthCompact}>
-      <div class="segment-wrap">
-        <button
-          class="segment"
-          class:active={severityMenuOpen}
-          class:filtered={$filter.severity !== 'all'}
-          on:click|stopPropagation={() => openMenu('severity')}
-          title="Filter by severity"
-        >
-          <span class="segment-label">Severity</span>
-          <span class="segment-value" style="--value-w: {severityValueWidthCh}">{severityText}</span>
-          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-        </button>
-        {#if severityMenuOpen}
-          <div class="filter-menu">
-            <button class="filter-menu-option" class:selected={$filter.severity === 'all'} on:click|stopPropagation={() => setSeverityFilter('all')}>
-              <span>All severities</span>
-              {#if $filter.severity === 'all'}<span class="filter-menu-check">✓</span>{/if}
-            </button>
-            {#each $severityConfig.levels as level}
-              <button class="filter-menu-option" class:selected={$filter.severity === level.name} on:click|stopPropagation={() => setSeverityFilter(level.name)}>
-                <span>{severityLabel(level.name)}</span>
-                {#if $filter.severity === level.name}<span class="filter-menu-check">✓</span>{/if}
-              </button>
-            {/each}
-          </div>
+  <!-- Top chrome: the toolbar and the status line are one band, not two
+     stacked rows of chrome. The tint and the single hairline belong to
+     <header>; the rows inside are told apart by rhythm and type weight. -->
+  <header class="chrome">
+    <!-- Filter & view controls -->
+    <div class="filter-bar titlebar-zone" bind:this={filterBarEl} on:dblclick={handleChromeDoubleClick}>
+      <!-- Expanding search: collapsed to an icon, click to expand. -->
+      <div
+        class="search"
+        bind:this={searchEl}
+        class:open={searchOpen}
+        on:click={openSearch}
+        on:focusout={onSearchFocusOut}
+        on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
+        on:transitionend={onSearchTransitionEnd}
+        role="button"
+        aria-label="Filter alerts"
+        title="Filter alerts (Ctrl/⌘+F)"
+        tabindex={searchOpen ? -1 : 0}
+      >
+        <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Filter alerts…"
+          bind:this={searchInputEl}
+          bind:value={$filter.text}
+        />
+        {#if searchOpen}
+          <button
+            class="search-help"
+            type="button"
+            class:active={searchHelpOpen}
+            on:mousedown|stopPropagation={(e) => e.preventDefault()}
+            on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
+            title="Search syntax help"
+            aria-label="Search syntax help"
+            aria-expanded={searchHelpOpen}
+          >?</button>
+        {/if}
+        {#if hasSearchText}
+          <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
         {/if}
       </div>
 
-      {#if $availableSources.length > 1}
+      <!-- Create a silence from the current search, or start one from scratch. -->
+      <button
+        class="icon-toggle"
+        disabled={!canOpenSilenceEditor}
+        on:click={silenceFromSearch}
+        title={silenceFromSearchTitle}
+        aria-label="Silence from search"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+      </button>
+
+      <!-- Icon-button toggles -->
+      <button
+        class="icon-toggle"
+        class:active={$filter.showAll}
+        on:click={toggleShowAll}
+        title={showAllTitle}
+        aria-label={$filter.showAll
+          ? 'Showing all alerts; return to default view'
+          : hiddenByFiltersCount > 0
+            ? `Show all alerts, ${hiddenByFiltersCount} hidden`
+            : 'Show all alerts'}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        {#if hiddenByFiltersCount > 0}
+          <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
+        {/if}
+      </button>
+      <button
+        class="icon-toggle"
+        class:active={$verbose}
+        on:click={() => verbose.update(v => !v)}
+        title="Toggle verbose display"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="15" y2="18"></line></svg>
+      </button>
+
+      <div class="filter-spacer"></div>
+
+      <!-- Fused view block: Severity · [Source] · Group · Sort -->
+      <div class="view-block" class:compact={widthCompact}>
         <div class="segment-wrap">
           <button
             class="segment"
-            class:active={sourceMenuOpen}
-            class:filtered={$filter.source !== 'all'}
-            on:click|stopPropagation={() => openMenu('source')}
-            title="Filter by source"
+            class:active={severityMenuOpen}
+            class:filtered={$filter.severity !== 'all'}
+            on:click|stopPropagation={() => openMenu('severity')}
+            title="Filter by severity"
           >
-            <span class="segment-label">Source</span>
-            <span class="segment-value" style="--value-w: {sourceValueWidthCh}">{sourceText}</span>
+            <span class="segment-label">Severity</span>
+            <span class="segment-value" style="--value-w: {severityValueWidthCh}">{severityText}</span>
             <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
           </button>
-          {#if sourceMenuOpen}
+          {#if severityMenuOpen}
             <div class="filter-menu">
-              <button class="filter-menu-option" class:selected={$filter.source === 'all'} on:click|stopPropagation={() => setSourceFilter('all')}>
-                <span>All sources</span>
-                {#if $filter.source === 'all'}<span class="filter-menu-check">✓</span>{/if}
+              <button class="filter-menu-option" class:selected={$filter.severity === 'all'} on:click|stopPropagation={() => setSeverityFilter('all')}>
+                <span>All severities</span>
+                {#if $filter.severity === 'all'}<span class="filter-menu-check">✓</span>{/if}
               </button>
-              {#each $availableSources as src}
-                <button class="filter-menu-option" class:selected={$filter.source === src} on:click|stopPropagation={() => setSourceFilter(src)}>
-                  <span>{src}</span>
-                  {#if $filter.source === src}<span class="filter-menu-check">✓</span>{/if}
+              {#each $severityConfig.levels as level}
+                <button class="filter-menu-option" class:selected={$filter.severity === level.name} on:click|stopPropagation={() => setSeverityFilter(level.name)}>
+                  <span>{severityLabel(level.name)}</span>
+                  {#if $filter.severity === level.name}<span class="filter-menu-check">✓</span>{/if}
                 </button>
               {/each}
             </div>
           {/if}
         </div>
-      {/if}
 
-      <div class="segment-wrap">
-        <button
-          class="segment"
-          class:active={groupMenuOpen}
-          class:filtered={$activeGroupMode !== 'default'}
-          on:click|stopPropagation={() => openMenu('group')}
-          title="Change alert grouping"
-        >
-          <span class="segment-label">Group</span>
-          <span class="segment-value" style="--value-w: {groupValueWidthCh}">{currentGroupLabel}</span>
-          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-        </button>
-        {#if groupMenuOpen}
-          <div class="filter-menu">
-            {#each GROUP_PRESET_OPTIONS as option}
-              <button class="filter-menu-option" class:selected={$activeGroupMode === option.mode} on:click|stopPropagation={() => setGroupMode(option.mode)}>
-                <span>{option.label}</span>
-                {#if $activeGroupMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
-              </button>
-            {/each}
+        {#if $availableSources.length > 1}
+          <div class="segment-wrap">
+            <button
+              class="segment"
+              class:active={sourceMenuOpen}
+              class:filtered={$filter.source !== 'all'}
+              on:click|stopPropagation={() => openMenu('source')}
+              title="Filter by source"
+            >
+              <span class="segment-label">Source</span>
+              <span class="segment-value" style="--value-w: {sourceValueWidthCh}">{sourceText}</span>
+              <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+            </button>
+            {#if sourceMenuOpen}
+              <div class="filter-menu">
+                <button class="filter-menu-option" class:selected={$filter.source === 'all'} on:click|stopPropagation={() => setSourceFilter('all')}>
+                  <span>All sources</span>
+                  {#if $filter.source === 'all'}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+                {#each $availableSources as src}
+                  <button class="filter-menu-option" class:selected={$filter.source === src} on:click|stopPropagation={() => setSourceFilter(src)}>
+                    <span>{src}</span>
+                    {#if $filter.source === src}<span class="filter-menu-check">✓</span>{/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
-      </div>
 
-      <div class="segment-wrap">
-        <button
-          class="segment"
-          class:active={sortMenuOpen}
-          class:filtered={$activeSortMode !== 'default'}
-          on:click|stopPropagation={() => openMenu('sort')}
-          title="Change alert sort order"
-        >
-          <span class="segment-label">Sort</span>
-          <span class="segment-value" style="--value-w: {sortValueWidthCh}">{currentSortLabel}</span>
-          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-        </button>
-        {#if sortMenuOpen}
-          <div class="filter-menu">
-            {#each SORT_PRESET_OPTIONS as option}
-              <button class="filter-menu-option" class:selected={$activeSortMode === option.mode} on:click|stopPropagation={() => setSortMode(option.mode)}>
-                <span>{option.label}</span>
-                {#if $activeSortMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
+        <div class="segment-wrap">
+          <button
+            class="segment"
+            class:active={groupMenuOpen}
+            class:filtered={$activeGroupMode !== 'default'}
+            on:click|stopPropagation={() => openMenu('group')}
+            title="Change alert grouping"
+          >
+            <span class="segment-label">Group</span>
+            <span class="segment-value" style="--value-w: {groupValueWidthCh}">{currentGroupLabel}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          </button>
+          {#if groupMenuOpen}
+            <div class="filter-menu">
+              {#each GROUP_PRESET_OPTIONS as option}
+                <button class="filter-menu-option" class:selected={$activeGroupMode === option.mode} on:click|stopPropagation={() => setGroupMode(option.mode)}>
+                  <span>{option.label}</span>
+                  {#if $activeGroupMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="segment-wrap">
+          <button
+            class="segment"
+            class:active={sortMenuOpen}
+            class:filtered={$activeSortMode !== 'default'}
+            on:click|stopPropagation={() => openMenu('sort')}
+            title="Change alert sort order"
+          >
+            <span class="segment-label">Sort</span>
+            <span class="segment-value" style="--value-w: {sortValueWidthCh}">{currentSortLabel}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          </button>
+          {#if sortMenuOpen}
+            <div class="filter-menu">
+              {#each SORT_PRESET_OPTIONS as option}
+                <button class="filter-menu-option" class:selected={$activeSortMode === option.mode} on:click|stopPropagation={() => setSortMode(option.mode)}>
+                  <span>{option.label}</span>
+                  {#if $activeSortMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Status bar -->
-  <div class="status-bar">
-    {#if $loading}
-      <span class="status-loading">Loading…</span>
-    {:else if $error}
-      <span class="status-error">Error: {$error}</span>
-    {:else}
-      <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
-      {#if newVisibleCount > 0}
-        <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
-          <span class="status-chip-x" aria-hidden="true">×</span>
-          {newVisibleCount} New
-        </button>
-      {/if}
-      {#if resolvedVisibleCount > 0}
-        <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
-          <span class="status-chip-x" aria-hidden="true">×</span>
-          {resolvedVisibleCount} Resolved
-        </button>
-      {/if}
+    <!-- Status bar -->
+    <div class="status-bar">
+      {#if $loading}
+        <span class="status-loading">Loading…</span>
+      {:else if $error}
+        <span class="status-error">Error: {$error}</span>
+      {:else}
+        <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+        {#if newVisibleCount > 0}
+          <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
+            <span class="status-chip-x" aria-hidden="true">×</span>
+            {newVisibleCount} New
+          </button>
+        {/if}
+        {#if resolvedVisibleCount > 0}
+          <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
+            <span class="status-chip-x" aria-hidden="true">×</span>
+            {resolvedVisibleCount} Resolved
+          </button>
+        {/if}
 
-      <div class="status-spacer"></div>
+        <div class="status-spacer"></div>
 
-      {#if $onCallStatus.length > 0}
-        <span class="status-oncall-label">On call</span>
-        <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
+        {#if $onCallStatus.length > 0}
+          <span class="status-oncall-label">On call</span>
+          <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
+        {/if}
+        <!-- The health dot is the refresh control's state light, so the two
+           are one unit: tight together, set apart from the on-call name. -->
+        <div class="status-health">
+          <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
+            class:refresh-ok={allSourcesOK && !refreshing}
+            class:refresh-fail={anySourceFailing && !refreshing}
+            class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
+          >●</span>
+          <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
+            <svg class="refresh-icon" class:spinning={refreshing} viewBox="0 0 640 640" width="14" height="14" fill="currentColor">
+              <path d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z" />
+            </svg>
+          </button>
+        </div>
       {/if}
-      <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
-        class:refresh-ok={allSourcesOK && !refreshing}
-        class:refresh-fail={anySourceFailing && !refreshing}
-        class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
-      >●</span>
-      <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
-        <svg class="refresh-icon" class:spinning={refreshing} viewBox="0 0 640 640" width="14" height="14" fill="currentColor">
-          <path d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z" />
-        </svg>
-      </button>
-    {/if}
-  </div>
+    </div>
+  </header>
 
   <!-- Notification + health banners. These sit below the chrome rows (not
      above the filter bar) so the filter bar stays the topmost element and the
@@ -1108,36 +1117,37 @@
     margin-top: 3px;
   }
 
+  /* The toolbar and the status line are one chrome band. Painting the tint
+     and the closing hairline once, here, is what keeps them from reading as
+     two stacked lids; the rows themselves are transparent. */
+  .chrome {
+    flex-shrink: 0;
+    background: var(--chrome-tint);
+    border-bottom: 1px solid var(--chrome-hairline);
+  }
+
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 4px 10px;
+    /* Tight inside the icon cluster; .search opens the gap to the toggles so
+       the left side reads as two shapes rather than four loose glyphs. */
+    gap: 3px;
     /* On macOS this row sits under the hidden titlebar, so it reserves space
-       for the traffic lights and matches the inset titlebar's height. Both
-       variables are 0 on platforms that draw their own titlebar. */
-    padding-left: calc(10px + var(--titlebar-inset-left));
+       for the traffic lights and matches the inset titlebar's height; both
+       variables are 0 on platforms that draw their own titlebar. The 5/3
+       vertical padding is deliberately lopsided: it centres the 28px controls
+       at 19px, on the traffic lights' measured 18.8px centre line. */
+    padding: 5px var(--chrome-gutter) 3px calc(var(--chrome-gutter) + var(--titlebar-inset-left));
     min-height: var(--titlebar-min-h);
-    background: var(--chrome-tint);
-    border-bottom: 1px solid var(--chrome-hairline);
-    flex-shrink: 0;
     /* Stay on one line; when it would overflow we strip the segment values
        (captions only) rather than wrapping onto a second row. */
     flex-wrap: nowrap;
   }
 
-  /* macOS: the traffic lights sit ~18px from the window top; 4px padding
-     around the 28px controls puts their optical center on the lights' line
-     while keeping breathing room inside the 36px band. */
-  :global(html[data-platform="darwin"]) .filter-bar {
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-
   .filter-spacer {
     flex: 1;
-    /* Splits the row into two anchored clusters: action icons on the left,
-       the view capsule on the right. */
+    /* Holds the two clusters apart once the row is tight enough that the
+       spacer itself has collapsed to nothing. */
     margin-left: 9px;
   }
 
@@ -1150,6 +1160,9 @@
     align-items: center;
     justify-content: center;
     gap: 0;
+    /* The one control that changes shape, so it sits off on its own: the row
+       gap is 3px, this makes the step to the toggles 10px. */
+    margin-right: 7px;
     height: 28px;
     width: 28px;
     box-sizing: border-box;
@@ -1244,11 +1257,25 @@
   }
 
   /* Borderless icon toggles (Silence, Show all, Verbose): ghost until hovered,
-     tinted while active. One shared visual language with the search icon. */
+     tinted while active. One shared visual language with the search icon.
+
+     Every glyph in this row is Feather at its native 24-unit geometry, drawn at
+     15px with a 2px stroke. Keep them there. Feather centres each icon's ink box
+     on y=12, which is what puts them all on one line inside these 28px boxes —
+     hand-tweaking a radius or a rule position breaks that silently, because the
+     box stays centred while the artwork inside it stops being. The magnifier is
+     the trap: its round line cap always reaches y=22, so shrinking the circle
+     drops the ink box's centre below 12 and the glyph sags. */
   .icon-toggle {
     position: relative;
     width: 28px;
     height: 28px;
+    /* WebKit's UA sheet gives <button> an asymmetric 2px/3px block padding.
+       With box-sizing:border-box and a fixed height that shifts the content
+       box — and so the glyph — half a pixel up, which is why these three sat
+       above the traffic lights while .search (a div, padding:0) did not.
+       Blink pads 1px/1px, so the bug is invisible outside WKWebView. */
+    padding: 0;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -1398,13 +1425,14 @@
     align-items: center;
     align-content: center;
     gap: 8px;
-    padding: 7px 10px;
+    /* Left edge is the shared text column, so the count sits above the group
+       labels it counts. The trailing gutter gives back the refresh button's
+       own 3px padding, putting its glyph on the view capsule's edge. */
+    padding: 5px calc(var(--chrome-gutter) - 3px) 8px var(--chrome-text-x);
     box-sizing: border-box;
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
     color: #64748b;
-    background: var(--chrome-tint);
-    border-bottom: 1px solid var(--chrome-hairline);
     flex-shrink: 0;
     /* Stay on one line: the on-call name truncates rather than wrapping the
        clock/refresh onto a second row. */
@@ -1414,9 +1442,16 @@
   .status-count,
   .status-chip,
   .status-oncall-label,
-  .refresh-status,
-  .refresh-btn {
+  .status-health {
     flex-shrink: 0;
+  }
+
+  /* State light + refresh, read as one control. */
+  .status-health {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
   }
   .status-spacer {
     flex: 1;
@@ -1544,6 +1579,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 12px;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     font-size: calc(9px * var(--font-scale, 1));
