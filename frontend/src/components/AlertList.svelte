@@ -45,6 +45,7 @@
   import { platform, syncPlatform } from '../stores/platform';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
+  import ConfigDiagnostics from './ConfigDiagnostics.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
   import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
@@ -800,9 +801,11 @@
     </div>
   </header>
 
-  <!-- Notification + health banners. These sit below the chrome rows (not
-     above the filter bar) so the filter bar stays the topmost element and the
-     macOS traffic lights always align with the same row. -->
+  <!-- Notification, config and health cards. These sit below the chrome rows
+     (not above the filter bar) so the filter bar stays the topmost element and
+     the macOS traffic lights always align with the same row. -->
+  <ConfigDiagnostics />
+
   {#if showNotificationInfoCard}
     <div class="info-card info-card-warning">
       <div class="info-card-copy">
@@ -932,12 +935,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    /* Sits below the chrome rows, above the alert content. */
+    /* Sits below the chrome rows, above the alert content. Same inset card
+       language as the health banner and the config-problems card. */
     margin: 8px 8px 0;
     padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid #7c2d12;
-    background: linear-gradient(135deg, rgba(120, 53, 15, 0.22), rgba(30, 41, 59, 0.92));
+    border-radius: 6px;
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    background: rgba(120, 53, 15, 0.28);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   }
 
@@ -946,28 +950,28 @@
   }
 
   .info-card-title {
-    color: #fed7aa;
-    font-size: calc(12px * var(--font-scale, 1));
+    color: #fde68a;
+    font-size: calc(11px * var(--font-scale, 1));
     font-weight: 700;
   }
 
   .info-card-text {
-    color: #fdba74;
+    color: #fcd34d;
     font-size: calc(11px * var(--font-scale, 1));
     margin-top: 2px;
   }
 
   .info-card-detail-error {
-    color: #fecaca;
+    color: #fca5a5;
     font-size: calc(11px * var(--font-scale, 1));
     margin-top: 4px;
   }
 
   .info-card-action {
     flex-shrink: 0;
-    border: 1px solid #fb923c;
-    background: rgba(251, 146, 60, 0.12);
-    color: #ffedd5;
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    background: rgba(251, 191, 36, 0.12);
+    color: #fde68a;
     border-radius: 6px;
     padding: 6px 10px;
     font-size: calc(11px * var(--font-scale, 1));
@@ -976,7 +980,7 @@
   }
 
   .info-card-action:hover {
-    background: rgba(251, 146, 60, 0.2);
+    background: rgba(251, 191, 36, 0.2);
   }
 
   .health-banner {

@@ -87,11 +87,11 @@ html[data-platform="darwin"], html[data-platform="darwin"] body {
 }
 
 /* Applied to every element that can end up flush against the top of the window
-   (the filter bar, the config-diagnostics banner, the About header). It marks
-   the row as a native drag region; the traffic-light inset itself is applied by
-   each component's own scoped CSS, which reads --titlebar-inset-left and
-   --titlebar-min-h. Doing it that way avoids fighting the specificity of the
-   scoped `padding` shorthands these rows already set. */
+   (the filter bar, the About header). It marks the row as a native drag
+   region; the traffic-light inset itself is applied by each component's own
+   scoped CSS, which reads --titlebar-inset-left and --titlebar-min-h. Doing it
+   that way avoids fighting the specificity of the scoped `padding` shorthands
+   these rows already set. */
 .titlebar-zone {
   --wails-draggable: drag;
   -webkit-user-select: none;
@@ -99,14 +99,8 @@ html[data-platform="darwin"], html[data-platform="darwin"] body {
 }
 
 /* The filter bar is the topmost zone of the list view under every in-view
-   state — the notification and health banners render below the chrome rows —
-   so the only case where another row owns the top is the config-diagnostics
-   banner, which lives in <main>, a level above the view. When it is showing
-   it claims the traffic-light inset and the view's own rows are zeroed. */
-main.banner-on-top .view .titlebar-zone {
-  --titlebar-inset-left: 0px;
-  --titlebar-min-h: 0px;
-}
+   state — the notification, config and health cards render below the chrome
+   rows — and the About header is the topmost zone of the about view. */
 
 /* --wails-draggable is a CSS custom property, so it INHERITS: without this,
    every control inside a drag region drags the window instead of activating.

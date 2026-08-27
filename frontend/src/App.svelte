@@ -4,8 +4,7 @@
   import { isWails, waitForBridge } from './stores/alerts';
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
-  import ConfigDiagnostics from './components/ConfigDiagnostics.svelte';
-  import { initConfigDiagnostics, visibleConfigDiagnostics } from './stores/diagnostics';
+  import { initConfigDiagnostics } from './stores/diagnostics';
   import { syncPlatform } from './stores/platform';
   import { initUIScale, uiScale } from './stores/uiScale';
   import { safeExternalURL } from './utils/url';
@@ -71,8 +70,7 @@
   });
 </script>
 
-<main class:banner-on-top={!!$visibleConfigDiagnostics}>
-  <ConfigDiagnostics />
+<main>
   <div class="view">
     {#if view === 'about'}
       <About on:back={() => (view = 'list')} />
