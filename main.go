@@ -160,12 +160,29 @@ func main() {
 		},
 		Windows: &windows.Options{
 			WebviewUserDataPath: webviewUserDataPath(),
+			// Without this the system paints a light titlebar above a dark app.
+			Theme: windows.Dark,
+			// Windows 11 22621+ only; older builds ignore it. The webview stays
+			// opaque, so this affects the frame rather than showing through.
+			BackdropType: windows.Acrylic,
 		},
-		// Without Mac options Wails treats the window as non-zoomable and
-		// disables the zoom button, which also breaks the standard macOS
-		// double-click-titlebar-to-zoom gesture. An empty options struct
-		// (DisableZoom: false) restores both.
-		Mac: &mac.Options{},
+		// DisableZoom must stay false: Wails treats the window as non-zoomable
+		// without Mac options, which disables the zoom button and the standard
+		// double-click-titlebar-to-zoom gesture.
+		//
+		// TitleBarHiddenInset keeps the real titlebar (so zoom, fullscreen and
+		// the traffic lights remain native) but makes it transparent and lets
+		// the webview draw full-height underneath, with the traffic lights
+		// inset over the app's own toolbar. The transparent webview plus a
+		// translucent window is what puts an NSVisualEffectView behind the
+		// content for native vibrancy; the frontend keeps its surfaces
+		// semi-transparent to match (see --surface-alpha in style.css).
+		Mac: &mac.Options{
+			TitleBar:             mac.TitleBarHiddenInset(),
+			Appearance:           mac.NSAppearanceNameDarkAqua,
+			WebviewIsTransparent: true,
+			WindowIsTranslucent:  true,
+		},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			setDockIconVisible(!startHidden)

@@ -3,23 +3,101 @@
 :root {
   --font-scale: 1;
   --ui-scale: 1;
+
+  /* Window chrome geometry. Zero everywhere except macOS, where the titlebar
+     is hidden-inset and the app draws underneath the traffic lights.
+     Full-bleed rows (the filter bar) reserve width beside the lights and match
+     the inset titlebar's height; floating cards (the notification and health
+     banners) are rounded, so insetting their text would look wrong — they drop
+     below the lights instead. */
+  --titlebar-inset-left: 0px;
+  --titlebar-min-h: 0px;
+  --titlebar-clear-top: 0px;
+
+  /* Surface layering. On opaque platforms every layer is solid slate; on macOS
+     the base goes translucent so the NSVisualEffectView blurs through, and the
+     chrome rows switch from a solid fill to a light tint so they still read as
+     chrome without stacking a second layer of opacity on top of the base. */
+  --surface-rgb: 15, 23, 42;
+  --surface-alpha: 1;
+  --surface-base: rgba(var(--surface-rgb), var(--surface-alpha));
+  --chrome-tint: rgb(var(--surface-rgb));
+}
+
+html[data-platform="darwin"] {
+  --titlebar-inset-left: 76px;
+  --titlebar-min-h: 52px;
+  --titlebar-clear-top: 30px;
+  --surface-alpha: 0.72;
+  --chrome-tint: rgba(255, 255, 255, 0.035);
 }
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #0f172a;
+  background: rgb(var(--surface-rgb));
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: calc(13px * var(--font-scale, 1));
   -webkit-font-smoothing: antialiased;
 }
 
+/* Let the vibrancy view behind the webview show through. The opaque fill moves
+   to <main>, which is the single layer that defines the window's tint. */
+html[data-platform="darwin"], html[data-platform="darwin"] body {
+  background: transparent;
+}
+
 #app { height: 100%; }
 
 #app.scale-interface {
   zoom: var(--ui-scale);
+}
+
+/* Applied to every element that can end up flush against the top of the window
+   (the filter bar, the config-diagnostics banner, the About header). It marks
+   the row as a native drag region; the traffic-light inset itself is applied by
+   each component's own scoped CSS, which reads --titlebar-inset-left and
+   --titlebar-min-h. Doing it that way avoids fighting the specificity of the
+   scoped `padding` shorthands these rows already set. */
+.titlebar-zone {
+  --wails-draggable: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Only the topmost row may claim the clearance; the rows beneath it get the
+   variables zeroed back out. They stay draggable — dragging the window by any
+   chrome row is useful on every platform.
+
+   Within a view the banners and the filter bar are siblings, so the general
+   sibling combinator picks the first one automatically and keeps working when
+   another banner is added later. */
+.titlebar-zone ~ .titlebar-zone,
+/* The config-diagnostics banner lives in <main>, a level above the view, so it
+   cannot be caught by the sibling rule. When it is showing it owns the top. */
+main.banner-on-top .view .titlebar-zone {
+  --titlebar-inset-left: 0px;
+  --titlebar-min-h: 0px;
+  --titlebar-clear-top: 0px;
+}
+
+/* --wails-draggable is a CSS custom property, so it INHERITS: without this,
+   every control inside a drag region drags the window instead of activating.
+   Anything interactive has to opt back out explicitly. */
+.titlebar-zone button,
+.titlebar-zone a,
+.titlebar-zone input,
+.titlebar-zone select,
+.titlebar-zone textarea,
+.titlebar-zone label,
+.titlebar-zone [role="button"],
+.titlebar-zone .filter-menu,
+.titlebar-zone .search {
+  --wails-draggable: no-drag;
+  -webkit-user-select: auto;
+  user-select: auto;
 }
 
 ::-webkit-scrollbar { width: 6px; }

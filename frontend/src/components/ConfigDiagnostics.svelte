@@ -6,7 +6,7 @@
 </script>
 
 {#if $visibleConfigDiagnostics}
-  <section class="diagnostics" role="alert" aria-labelledby="config-diagnostics-title">
+  <section class="diagnostics titlebar-zone" role="alert" aria-labelledby="config-diagnostics-title">
     <div class="heading">
       <div>
         <strong id="config-diagnostics-title">Config problems</strong>
@@ -40,6 +40,10 @@
     background: #422006;
     border-bottom: 1px solid #92400e;
     padding: 9px 12px 8px;
+    /* When this banner is showing it is the row flush against the hidden
+       macOS titlebar, so it is the one that reserves the traffic-light inset. */
+    padding-left: calc(12px + var(--titlebar-inset-left));
+    min-height: var(--titlebar-min-h);
   }
 
   .heading,

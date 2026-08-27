@@ -77,7 +77,7 @@
 </script>
 
 <section class="about">
-  <header>
+  <header class="titlebar-zone">
     <button class="back" type="button" on:click={() => dispatch('back')}>← Back</button>
   </header>
 
@@ -148,7 +148,14 @@
   }
 
   header {
+    display: flex;
+    align-items: center;
     padding: 8px 12px;
+    /* Topmost row of the About view, so it carries the macOS traffic-light
+       inset the same way the filter bar does in the list view. */
+    padding-left: calc(12px + var(--titlebar-inset-left));
+    min-height: var(--titlebar-min-h);
+    background: var(--chrome-tint);
     border-bottom: 1px solid #1e293b;
   }
 

@@ -41,7 +41,8 @@
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission } from '../../wailsjs/go/main/App';
-  import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
+  import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
+  import { platform, syncPlatform } from '../stores/platform';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
@@ -67,8 +68,16 @@
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
     const environment = await Environment();
-    environmentPlatform = environment.platform;
     environmentBuildType = environment.buildType;
+    await syncPlatform();
+  }
+
+  // macOS hides the titlebar, so the standard double-click-to-zoom gesture has
+  // to be re-implemented on the drag region that replaced it. Other platforms
+  // keep their native titlebar and already have the gesture there.
+  function handleChromeDoubleClick() {
+    if ($platform !== 'darwin' || !isWails()) return;
+    WindowToggleMaximise();
   }
 
   async function syncNotificationPermissionStatus() {
@@ -356,7 +365,7 @@
   $: anySourceFailing = failingSources.length > 0;
   $: showHealthBanner = anySourceFailing && !$loading;
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
-  $: isMacOSDevMode = environmentPlatform === 'darwin' && (
+  $: isMacOSDevMode = $platform === 'darwin' && (
     normalizedBuildType === 'dev' ||
     normalizedBuildType === 'development'
   );
@@ -553,7 +562,7 @@
 
 <div class="alert-list-container">
   {#if showNotificationInfoCard}
-    <div class="info-card info-card-warning">
+    <div class="info-card info-card-warning titlebar-zone">
       <div class="info-card-copy">
         <div class="info-card-title">{notificationInfoTitle}</div>
         <div class="info-card-text">{notificationInfoText}</div>
@@ -568,7 +577,7 @@
   {/if}
 
   {#if showHealthBanner}
-    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
+    <div class="health-banner titlebar-zone" class:expanded={healthBannerExpanded} role="alert">
       <button
         class="health-banner-summary"
         on:click={() => healthBannerExpanded = !healthBannerExpanded}
@@ -606,7 +615,7 @@
   {/if}
 
   <!-- Filter & view controls -->
-  <div class="filter-bar" bind:this={filterBarEl}>
+  <div class="filter-bar titlebar-zone" bind:this={filterBarEl} on:dblclick={handleChromeDoubleClick}>
     <!-- Expanding search: collapsed to an icon, click to expand. -->
     <div
       class="search"
@@ -912,6 +921,9 @@
     justify-content: space-between;
     gap: 12px;
     margin: 8px 8px 0;
+    /* Clears the macOS traffic lights when this card is the topmost element.
+       Zero on other platforms and when a banner above it already claimed it. */
+    margin-top: calc(8px + var(--titlebar-clear-top));
     padding: 10px 12px;
     border-radius: 8px;
     border: 1px solid #7c2d12;
@@ -962,6 +974,8 @@
     align-items: center;
     gap: 10px;
     margin: 8px 8px 0;
+    /* See .info-card: clears the traffic lights when topmost. */
+    margin-top: calc(8px + var(--titlebar-clear-top));
     padding: 7px 9px;
     border: 1px solid #7f1d1d;
     border-radius: 6px;
@@ -1098,7 +1112,12 @@
     align-items: center;
     gap: 8px;
     padding: 8px 10px;
-    background: #0f172a;
+    /* On macOS this row sits under the hidden titlebar, so it reserves space
+       for the traffic lights and matches the inset titlebar's height. Both
+       variables are 0 on platforms that draw their own titlebar. */
+    padding-left: calc(10px + var(--titlebar-inset-left));
+    min-height: var(--titlebar-min-h);
+    background: var(--chrome-tint);
     border-bottom: 1px solid #1b2740;
     flex-shrink: 0;
     /* Stay on one line; when it would overflow we strip the segment values
@@ -1356,7 +1375,7 @@
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
     color: #475569;
-    background: #0f172a;
+    background: var(--chrome-tint);
     border-bottom: 1px solid #1e293b;
     flex-shrink: 0;
     /* Stay on one line: the on-call name truncates rather than wrapping the
