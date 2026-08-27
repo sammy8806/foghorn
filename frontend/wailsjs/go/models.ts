@@ -23,6 +23,7 @@ export namespace config {
 	export class Diagnostic {
 	    field: string;
 	    message: string;
+	    locator: string;
 	    dropped: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -33,6 +34,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.field = source["field"];
 	        this.message = source["message"];
+	        this.locator = source["locator"];
 	        this.dropped = source["dropped"];
 	    }
 	}
@@ -50,6 +52,22 @@ export namespace config {
 	        this.mode = source["mode"];
 	        this.sources = source["sources"];
 	        this.source_types = source["source_types"];
+	    }
+	}
+	export class ExcerptLine {
+	    number: number;
+	    text: string;
+	    marked: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExcerptLine(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.text = source["text"];
+	        this.marked = source["marked"];
 	    }
 	}
 	export class SortCriterion {
@@ -296,6 +314,7 @@ export namespace main {
 	    path: string;
 	    fingerprint: string;
 	    items: config.Diagnostic[];
+	    excerpt: config.ExcerptLine[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigDiagnostics(source);
@@ -306,6 +325,7 @@ export namespace main {
 	        this.path = source["path"];
 	        this.fingerprint = source["fingerprint"];
 	        this.items = this.convertValues(source["items"], config.Diagnostic);
+	        this.excerpt = this.convertValues(source["excerpt"], config.ExcerptLine);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

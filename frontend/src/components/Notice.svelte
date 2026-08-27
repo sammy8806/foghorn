@@ -57,7 +57,9 @@
     {#if count !== null}
       <span class="notice-count">{count}</span>
     {/if}
-    {#if subtitle}
+    <!-- The subtitle exists to say what the hidden rows are about, so once
+       they are on screen it is the same list read twice. -->
+    {#if subtitle && !expanded}
       <span class="notice-subtitle">{subtitle}</span>
     {/if}
     {#if collapsible}
@@ -208,7 +210,7 @@
 
   /* Plain-text action in the chrome's own hover language (see .icon-toggle),
      rather than a bordered pill: it belongs to the card, not on top of it. */
-  .notice > :global(.notice-action) {
+  .notice :global(.notice-action) {
     flex-shrink: 0;
     align-self: center;
     border: 0;
@@ -224,33 +226,28 @@
     transition: background 0.15s, color 0.15s;
   }
 
-  .notice > :global(.notice-action:hover:not(:disabled)) {
+  .notice :global(.notice-action:hover:not(:disabled)) {
     background: var(--chrome-ctrl-hover);
     color: var(--ctrl-fg);
   }
 
-  .notice > :global(.notice-action:disabled) {
+  .notice :global(.notice-action:disabled) {
     opacity: 0.5;
     cursor: default;
   }
 
-  /* Boxed detail row. White overlay, not a navy slab, so it composites on the
-     vibrancy instead of punching a hole through it. */
-  .notice-body :global(.notice-row) {
-    min-width: 0;
-    padding: 7px 8px;
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .notice-body :global(.notice-row-head) {
-    display: flex;
+  /* Aligned rail: every problem contributes three cells to one grid, so the
+     "where" column lines up down the list. Boxing each row instead made a card
+     inside a card, and around a single problem it was pure overhead. */
+  .notice-body :global(.notice-rows) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 7px 10px;
+    min-width: 0;
   }
 
-  .notice-body :global(.notice-row-name) {
+  .notice-body :global(.notice-row-locator) {
     min-width: 0;
     color: #dbe4f0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -259,26 +256,17 @@
     overflow-wrap: anywhere;
   }
 
-  .notice-body :global(.notice-row-tag) {
-    flex-shrink: 0;
-    color: #94a3b8;
-    font-size: calc(9px * var(--font-scale, 1));
-    /* Matches .group-name and .segment-label. */
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+  .notice-body :global(.notice-row-body) {
+    min-width: 0;
   }
 
   .notice-body :global(.notice-row-text),
   .notice-body :global(.notice-text) {
-    margin: 3px 0 0;
+    margin: 0;
     color: #cbd5e1;
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.4;
     overflow-wrap: anywhere;
-  }
-
-  .notice-body :global(.notice-text) {
-    margin: 0;
   }
 
   .notice-body :global(.notice-row-meta) {
@@ -288,14 +276,45 @@
     font-size: calc(10px * var(--font-scale, 1));
   }
 
-  .notice-body :global(.notice-footer) {
+  .notice-body :global(.notice-row-tag) {
     color: #94a3b8;
-    font-size: calc(10.5px * var(--font-scale, 1));
-    overflow-wrap: anywhere;
+    font-size: calc(9px * var(--font-scale, 1));
+    /* Matches .group-name and .segment-label. */
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
-  .notice-body :global(.notice-footer code) {
-    color: #cbd5e1;
+  /* The file is the actionable part of the card, so it gets a row of its own
+     with a real control, set off from the problem above it. */
+  .notice-body :global(.notice-footer) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding-top: 7px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .notice-body :global(.notice-footer-path) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: #dbe4f0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: calc(10.5px * var(--font-scale, 1));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The filename is the anchor; the directory only has to be recognisable. */
+  .notice-body :global(.notice-footer-dir) {
+    color: #64748b;
+  }
+
+  .notice-body :global(.notice-footer-hint) {
+    flex-shrink: 0;
+    color: #64748b;
+    font-size: calc(10px * var(--font-scale, 1));
   }
 </style>

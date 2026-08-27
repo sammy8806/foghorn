@@ -11,7 +11,7 @@ import {
 const first = {
   path: '/tmp/config.yaml',
   fingerprint: 'first',
-  items: [{ field: 'resolvers[0]', message: 'stdin is required', dropped: true }],
+  items: [{ field: 'resolvers[0]', message: 'stdin is required', locator: '', dropped: true }],
 };
 
 describe('config diagnostics lifecycle', () => {

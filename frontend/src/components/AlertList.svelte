@@ -824,9 +824,7 @@
 
       <p class="notice-text">{notificationInfoText}</p>
       {#if notificationSettingsError}
-        <div class="notice-row">
-          <p class="notice-row-text">{notificationSettingsError}</p>
-        </div>
+        <p class="notice-row-text">{notificationSettingsError}</p>
       {/if}
     </Notice>
   {/if}
@@ -843,18 +841,16 @@
         {refreshing ? 'Retrying…' : 'Retry'}
       </button>
 
-      {#each failingSources as health}
-        <div class="notice-row">
-          <div class="notice-row-head">
-            <span class="notice-row-name">{health.source}</span>
-            {#if health.consecFails > 1}
-              <span class="notice-row-tag">{health.consecFails} consecutive failures</span>
-            {/if}
+      <div class="notice-rows">
+        {#each failingSources as health}
+          <span class="notice-row-locator">{health.source}</span>
+          <div class="notice-row-body">
+            <p class="notice-row-text">{health.lastError || 'Poll failed'}</p>
+            <span class="notice-row-meta">{formatHealthLastPoll(health)}</span>
           </div>
-          <p class="notice-row-text">{health.lastError || 'Poll failed'}</p>
-          <span class="notice-row-meta">{formatHealthLastPoll(health)}</span>
-        </div>
-      {/each}
+          <span class="notice-row-tag">{health.consecFails > 1 ? `${health.consecFails} consecutive failures` : ''}</span>
+        {/each}
+      </div>
     </Notice>
   {/if}
 

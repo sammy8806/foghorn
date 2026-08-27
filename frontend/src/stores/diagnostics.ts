@@ -6,6 +6,9 @@ import { isWails } from './alerts';
 export interface ConfigDiagnostic {
   field: string;
   message: string;
+  /** Position to show instead of the field when the whole config failed to
+   *  parse ("line 3"). Empty for field problems, where field is the locator. */
+  locator: string;
   dropped: boolean;
 }
 

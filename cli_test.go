@@ -71,7 +71,7 @@ func TestHandleCLIConfigCheck(t *testing.T) {
 		writeCLIConfig(t, "sources: [oh no\n")
 		var stdout, stderr bytes.Buffer
 		_, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
-		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "parsing config") {
+		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "line 1") || !strings.Contains(stdout.String(), "did not find expected") {
 			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
 	})
@@ -82,7 +82,7 @@ func TestHandleCLIConfigCheck(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 		var stdout, stderr bytes.Buffer
 		_, code := handleCLI([]string{"config", "check"}, &stdout, &stderr)
-		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "reading config") {
+		if code != 1 || !strings.Contains(stdout.String(), "config unusable") || !strings.Contains(stdout.String(), "no such file or directory") {
 			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
 	})

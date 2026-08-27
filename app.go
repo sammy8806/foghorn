@@ -12,6 +12,7 @@ import (
 	"foghorn/internal/notify"
 	"foghorn/internal/provider"
 	"foghorn/internal/resolve"
+	"foghorn/internal/reveal"
 	"foghorn/internal/silence"
 	"foghorn/internal/state"
 )
@@ -55,6 +56,10 @@ type ConfigDiagnostics struct {
 	Path        string             `json:"path"`
 	Fingerprint string             `json:"fingerprint"`
 	Items       config.Diagnostics `json:"items"`
+	// Excerpt is the handful of config lines around the problem, when one of
+	// the items points at a line. Empty otherwise, and never load-bearing: the
+	// items say what is wrong on their own.
+	Excerpt []config.ExcerptLine `json:"excerpt"`
 }
 
 func (a *App) setConfigDiagnostics(path string, diags config.Diagnostics) {
@@ -122,13 +127,19 @@ func (a *App) updateConfig(cfg *config.Config) {
 // file the user should edit.
 func (a *App) GetConfigDiagnostics() ConfigDiagnostics {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
+	path := a.configPath
 	items := make(config.Diagnostics, len(a.diagnostics))
 	copy(items, a.diagnostics)
+	a.mu.RUnlock()
+
+	// Reading the file happens after the lock is released: it is the one part
+	// of this that touches the disk, and nothing else here needs the lock held
+	// while it does.
 	return ConfigDiagnostics{
-		Path:        a.configPath,
+		Path:        path,
 		Fingerprint: items.Fingerprint(),
 		Items:       items,
+		Excerpt:     config.ExcerptFor(path, items),
 	}
 }
 
@@ -328,6 +339,20 @@ func (a *App) RequestNotificationPermission() (string, error) {
 
 func (a *App) OpenNotificationSettings() error {
 	return notify.OpenNotificationSettings()
+}
+
+// RevealConfigFile shows the config in the file manager. It takes no path on
+// purpose: the frontend asks to reveal *the config*, and which file that is
+// stays a decision of the backend that loaded it.
+func (a *App) RevealConfigFile() error {
+	a.mu.RLock()
+	path := a.configPath
+	a.mu.RUnlock()
+
+	if path == "" {
+		return fmt.Errorf("no config path is known yet")
+	}
+	return reveal.InFileManager(path)
 }
 
 // CreateSilence creates a silence with the caller-supplied matchers on the named source.
