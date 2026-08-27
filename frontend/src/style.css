@@ -36,7 +36,10 @@
 
 html[data-platform="darwin"] {
   --titlebar-inset-left: 76px;
-  --titlebar-min-h: 52px;
+  /* Floor sized so a bar padded 3px around 30px controls puts the controls'
+     optical center (18px) on the traffic lights' center, which macOS fixes
+     at ~18px from the window top in a hidden-inset titlebar. */
+  --titlebar-min-h: 36px;
   --surface-alpha: 0.72;
   --chrome-tint: rgba(255, 255, 255, 0.035);
 }

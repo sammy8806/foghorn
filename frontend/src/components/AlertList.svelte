@@ -1126,6 +1126,14 @@
     flex-wrap: nowrap;
   }
 
+  /* macOS: the traffic lights sit ~18px from the window top; pad 3px around
+     the 30px controls so the icons' optical center lands on the lights'
+     center instead of floating below them. */
+  :global(html[data-platform="darwin"]) .filter-bar {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
   .filter-spacer {
     flex: 1;
     /* Splits the row into two anchored clusters: action icons on the left,
