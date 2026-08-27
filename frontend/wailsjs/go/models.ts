@@ -24,11 +24,11 @@ export namespace config {
 	    field: string;
 	    message: string;
 	    dropped: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Diagnostic(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.field = source["field"];
@@ -296,18 +296,18 @@ export namespace main {
 	    path: string;
 	    fingerprint: string;
 	    items: config.Diagnostic[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConfigDiagnostics(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
 	        this.fingerprint = source["fingerprint"];
 	        this.items = this.convertValues(source["items"], config.Diagnostic);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -562,7 +562,7 @@ export namespace model {
 }
 
 export namespace provider {
-
+	
 	export class OIDCSessionInfo {
 	    source: string;
 	    configured: boolean;
@@ -572,11 +572,11 @@ export namespace provider {
 	    persistenceEnabled: boolean;
 	    storageBackend?: string;
 	    storageError?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new OIDCSessionInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
@@ -591,3 +591,4 @@ export namespace provider {
 	}
 
 }
+

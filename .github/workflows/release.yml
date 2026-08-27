@@ -32,7 +32,7 @@ jobs:
 
       - name: Install Wails CLI
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Resolve FOGHORN_VERSION
@@ -103,7 +103,7 @@ jobs:
 
       - name: Install Wails CLI
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Cache linuxdeploy
@@ -154,7 +154,7 @@ jobs:
 
       - name: Install Wails CLI
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
           echo "$(go env GOPATH)\bin" >> "$env:GITHUB_PATH"
 
       - name: Resolve FOGHORN_VERSION
