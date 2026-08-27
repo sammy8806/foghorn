@@ -221,7 +221,7 @@
   let widthCompact = false;
   let measuring = false;
   const SEARCH_ANIM_MS = 180;
-  const COLLAPSED_SEARCH_WIDTH = 28;
+  const COLLAPSED_SEARCH_WIDTH = 30;
   const EXPANDED_SEARCH_WIDTH = 200;
   let measureTimer: ReturnType<typeof setTimeout>;
 
@@ -577,7 +577,7 @@
       title="Filter alerts (Ctrl/⌘+F)"
       tabindex={searchOpen ? -1 : 0}
     >
-      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+      <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
       <input
         class="search-input"
         type="text"
@@ -1111,7 +1111,7 @@
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     padding: 8px 10px;
     /* On macOS this row sits under the hidden titlebar, so it reserves space
        for the traffic lights and matches the inset titlebar's height. Both
@@ -1128,20 +1128,25 @@
 
   .filter-spacer {
     flex: 1;
+    /* Splits the row into two anchored clusters: action icons on the left,
+       the view capsule on the right. */
+    margin-left: 9px;
   }
 
   /* Expanding search: a ghost icon while collapsed (no box — controls read as
-     part of the chrome band, not islands on it); expands into a sunken field. */
+     part of the chrome band, not islands on it); expands into a sunken field.
+     Box and glyph match the icon toggles exactly so the cluster reads as one
+     toolbar. */
   .search {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0;
-    height: 28px;
-    width: 28px;
+    height: 30px;
+    width: 30px;
     box-sizing: border-box;
     padding: 0;
-    border-radius: 6px;
+    border-radius: 7px;
     border: 1px solid transparent;
     background: transparent;
     overflow: hidden;
@@ -1154,7 +1159,7 @@
   }
   .search.open {
     width: 200px;
-    padding: 0 4px 0 8px;
+    padding: 0 4px 0 9px;
     justify-content: flex-start;
     gap: 7px;
     border-color: var(--chrome-field-border);
@@ -1234,13 +1239,13 @@
      tinted while active. One shared visual language with the search icon. */
   .icon-toggle {
     position: relative;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: 7px;
     border: 1px solid transparent;
     background: transparent;
     color: var(--ctrl-fg-dim);
@@ -1278,12 +1283,13 @@
   }
 
   /* Fused view block: Severity · [Source] · Group · Sort. One quiet capsule
-     keyed to the chrome band instead of a heavy navy slab. */
+     keyed to the chrome band instead of a heavy navy slab. Height and radius
+     match the 30px icon toggles so the two clusters read as peers. */
   .view-block {
     display: inline-flex;
-    height: 28px;
+    height: 30px;
     border: 1px solid var(--chrome-hairline);
-    border-radius: 7px;
+    border-radius: 8px;
     background: var(--chrome-capsule-bg);
     flex-shrink: 0;
   }
