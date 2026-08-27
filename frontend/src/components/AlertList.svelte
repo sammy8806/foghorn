@@ -46,6 +46,7 @@
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
   import ConfigDiagnostics from './ConfigDiagnostics.svelte';
+  import Notice from './Notice.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
   import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
@@ -64,7 +65,6 @@
   let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
-  let healthBannerExpanded = false;
 
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
@@ -760,10 +760,19 @@
     <div class="status-bar">
       {#if $loading}
         <span class="status-loading">Loading…</span>
-      {:else if $error}
-        <span class="status-error">Error: {$error}</span>
       {:else}
         <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+        <!-- A short chip plus a truncating message, rather than one long red
+           line. The message used to live in its own branch of this row, which
+           also took away the count, the on-call name and the refresh button —
+           the very control you want when a poll has just failed. -->
+        {#if $error}
+          <span class="status-chip status-chip-error" title={$error}>
+            <span class="status-chip-bang" aria-hidden="true">!</span>
+            Error
+          </span>
+          <span class="status-error-text" title={$error}>{$error}</span>
+        {/if}
         {#if newVisibleCount > 0}
           <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
             <span class="status-chip-x" aria-hidden="true">×</span>
@@ -807,56 +816,46 @@
   <ConfigDiagnostics />
 
   {#if showNotificationInfoCard}
-    <div class="info-card info-card-warning">
-      <div class="info-card-copy">
-        <div class="info-card-title">{notificationInfoTitle}</div>
-        <div class="info-card-text">{notificationInfoText}</div>
-        {#if notificationSettingsError}
-          <div class="info-card-detail-error">{notificationSettingsError}</div>
-        {/if}
-      </div>
-      <button class="info-card-action" on:click={handleOpenNotificationSettings}>
-        Open Notification Settings
+    <Notice severity="caution" title={notificationInfoTitle}>
+      <!-- Ellipsis per the macOS convention: the action opens another window. -->
+      <button slot="action" class="notice-action" on:click={handleOpenNotificationSettings}>
+        Open Notification Settings…
       </button>
-    </div>
+
+      <p class="notice-text">{notificationInfoText}</p>
+      {#if notificationSettingsError}
+        <div class="notice-row">
+          <p class="notice-row-text">{notificationSettingsError}</p>
+        </div>
+      {/if}
+    </Notice>
   {/if}
 
   {#if showHealthBanner}
-    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
-      <button
-        class="health-banner-summary"
-        on:click={() => healthBannerExpanded = !healthBannerExpanded}
-        aria-expanded={healthBannerExpanded}
-        aria-controls="health-banner-details"
-      >
-        <span class="health-banner-heading">
-          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
-        </span>
-        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
-        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
+    <Notice
+      severity="critical"
+      title="Source polling failed"
+      count={failingSources.length}
+      subtitle={failingSources.map(health => health.source).join(', ')}
+      collapsible
+    >
+      <button slot="action" class="notice-action" on:click={handleRefresh} disabled={refreshing}>
         {refreshing ? 'Retrying…' : 'Retry'}
       </button>
-      {#if healthBannerExpanded}
-        <div class="health-banner-sources" id="health-banner-details">
-        {#each failingSources as health}
-          <div class="health-banner-source">
-            <div class="health-banner-source-title">
-              <span class="health-banner-source-name">{health.source}</span>
-              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
-            </div>
-            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
-            <span class="health-banner-source-meta">
-              {formatHealthLastPoll(health)}
-            </span>
+
+      {#each failingSources as health}
+        <div class="notice-row">
+          <div class="notice-row-head">
+            <span class="notice-row-name">{health.source}</span>
+            {#if health.consecFails > 1}
+              <span class="notice-row-tag">{health.consecFails} consecutive failures</span>
+            {/if}
           </div>
-        {/each}
-      </div>
-      {/if}
-    </div>
+          <p class="notice-row-text">{health.lastError || 'Poll failed'}</p>
+          <span class="notice-row-meta">{formatHealthLastPoll(health)}</span>
+        </div>
+      {/each}
+    </Notice>
   {/if}
 
   <!-- Alert content -->
@@ -928,197 +927,6 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-  }
-
-  .info-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    /* Sits below the chrome rows, above the alert content. Same inset card
-       language as the health banner and the config-problems card. */
-    margin: 8px 8px 0;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid rgba(251, 191, 36, 0.35);
-    background: rgba(120, 53, 15, 0.28);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  }
-
-  .info-card-copy {
-    min-width: 0;
-  }
-
-  .info-card-title {
-    color: #fde68a;
-    font-size: calc(11px * var(--font-scale, 1));
-    font-weight: 700;
-  }
-
-  .info-card-text {
-    color: #fcd34d;
-    font-size: calc(11px * var(--font-scale, 1));
-    margin-top: 2px;
-  }
-
-  .info-card-detail-error {
-    color: #fca5a5;
-    font-size: calc(11px * var(--font-scale, 1));
-    margin-top: 4px;
-  }
-
-  .info-card-action {
-    flex-shrink: 0;
-    border: 1px solid rgba(251, 191, 36, 0.5);
-    background: rgba(251, 191, 36, 0.12);
-    color: #fde68a;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: calc(11px * var(--font-scale, 1));
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .info-card-action:hover {
-    background: rgba(251, 191, 36, 0.2);
-  }
-
-  .health-banner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    /* Sits below the chrome rows, above the alert content. */
-    margin: 8px 8px 0;
-    padding: 7px 9px;
-    border: 1px solid rgba(248, 113, 113, 0.35);
-    border-radius: 6px;
-    background: rgba(127, 29, 29, 0.28);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  }
-
-  .health-banner.expanded {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 7px 10px;
-  }
-
-  .health-banner-summary {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-    gap: 6px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .health-banner-summary:hover .health-banner-heading {
-    color: #fff1f2;
-  }
-
-  .health-banner-heading {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    color: #fecaca;
-    font-size: calc(11px * var(--font-scale, 1));
-    font-weight: 700;
-  }
-
-  .health-banner-source-list {
-    min-width: 0;
-    overflow: hidden;
-    color: #fda4af;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: calc(10px * var(--font-scale, 1));
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .health-banner-chevron {
-    flex-shrink: 0;
-    color: #f87171;
-    transition: transform 120ms ease;
-  }
-
-  .health-banner.expanded .health-banner-chevron {
-    transform: rotate(180deg);
-  }
-
-  .health-banner-action {
-    flex-shrink: 0;
-    border: 0;
-    border-radius: 4px;
-    padding: 3px 5px;
-    background: transparent;
-    color: #fca5a5;
-    font-size: calc(10px * var(--font-scale, 1));
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .health-banner-action:hover:not(:disabled) {
-    color: #fff1f2;
-    background: rgba(248, 113, 113, 0.16);
-  }
-
-  .health-banner-action:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-
-  .health-banner-sources {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding-top: 7px;
-    border-top: 1px solid rgba(248, 113, 113, 0.2);
-  }
-
-  .health-banner-source {
-    padding: 6px 7px;
-    border-radius: 4px;
-    background: rgba(15, 23, 42, 0.45);
-    border: 1px solid rgba(248, 113, 113, 0.12);
-    font-size: calc(10px * var(--font-scale, 1));
-  }
-
-  .health-banner-source-title {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .health-banner-source-name {
-    color: #fda4af;
-    font-weight: 700;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-
-  .health-banner-fail-count {
-    flex-shrink: 0;
-    color: #94a3b8;
-    font-size: calc(9px * var(--font-scale, 1));
-  }
-
-  .health-banner-source-error {
-    color: #fca5a5;
-    margin-top: 3px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .health-banner-source-meta {
-    display: block;
-    color: #94a3b8;
-    margin-top: 3px;
   }
 
   /* The toolbar and the status line are one chrome band. Painting the tint
@@ -1461,7 +1269,13 @@
     flex: 1;
   }
 
-  .status-error { color: #ef4444; }
+  .status-error-text {
+    min-width: 0;
+    overflow: hidden;
+    color: #94a3b8;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .status-loading { color: #94a3b8; }
   .status-count {
     display: inline-flex;
@@ -1513,6 +1327,22 @@
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
   .status-chip-resolved .status-chip-x { color: #052e16; }
+  /* Read-only, unlike the New/Resolved chips: retry lives on the refresh
+     button at the end of the row, so this one takes no hover affordance. */
+  .status-chip-error {
+    color: #fef2f2;
+    background: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.28);
+    cursor: default;
+  }
+  .status-chip-error:hover { filter: none; }
+  .status-chip-bang {
+    display: inline-flex;
+    align-items: center;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 800;
+    line-height: 1;
+  }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;
