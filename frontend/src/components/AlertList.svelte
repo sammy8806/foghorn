@@ -221,7 +221,7 @@
   let widthCompact = false;
   let measuring = false;
   const SEARCH_ANIM_MS = 180;
-  const COLLAPSED_SEARCH_WIDTH = 30;
+  const COLLAPSED_SEARCH_WIDTH = 28;
   const EXPANDED_SEARCH_WIDTH = 200;
   let measureTimer: ReturnType<typeof setTimeout>;
 
@@ -1111,8 +1111,8 @@
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 8px 10px;
+    gap: 7px;
+    padding: 4px 10px;
     /* On macOS this row sits under the hidden titlebar, so it reserves space
        for the traffic lights and matches the inset titlebar's height. Both
        variables are 0 on platforms that draw their own titlebar. */
@@ -1126,12 +1126,12 @@
     flex-wrap: nowrap;
   }
 
-  /* macOS: the traffic lights sit ~18px from the window top; pad 3px around
-     the 30px controls so the icons' optical center lands on the lights'
-     center instead of floating below them. */
+  /* macOS: the traffic lights sit ~18px from the window top; 4px padding
+     around the 28px controls puts their optical center on the lights' line
+     while keeping breathing room inside the 36px band. */
   :global(html[data-platform="darwin"]) .filter-bar {
-    padding-top: 3px;
-    padding-bottom: 3px;
+    padding-top: 4px;
+    padding-bottom: 4px;
   }
 
   .filter-spacer {
@@ -1150,8 +1150,8 @@
     align-items: center;
     justify-content: center;
     gap: 0;
-    height: 30px;
-    width: 30px;
+    height: 28px;
+    width: 28px;
     box-sizing: border-box;
     padding: 0;
     border-radius: 7px;
@@ -1247,8 +1247,8 @@
      tinted while active. One shared visual language with the search icon. */
   .icon-toggle {
     position: relative;
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -1292,12 +1292,12 @@
 
   /* Fused view block: Severity · [Source] · Group · Sort. One quiet capsule
      keyed to the chrome band instead of a heavy navy slab. Height and radius
-     match the 30px icon toggles so the two clusters read as peers. */
+     match the 28px icon toggles so the two clusters read as peers. */
   .view-block {
     display: inline-flex;
-    height: 30px;
+    height: 28px;
     border: 1px solid var(--chrome-hairline);
-    border-radius: 8px;
+    border-radius: 7px;
     background: var(--chrome-capsule-bg);
     flex-shrink: 0;
   }
@@ -1309,17 +1309,21 @@
     position: relative;
     display: inline-flex;
   }
+  /* Inset divider: a short centered hairline rather than a full-height cut,
+     so adjacent segments read as one capsule instead of butted slabs. */
   .segment-wrap + .segment-wrap::before {
     content: '';
+    align-self: center;
+    height: 14px;
     width: 1px;
     background: var(--chrome-hairline);
   }
   .segment {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     height: 100%;
-    padding: 0 10px;
+    padding: 0 11px;
     background: transparent;
     border: none;
     color: var(--ctrl-fg);
