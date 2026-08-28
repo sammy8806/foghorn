@@ -409,6 +409,11 @@
   }
 
   .problem-action {
+    /* Grid items stretch by default, so a short action kept a box the width of
+       the longest one and sat at its left edge — "Retry" floating in from the
+       trailing edge that "Reveal in Finder" defined. Every action now ends on
+       the same line, which is the one the strip's own controls end on. */
+    justify-self: end;
     white-space: nowrap;
     color: #e2e8f0;
     font-size: calc(11.5px * var(--font-scale, 1));
