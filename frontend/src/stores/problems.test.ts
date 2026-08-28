@@ -159,7 +159,20 @@ describe('summarizeProblems', () => {
       severity: 'caution',
       headline: 'Not loaded',
       tail: 'mapping values are not allowed',
+      // The strip is this problem's only row, so it carries the fix too.
+      action: { kind: 'reveal', label: 'Open', glyph: '↗' },
     });
+  });
+
+  it('hands the fixes back to their own rows once there are several', () => {
+    const summary = summarizeProblems([
+      sourceProblem(health()),
+      ...configProblems(diagnostics({
+        items: [{ field: 'config', locator: 'line 4', message: 'boom', dropped: false }],
+      })),
+    ]);
+
+    expect(summary.action).toBeNull();
   });
 
   it('counts several and says what they cost you', () => {

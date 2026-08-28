@@ -64,6 +64,9 @@ export interface ProblemSummary {
   headline: string;
   /** The dimmed consequence after it. */
   tail: string;
+  /** The lone problem's action, when the strip is speaking for one problem and
+   *  can therefore carry its fix. Null once there are several fixes to offer. */
+  action: ProblemAction | null;
 }
 
 // Go's *url.Error stringifies as `Get "https://host/path": dial tcp: no such
@@ -206,14 +209,19 @@ export function notificationProblem(status: string): Problem | null {
 export function summarizeProblems(problems: Problem[]): ProblemSummary {
   const severity: ProblemSeverity = problems.some(p => p.severity === 'critical') ? 'critical' : 'caution';
 
-  // One problem gets to speak for itself: its own keyword, its own words. A
-  // count only earns the gutter once there is more than one thing to count.
+  // One problem gets to speak for itself: its own keyword, its own words, its
+  // own fix. The strip IS that problem's row, so nothing below it may repeat
+  // the row — and the action belongs up here rather than a disclosure away.
+  //
+  // A count only earns the gutter once there is more than one thing to count,
+  // and once there is, the fixes differ per problem and go back to their rows.
   if (problems.length === 1) {
     return {
       keyword: problems[0].keyword,
       severity,
       headline: problems[0].headline,
       tail: problems[0].detail,
+      action: problems[0].action,
     };
   }
 
@@ -222,6 +230,7 @@ export function summarizeProblems(problems: Problem[]): ProblemSummary {
     severity,
     headline: problems.map(p => p.short).join(', '),
     tail: consequenceOf(problems),
+    action: null,
   };
 }
 

@@ -39,9 +39,13 @@
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
   $: summary = summarizeProblems(problems);
-  // A problem with nothing behind it is fully stated by the strip already, so
-  // offering to open an empty panel would be offering nothing.
-  $: hasDetail = problems.some(problem => problem.frame.length > 0 || problem.meta.length > 0 || problem.action);
+  // With one problem the strip is already that problem's row, so the panel must
+  // not draw the row again — it holds the evidence and nothing else. Two rows
+  // reading the same sentence is what the old stacked cards did wrong.
+  $: single = problems.length === 1;
+  // Which leaves nothing to open when that one problem has no evidence: it is
+  // fully stated by the strip, and its fix is on the strip too.
+  $: hasDetail = !single || problems[0].frame.length > 0 || problems[0].meta.length > 0;
   $: if (!hasDetail) expanded = false;
 
   function toggle() {
@@ -80,6 +84,23 @@
         <span class="strip-toggle">{expanded ? 'Hide ⌃' : 'Show ⌄'}</span>
       {/if}
     </button>
+    <!-- The disclosure label ends the region that toggles it; the two discrete
+       buttons then sit together at the trailing edge, fix before dismiss. The
+       action is a sibling rather than inside: one button cannot hold another. -->
+    {#if summary.action}
+      <button
+        type="button"
+        class="problem-action {summary.severity}"
+        disabled={summary.action.kind === 'retry' && retrying}
+        on:click={() => summary.action && dispatch('action', { kind: summary.action.kind })}
+      >
+        {#if summary.action.kind === 'retry' && retrying}
+          Retrying…
+        {:else}
+          {summary.action.label} {summary.action.glyph}
+        {/if}
+      </button>
+    {/if}
     <button type="button" class="strip-dismiss" title="Dismiss" aria-label="Dismiss" on:click={() => dispatch('dismiss')}>×</button>
   </div>
 
@@ -93,31 +114,33 @@
           <div class="problem-rule" aria-hidden="true"></div>
         {/if}
 
-        <span class="problem-keyword {problem.severity}">{problem.keyword}</span>
-        <span class="problem-line" title="{problem.headline}{problem.detail ? ` — ${problem.detail}` : ''}">
-          <strong>{problem.headline}</strong>{#if problem.detail}<span class="problem-detail"> — {problem.detail}</span>{/if}
-        </span>
-        {#if problem.action}
-          <button
-            type="button"
-            class="problem-action {problem.severity}"
-            disabled={problem.action.kind === 'retry' && retrying}
-            on:click={() => problem.action && dispatch('action', { kind: problem.action.kind })}
-          >
-            <!-- Retry is the only action that keeps running after the click,
-               so it is the only one with something to say while it does. -->
-            {#if problem.action.kind === 'retry' && retrying}
-              Retrying…
-            {:else}
-              {problem.action.label} {problem.action.glyph}
-            {/if}
-          </button>
-        {:else}
-          <span></span>
+        {#if !single}
+          <span class="problem-keyword {problem.severity}">{problem.keyword}</span>
+          <span class="problem-line" title="{problem.headline}{problem.detail ? ` — ${problem.detail}` : ''}">
+            <strong>{problem.headline}</strong>{#if problem.detail}<span class="problem-detail"> — {problem.detail}</span>{/if}
+          </span>
+          {#if problem.action}
+            <button
+              type="button"
+              class="problem-action {problem.severity}"
+              disabled={problem.action.kind === 'retry' && retrying}
+              on:click={() => problem.action && dispatch('action', { kind: problem.action.kind })}
+            >
+              <!-- Retry is the only action that keeps running after the click,
+                 so it is the only one with something to say while it does. -->
+              {#if problem.action.kind === 'retry' && retrying}
+                Retrying…
+              {:else}
+                {problem.action.label} {problem.action.glyph}
+              {/if}
+            </button>
+          {:else}
+            <span></span>
+          {/if}
         {/if}
 
         {#if problem.frame.length > 0 || problem.meta.length > 0 || problem.copy}
-          <div class="problem-evidence">
+          <div class="problem-evidence" class:full={single}>
             {#if problem.frame.length > 0}
               <div class="frame" class:excerpt={problem.frame[0].gutter !== ''}>
                 {#each problem.frame as line}
@@ -376,6 +399,13 @@
     grid-column: 2 / -1;
     min-width: 0;
     padding: 7px 0 12px;
+  }
+
+  /* Nothing to indent past: with no keyword beside it, the evidence hangs off
+     the window's text column like every other left edge in the list. */
+  .problem-evidence.full {
+    grid-column: 1 / -1;
+    padding-top: 11px;
   }
 
   .frame {
