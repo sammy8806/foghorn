@@ -387,7 +387,7 @@
   // since it signs as a different bundle than the one the permission is on.
   $: problems = [
     ...(!$loading ? failingSources.map(sourceProblem) : []),
-    ...configProblems($configDiagnostics),
+    ...configProblems($configDiagnostics, $platform),
     ...(!isMacOSDevMode ? [notificationProblem(notificationPermissionStatus)].filter((p): p is Problem => p !== null) : []),
   ];
   $: problemsKey = problemsFingerprint(problems);

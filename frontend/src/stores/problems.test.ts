@@ -160,7 +160,7 @@ describe('summarizeProblems', () => {
       headline: 'Not loaded',
       tail: 'mapping values are not allowed',
       // The strip is this problem's only row, so it carries the fix too.
-      action: { kind: 'reveal', label: 'Open', glyph: '↗' },
+      action: { kind: 'reveal', label: 'Open folder', glyph: '↗' },
     });
   });
 
@@ -284,5 +284,24 @@ describe('the keyword column', () => {
 
     expect(problems[0].keyword).toBe('config');
     expect(problems[0].headline).toContain('"Cluster-Name"');
+  });
+});
+
+describe('the reveal action', () => {
+  const oneProblem = (platform?: string) => configProblems(diagnostics({
+    items: [{ field: 'config', locator: 'line 4', message: 'boom', dropped: false }],
+  }), platform)[0];
+
+  it('names where it takes you, so it is not the Show beside it', () => {
+    // Neither wording is "open the file": macOS selects it in Finder and every
+    // other platform opens the folder around it, which is what these say.
+    expect(oneProblem('darwin').action?.label).toBe('Reveal in Finder');
+    expect(oneProblem('linux').action?.label).toBe('Open folder');
+    expect(oneProblem('windows').action?.label).toBe('Open folder');
+  });
+
+  it('falls back to the folder wording before the platform is known', () => {
+    expect(oneProblem('').action?.label).toBe('Open folder');
+    expect(oneProblem().action?.label).toBe('Open folder');
   });
 });

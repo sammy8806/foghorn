@@ -121,7 +121,9 @@ function formatPollTime(timestamp: string): string {
   return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export function configProblems(payload: ConfigDiagnosticsPayload): Problem[] {
+/** platform picks the reveal action's wording, which is not cosmetic: macOS
+ *  selects the file in Finder, everywhere else the containing folder opens. */
+export function configProblems(payload: ConfigDiagnosticsPayload, platform = ''): Problem[] {
   const problems = payload.items.map((item, index) => {
     // A config that would not parse at all arrives as a single item filed under
     // "config": there is no field to name, so the headline carries the outcome
@@ -153,10 +155,19 @@ export function configProblems(payload: ConfigDiagnosticsPayload): Problem[] {
   // the group and the file footnote closes it, rather than every row repeating
   // both. With a single row — the common case — they land on the same one.
   if (problems.length > 0) {
-    problems[0].action = { kind: 'reveal', label: 'Open', glyph: '↗' };
+    problems[0].action = revealAction(platform);
     problems[problems.length - 1].meta = configMeta(payload);
   }
   return problems;
+}
+
+// Naming the destination is what tells this apart from the Show/Hide beside it
+// — on its own, "open" is the same promise the disclosure already makes. It is
+// also the accurate word: neither platform opens the file for editing.
+function revealAction(platform: string): ProblemAction {
+  return platform === 'darwin'
+    ? { kind: 'reveal', label: 'Reveal in Finder', glyph: '↗' }
+    : { kind: 'reveal', label: 'Open folder', glyph: '↗' };
 }
 
 function excerptFrame(payload: ConfigDiagnosticsPayload): ProblemFrameLine[] {
