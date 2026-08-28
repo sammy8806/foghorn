@@ -47,11 +47,31 @@ describe('sourceProblem', () => {
     expect(problem.copy).toBe(health().lastError);
   });
 
-  it('leaves an unstructured error whole and shows no frame', () => {
+  it('finds the request inside the wrapping a provider adds', () => {
+    // What actually reaches the UI: the poll error, wrapped with where it came
+    // from. The wrapper only repeats the headline, so it is not carried over.
+    const problem = sourceProblem(health({
+      lastError: 'fetching alerts from central1: Get "https://alertmanager.example/api/v2/alerts": dial tcp: no such host',
+    }));
+
+    expect(problem.detail).toBe('dial tcp: no such host');
+    expect(problem.frame).toEqual([
+      { gutter: '', lead: 'GET', text: 'https://alertmanager.example/api/v2/alerts', marked: false },
+      { gutter: '', lead: '', text: 'dial tcp: no such host', marked: true },
+    ]);
+  });
+
+  it('still frames an error that will not come apart', () => {
+    // The row above shows one ellipsized line of it; without this the panel
+    // would open onto nothing but the poll time.
     const problem = sourceProblem(health({ lastError: 'unexpected status 503' }));
 
     expect(problem.detail).toBe('unexpected status 503');
-    expect(problem.frame).toEqual([]);
+    expect(problem.frame).toEqual([{ gutter: '', lead: '', text: 'unexpected status 503', marked: true }]);
+  });
+
+  it('frames nothing when there is no error to show', () => {
+    expect(sourceProblem(health({ lastError: '' })).frame).toEqual([]);
   });
 
   it('reports a run of failures but not a single one', () => {

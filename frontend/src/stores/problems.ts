@@ -72,7 +72,11 @@ export interface ProblemSummary {
 // Go's *url.Error stringifies as `Get "https://host/path": dial tcp: no such
 // host`, which is three facts in one line. Split so the request and the failure
 // can sit on their own lines instead of wrapping as one paragraph.
-const urlErrorPattern = /^([A-Za-z]+) "([^"]+)": ([\s\S]+)$/;
+//
+// Unanchored, because a provider wraps this before it reaches us — the real
+// thing reads `fetching alerts from central1: Get "…": dial tcp: …`. The
+// wrapper only repeats what the row's own headline says, so it is dropped.
+const urlErrorPattern = /\b([A-Za-z]+) "([^"]+)": ([\s\S]+)$/;
 
 // The backend already normalises list positions out of its own fingerprint, so
 // inserting a valid entry ahead of a broken one cannot resurrect a warning the
@@ -92,14 +96,17 @@ export function sourceProblem(health: SourceHealth): Problem {
     headline: `${health.source} unreachable`,
     detail: cause,
     short: `${health.source} unreachable`,
-    // Without a URL to pull out there is nothing to line up, and the cause is
-    // already the detail — a frame repeating it would be the same text twice.
+    // An error that will not come apart still goes in the frame rather than
+    // nowhere: the row above only ever shows one ellipsized line of it, and the
+    // frame is the one place it is readable whole.
     frame: parsed
       ? [
           { gutter: '', lead: parsed[1].toUpperCase(), text: parsed[2], marked: false },
           { gutter: '', lead: '', text: parsed[3], marked: true },
         ]
-      : [],
+      : raw
+        ? [{ gutter: '', lead: '', text: raw, marked: true }]
+        : [],
     meta: sourceMeta(health),
     copy: raw,
     action: { kind: 'retry', label: 'Retry', glyph: '⟳' },
