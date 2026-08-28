@@ -80,13 +80,10 @@
       <span class="strip-headline" title={summary.tail ? `${summary.headline} — ${summary.tail}` : summary.headline}>
         {summary.headline}{#if summary.tail}<span class="strip-tail"> — {summary.tail}</span>{/if}
       </span>
-      {#if hasDetail}
-        <span class="strip-toggle">{expanded ? 'Hide ⌃' : 'Show ⌄'}</span>
-      {/if}
     </button>
-    <!-- The disclosure label ends the region that toggles it; the two discrete
-       buttons then sit together at the trailing edge, fix before dismiss. The
-       action is a sibling rather than inside: one button cannot hold another. -->
+    <!-- Trailing cluster, in a fixed order: fix, disclose, dismiss. Show/Hide
+       keeps the same place whether or not there is an action beside it, so it
+       is never where the action was a moment ago. -->
     {#if summary.action}
       <button
         type="button"
@@ -99,6 +96,15 @@
         {:else}
           {summary.action.label} {summary.action.glyph}
         {/if}
+      </button>
+    {/if}
+    <!-- The whole headline region is already the disclosure, announced and
+       focusable. This is the same control drawn where the eye looks for it, so
+       it is a mouse affordance only and stays out of the tab order and the
+       accessibility tree rather than being announced twice. -->
+    {#if hasDetail}
+      <button type="button" class="strip-toggle" tabindex="-1" aria-hidden="true" on:click={toggle}>
+        {expanded ? 'Hide ⌃' : 'Show ⌄'}
       </button>
     {/if}
     <button type="button" class="strip-dismiss" title="Dismiss" aria-label="Dismiss" on:click={() => dispatch('dismiss')}>×</button>
@@ -235,6 +241,7 @@
      summary off the row the strip establishes. */
   .strip-disclosure,
   .strip-dismiss,
+  .strip-toggle,
   .problem-action,
   .problem-copy {
     padding: 0;
@@ -299,6 +306,7 @@
 
   .strip-toggle {
     flex: none;
+    white-space: nowrap;
     color: #e2e8f0;
     font-size: calc(11.5px * var(--font-scale, 1));
     font-weight: 600;
@@ -344,9 +352,11 @@
     background: rgba(255, 255, 255, 0.05);
   }
 
-  .problem-keyword,
-  .problem-line,
-  .problem-action {
+  /* Opens a row in the panel grid. Scoped to the panel: .problem-action is also
+     the strip's action, where this padding would drop it off the strip's row. */
+  .panel > .problem-keyword,
+  .panel > .problem-line,
+  .panel > .problem-action {
     padding-top: 11px;
   }
 
