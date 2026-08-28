@@ -103,8 +103,14 @@
        it is a mouse affordance only and stays out of the tab order and the
        accessibility tree rather than being announced twice. -->
     {#if hasDetail}
-      <button type="button" class="strip-toggle" tabindex="-1" aria-hidden="true" on:click={toggle}>
-        {expanded ? 'Hide ⌃' : 'Show ⌄'}
+      <button type="button" class="strip-toggle" class:expanded tabindex="-1" aria-hidden="true" on:click={toggle}>
+        {expanded ? 'Hide' : 'Show'}
+        <!-- One mark, flipped, rather than the ⌄/⌃ pair: those are separate
+           glyphs and system-ui draws them at noticeably different weights and
+           sizes, so the control changed shape as well as state. -->
+        <svg class="strip-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
       </button>
     {/if}
     <button type="button" class="strip-dismiss" title="Dismiss" aria-label="Dismiss" on:click={() => dispatch('dismiss')}>×</button>
@@ -305,11 +311,27 @@
   }
 
   .strip-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     flex: none;
+    /* Both words are four characters, so the control keeps its width across the
+       state change and the row does not shuffle under the pointer. */
+    justify-content: flex-end;
+    min-width: 4.4em;
     white-space: nowrap;
     color: #e2e8f0;
     font-size: calc(11.5px * var(--font-scale, 1));
     font-weight: 600;
+  }
+
+  .strip-chevron {
+    flex: none;
+    transition: transform 120ms ease;
+  }
+
+  .strip-toggle.expanded .strip-chevron {
+    transform: rotate(180deg);
   }
 
   .strip-dismiss {
