@@ -137,6 +137,10 @@ const shots = {
   'source-health-banner': [
     { file: '09-health-failure-banner', scenario: { health: 'failing' } },
   ],
+  'refine-top-chrome': [
+    { file: '16-top-chrome-default', scenario: {} },
+    { file: '16-top-chrome-problem', scenario: { health: 'failing' } },
+  ],
   'empty-state-filters': [
     {
       file: '10-empty-state-clear-filters',
