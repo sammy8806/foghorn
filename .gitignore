@@ -6,3 +6,6 @@ node_modules
 frontend/dist
 docs/superpowers
 scripts/.env.signing
+
+# Design docs downloaded from claude.ai/design while iterating on the UI.
+.design/

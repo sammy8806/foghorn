@@ -40,13 +40,23 @@
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
-  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission } from '../../wailsjs/go/main/App';
+  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission, RevealConfigFile } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
   import { platform, syncPlatform } from '../stores/platform';
+  import { configDiagnostics } from '../stores/diagnostics';
+  import {
+    configProblems,
+    dismissProblems,
+    dismissedProblems,
+    notificationProblem,
+    problemsFingerprint,
+    sourceProblem,
+    type Problem,
+    type ProblemActionKind,
+  } from '../stores/problems';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
-  import ConfigDiagnostics from './ConfigDiagnostics.svelte';
-  import Notice from './Notice.svelte';
+  import ProblemStrip from './ProblemStrip.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
   import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
@@ -60,8 +70,7 @@
   const popupHeightBuffer = 25;
   type PopupPosition = 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
   let notificationPermissionStatus = '';
-  let notificationSettingsError = '';
-  let notificationPermissionActionPending = false;
+  let problemActionError = '';
   let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
@@ -364,30 +373,25 @@
   $: anySourcePending = $sourcesHealth.some(h => h.pending);
   $: failingSources = $sourcesHealth.filter(h => !h.ok && !h.pending);
   $: anySourceFailing = failingSources.length > 0;
-  $: showHealthBanner = anySourceFailing && !$loading;
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
   $: isMacOSDevMode = $platform === 'darwin' && (
     normalizedBuildType === 'dev' ||
     normalizedBuildType === 'development'
   );
-  $: showNotificationInfoCard = !isMacOSDevMode && (
-    notificationPermissionStatus === 'denied' ||
-    notificationPermissionStatus === 'not_determined' ||
-    notificationPermissionStatus === 'unsupported_legacy'
-  );
-  $: notificationInfoTitle = notificationPermissionStatus === 'denied'
-    ? 'Notifications are configured, but currently blocked'
-    : 'Notifications are configured, but not allowed yet';
-  $: notificationInfoText = notificationPermissionStatus === 'denied'
-    ? 'Foghorn is not allowed to show notifications in macOS Notification Center.'
-    : notificationPermissionStatus === 'unsupported_legacy'
-      ? 'This macOS version does not expose notification permission status directly. Open Notification settings and make sure Foghorn is allowed.'
-      : 'macOS has not granted notification permission to Foghorn yet.';
-  $: notificationActionLabel = notificationPermissionActionPending
-    ? 'Requesting…'
-    : notificationPermissionStatus === 'not_determined'
-      ? 'Allow Notifications'
-      : 'Open Notification Settings';
+  // Everything wrong with the workspace, in one list, in the order you would
+  // want to hear it: a source that is not answering makes the alerts below
+  // untrustworthy, so it outranks settings that merely did not apply.
+  //
+  // A failing source is not a problem yet during the first load — there is no
+  // poll to have failed — and a dev build never asks about notifications,
+  // since it signs as a different bundle than the one the permission is on.
+  $: problems = [
+    ...(!$loading ? failingSources.map(sourceProblem) : []),
+    ...configProblems($configDiagnostics),
+    ...(!isMacOSDevMode ? [notificationProblem(notificationPermissionStatus)].filter((p): p is Problem => p !== null) : []),
+  ];
+  $: problemsKey = problemsFingerprint(problems);
+  $: showProblems = problems.length > 0 && problemsKey !== $dismissedProblems;
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
@@ -405,12 +409,6 @@
   function formatTime(d: Date): string {
     if (d.getTime() === 0) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-
-  function formatHealthLastPoll(health: { pending: boolean; lastPoll: string }): string {
-    if (health.pending) return 'waiting for first poll';
-    if (!health.lastPoll) return 'never polled';
-    return `last poll ${formatTime(new Date(health.lastPoll))}`;
   }
 
   function formatHealthLine(health: {
@@ -541,20 +539,24 @@
     return Math.min(Math.max(value, min), max);
   }
 
-  async function handleNotificationPermissionAction() {
-    if (notificationPermissionActionPending) return;
-    notificationPermissionActionPending = true;
-    notificationSettingsError = '';
+  // Every problem action lands here, so the one place that can report a failure
+  // is the one place the strip has room to show it.
+  async function handleProblemAction(kind: ProblemActionKind) {
+    problemActionError = '';
     try {
-      const result = await requestNotificationPermissionOrOpenSettings(
-        notificationPermissionStatus,
-        RequestNotificationPermission,
-        OpenNotificationSettings,
-      );
-      notificationPermissionStatus = result.status;
-      notificationSettingsError = result.error;
-    } finally {
-      notificationPermissionActionPending = false;
+      if (kind === 'retry') await handleRefresh();
+      else if (kind === 'reveal') await RevealConfigFile();
+      else if (kind === 'notification-settings') {
+        const result = await requestNotificationPermissionOrOpenSettings(
+          notificationPermissionStatus,
+          RequestNotificationPermission,
+          OpenNotificationSettings,
+        );
+        notificationPermissionStatus = result.status;
+        if (result.error) throw new Error(result.error);
+      }
+    } catch (e) {
+      problemActionError = String(e);
     }
   }
 </script>
@@ -810,48 +812,18 @@
     </div>
   </header>
 
-  <!-- Notification, config and health cards. These sit below the chrome rows
-     (not above the filter bar) so the filter bar stays the topmost element and
-     the macOS traffic lights always align with the same row. -->
-  <ConfigDiagnostics />
-
-  {#if showNotificationInfoCard}
-    <Notice severity="caution" title={notificationInfoTitle}>
-      <!-- Ellipsis per the macOS convention: the action opens another window. -->
-      <button slot="action" class="notice-action" on:click={handleOpenNotificationSettings}>
-        Open Notification Settings…
-      </button>
-
-      <p class="notice-text">{notificationInfoText}</p>
-      {#if notificationSettingsError}
-        <p class="notice-row-text">{notificationSettingsError}</p>
-      {/if}
-    </Notice>
-  {/if}
-
-  {#if showHealthBanner}
-    <Notice
-      severity="critical"
-      title="Source polling failed"
-      count={failingSources.length}
-      subtitle={failingSources.map(health => health.source).join(', ')}
-      collapsible
-    >
-      <button slot="action" class="notice-action" on:click={handleRefresh} disabled={refreshing}>
-        {refreshing ? 'Retrying…' : 'Retry'}
-      </button>
-
-      <div class="notice-rows">
-        {#each failingSources as health}
-          <span class="notice-row-locator">{health.source}</span>
-          <div class="notice-row-body">
-            <p class="notice-row-text">{health.lastError || 'Poll failed'}</p>
-            <span class="notice-row-meta">{formatHealthLastPoll(health)}</span>
-          </div>
-          <span class="notice-row-tag">{health.consecFails > 1 ? `${health.consecFails} consecutive failures` : ''}</span>
-        {/each}
-      </div>
-    </Notice>
+  <!-- Row zero of the list. It sits below the chrome rows (not above the filter
+     bar) so the filter bar stays the topmost element and the macOS traffic
+     lights always align with the same row — and directly above the alerts,
+     because what it says is mostly about how far to trust them. -->
+  {#if showProblems}
+    <ProblemStrip
+      {problems}
+      retrying={refreshing}
+      actionError={problemActionError}
+      on:action={event => handleProblemAction(event.detail.kind)}
+      on:dismiss={() => dismissProblems(problemsKey)}
+    />
   {/if}
 
   <!-- Alert content -->
