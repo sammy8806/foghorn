@@ -94,7 +94,7 @@
         {#if summary.action.kind === 'retry' && retrying}
           Retrying…
         {:else}
-          {summary.action.label} {summary.action.glyph}
+          {summary.action.label}{#if summary.action.glyph}&nbsp;{summary.action.glyph}{/if}
         {/if}
       </button>
     {/if}
@@ -143,7 +143,7 @@
               {#if problem.action.kind === 'retry' && retrying}
                 Retrying…
               {:else}
-                {problem.action.label} {problem.action.glyph}
+                {problem.action.label}{#if problem.action.glyph}&nbsp;{problem.action.glyph}{/if}
               {/if}
             </button>
           {:else}

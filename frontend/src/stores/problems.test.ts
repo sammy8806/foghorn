@@ -325,3 +325,17 @@ describe('the reveal action', () => {
     expect(oneProblem().action?.label).toBe('Open folder');
   });
 });
+
+describe('action marks', () => {
+  it('marks only the actions that leave the window', () => {
+    const leaves = configProblems(diagnostics({
+      items: [{ field: 'config', locator: 'line 4', message: 'boom', dropped: false }],
+    }), 'darwin')[0].action;
+    const staysHere = sourceProblem(health()).action;
+
+    expect(leaves?.glyph).toBe('↗');
+    expect(notificationProblem('denied')?.action?.glyph).toBe('↗');
+    // Retry re-runs the poll in place, so there is nowhere for a mark to point.
+    expect(staysHere?.glyph).toBe('');
+  });
+});

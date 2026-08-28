@@ -20,7 +20,9 @@ export type ProblemActionKind = 'retry' | 'reveal' | 'notification-settings';
 export interface ProblemAction {
   kind: ProblemActionKind;
   label: string;
-  /** Trailing mark: ⟳ for something re-run in place, ↗ for somewhere else. */
+  /** Trailing mark, and it means one thing: ↗ says the action leaves the
+   *  window. An action that happens right here carries none, so the mark stays
+   *  worth reading rather than becoming decoration on every button. */
   glyph: string;
 }
 
@@ -109,7 +111,7 @@ export function sourceProblem(health: SourceHealth): Problem {
         : [],
     meta: sourceMeta(health),
     copy: raw,
-    action: { kind: 'retry', label: 'Retry', glyph: '⟳' },
+    action: { kind: 'retry', label: 'Retry', glyph: '' },
   };
 }
 
