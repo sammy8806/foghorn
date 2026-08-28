@@ -71,7 +71,6 @@
   type PopupPosition = 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
   let notificationPermissionStatus = '';
   let problemActionError = '';
-  let environmentPlatform = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
 
