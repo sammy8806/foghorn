@@ -250,7 +250,12 @@ async function main() {
 
   try {
     stopPreview = await startPreview();
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+        ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+        : {}),
+    });
     for (const shot of shots[branchKey]) {
       await capture(browser, shot.file, shot.scenario, shot.action);
     }
