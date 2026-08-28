@@ -19,17 +19,18 @@ import (
 
 // App is the Wails-bound struct. Its exported methods become JS bindings.
 type App struct {
-	mu          sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	cfg         *config.Config
-	configPath  string
-	diagnostics config.Diagnostics
-	store       *state.Store
-	providers   map[string]provider.Provider
-	silenceMgr  *silence.Manager
-	resolveEng  *resolve.Engine
-	hideEng     *hide.Engine
+	mu                 sync.RWMutex
+	ctx                context.Context
+	cancel             context.CancelFunc
+	cfg                *config.Config
+	configPath         string
+	diagnostics        config.Diagnostics
+	diagnosticsExcerpt []config.ExcerptLine
+	store              *state.Store
+	providers          map[string]provider.Provider
+	silenceMgr         *silence.Manager
+	resolveEng         *resolve.Engine
+	hideEng            *hide.Engine
 
 	// refreshTrigger asks the poll engine to poll every source immediately,
 	// off its normal cycle. Wired by main.go to the current engine, re-set on
@@ -62,11 +63,12 @@ type ConfigDiagnostics struct {
 	Excerpt []config.ExcerptLine `json:"excerpt"`
 }
 
-func (a *App) setConfigDiagnostics(path string, diags config.Diagnostics) {
+func (a *App) setConfigDiagnostics(path string, diags config.Diagnostics, content []byte) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.configPath = path
 	a.diagnostics = append(config.Diagnostics(nil), diags...)
+	a.diagnosticsExcerpt = append([]config.ExcerptLine(nil), config.ExcerptFromContent(content, diags)...)
 }
 
 func buildHideEngine(rules []config.HideRule) *hide.Engine {
@@ -130,16 +132,14 @@ func (a *App) GetConfigDiagnostics() ConfigDiagnostics {
 	path := a.configPath
 	items := make(config.Diagnostics, len(a.diagnostics))
 	copy(items, a.diagnostics)
+	excerpt := append([]config.ExcerptLine(nil), a.diagnosticsExcerpt...)
 	a.mu.RUnlock()
 
-	// Reading the file happens after the lock is released: it is the one part
-	// of this that touches the disk, and nothing else here needs the lock held
-	// while it does.
 	return ConfigDiagnostics{
 		Path:        path,
 		Fingerprint: items.Fingerprint(),
 		Items:       items,
-		Excerpt:     config.ExcerptFor(path, items),
+		Excerpt:     excerpt,
 	}
 }
 

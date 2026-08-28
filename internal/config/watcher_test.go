@@ -43,9 +43,9 @@ func TestWatcherDetectsChange(t *testing.T) {
 	}
 
 	changed := make(chan *Config, 1)
-	stop, err := Watch(path, func(cfg *Config, _ Diagnostics) {
+	stop, err := Watch(path, func(cfg *Config, _ Diagnostics, _ []byte) {
 		changed <- cfg
-	}, func(err error) {
+	}, func(err error, _ []byte) {
 		t.Errorf("unexpected onFailure: %v", err)
 	})
 	if err != nil {
@@ -78,9 +78,9 @@ func TestWatcherReloadsUIScale(t *testing.T) {
 	}
 
 	changed := make(chan *Config, 1)
-	stop, err := Watch(path, func(cfg *Config, _ Diagnostics) {
+	stop, err := Watch(path, func(cfg *Config, _ Diagnostics, _ []byte) {
 		changed <- cfg
-	}, func(err error) {
+	}, func(err error, _ []byte) {
 		t.Errorf("unexpected onFailure: %v", err)
 	})
 	if err != nil {
@@ -147,9 +147,9 @@ func TestWatcherReportsFailureAndKeepsWatching(t *testing.T) {
 
 	changed := make(chan Diagnostics, 1)
 	failed := make(chan error, 1)
-	stop, err := Watch(path, func(_ *Config, diags Diagnostics) {
+	stop, err := Watch(path, func(_ *Config, diags Diagnostics, _ []byte) {
 		changed <- diags
-	}, func(err error) {
+	}, func(err error, _ []byte) {
 		failed <- err
 	})
 	if err != nil {
@@ -193,9 +193,9 @@ func TestWatcherPassesDiagnosticsToOnChange(t *testing.T) {
 	}
 
 	changed := make(chan Diagnostics, 1)
-	stop, err := Watch(path, func(_ *Config, diags Diagnostics) {
+	stop, err := Watch(path, func(_ *Config, diags Diagnostics, _ []byte) {
 		changed <- diags
-	}, func(err error) {
+	}, func(err error, _ []byte) {
 		t.Errorf("unexpected onFailure: %v", err)
 	})
 	if err != nil {
@@ -227,9 +227,9 @@ func TestWatcherReportsDeletedConfig(t *testing.T) {
 	}
 
 	failed := make(chan error, 1)
-	stop, err := Watch(path, func(_ *Config, _ Diagnostics) {
+	stop, err := Watch(path, func(_ *Config, _ Diagnostics, _ []byte) {
 		t.Error("onChange called for a deleted config")
-	}, func(err error) {
+	}, func(err error, _ []byte) {
 		failed <- err
 	})
 	if err != nil {

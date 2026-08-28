@@ -45,7 +45,7 @@
   $: single = problems.length === 1;
   // Which leaves nothing to open when that one problem has no evidence: it is
   // fully stated by the strip, and its fix is on the strip too.
-  $: hasDetail = !single || problems[0].frame.length > 0 || problems[0].meta.length > 0;
+  $: hasDetail = !single || problems[0].frame.length > 0 || problems[0].meta.length > 0 || Boolean(actionError);
   $: if (!hasDetail) expanded = false;
 
   function toggle() {

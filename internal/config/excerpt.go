@@ -42,6 +42,16 @@ func ExcerptFor(path string, diags Diagnostics) []ExcerptLine {
 	if err != nil {
 		return nil
 	}
+	return ExcerptFromContent(content, diags)
+}
+
+// ExcerptFromContent returns evidence from the exact config bytes that were
+// parsed, so a later editor save cannot be paired with older diagnostics.
+func ExcerptFromContent(content []byte, diags Diagnostics) []ExcerptLine {
+	line := firstLocatedLine(diags)
+	if line == 0 {
+		return nil
+	}
 
 	// A file ends in a newline, so the split leaves a phantom empty line after
 	// it; keeping it would put a blank row under the last line of the file.

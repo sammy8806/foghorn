@@ -44,7 +44,7 @@ func main() {
 
 	cfgPath := configPath()
 	config.MigrateLegacyPath(cfgPath)
-	cfg, startupDiags, err := config.Load(cfgPath)
+	cfg, startupDiags, startupContent, err := config.LoadWithContent(cfgPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			log.Printf("Config file not found at %s, using defaults", cfgPath)
@@ -58,7 +58,7 @@ func main() {
 
 	store := state.New()
 	app := NewApp(cfg, store)
-	app.setConfigDiagnostics(cfgPath, startupDiags)
+	app.setConfigDiagnostics(cfgPath, startupDiags, startupContent)
 
 	var runtimeMu sync.Mutex
 	var stopRuntime context.CancelFunc
@@ -187,7 +187,7 @@ func main() {
 			app.startup(ctx)
 			setDockIconVisible(!startHidden)
 
-			restartRuntime := func(nextCfg *config.Config, diags config.Diagnostics) {
+			restartRuntime := func(nextCfg *config.Config, diags config.Diagnostics, content []byte) {
 				runtimeMu.Lock()
 				defer runtimeMu.Unlock()
 
@@ -197,7 +197,7 @@ func main() {
 				closeProviders(activeProviders)
 
 				app.updateConfig(nextCfg)
-				app.setConfigDiagnostics(cfgPath, diags)
+				app.setConfigDiagnostics(cfgPath, diags, content)
 				trayMgr.SetConfigWarning(len(diags))
 				wailsruntime.EventsEmit(ctx, "config:diagnostics", app.GetConfigDiagnostics())
 				wailsruntime.EventsEmit(ctx, "ui:scale", nextCfg.UI.Scale)
@@ -242,16 +242,16 @@ func main() {
 				}(bgCtx, diffCh, notifier)
 			}
 
-			restartRuntime(cfg, startupDiags)
+			restartRuntime(cfg, startupDiags, startupContent)
 
 			// Config hot-reload: watch for changes and notify frontend
-			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config, diags config.Diagnostics) {
-				restartRuntime(newCfg, diags)
+			if stopWatch, err := config.Watch(cfgPath, func(newCfg *config.Config, diags config.Diagnostics, content []byte) {
+				restartRuntime(newCfg, diags, content)
 				wailsruntime.EventsEmit(ctx, "config:reloaded")
-			}, func(err error) {
+			}, func(err error, content []byte) {
 				log.Printf("config: keeping running config after failed reload: %v", err)
 				diags := configFailureDiagnostics(err)
-				app.setConfigDiagnostics(cfgPath, diags)
+				app.setConfigDiagnostics(cfgPath, diags, content)
 				trayMgr.SetConfigWarning(len(diags))
 				wailsruntime.EventsEmit(ctx, "config:diagnostics", app.GetConfigDiagnostics())
 			}); err != nil {

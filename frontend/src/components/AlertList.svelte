@@ -85,8 +85,9 @@
   // macOS hides the titlebar, so the standard double-click-to-zoom gesture has
   // to be re-implemented on the drag region that replaced it. Other platforms
   // keep their native titlebar and already have the gesture there.
-  function handleChromeDoubleClick() {
+  function handleChromeDoubleClick(event: MouseEvent) {
     if ($platform !== 'darwin' || !isWails()) return;
+    if (event.target !== event.currentTarget) return;
     WindowToggleMaximise();
   }
 
