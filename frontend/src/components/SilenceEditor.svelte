@@ -93,14 +93,19 @@
 
   // Present and dismiss both run as Svelte transitions rather than CSS
   // animations: a keyframe animation can't play on a node Svelte is removing,
-  // which is why closing used to just vanish. easePanel is the system's own
-  // panel curve — fast out of the gate, long settle, no overshoot; dismissal
-  // uses its mirror and a shorter duration, so the dialog settles into place on
-  // the way in and accelerates away on the way out.
-  const easePanel = cubicBezier(0.32, 0.72, 0, 1);
+  // which is why closing used to just vanish.
+  //
+  // easePanel spreads its motion across the duration on purpose. The obvious
+  // panel curve (0.32, 0.72, 0, 1) is 95% done at half its duration, so most of
+  // the time is an invisible tail — it costs the delay without reading as
+  // movement, and at a short duration it degrades straight into a pop. This one
+  // is 57% at a quarter and 87% at half, so 150ms still reads as travel.
+  // Dismissal accelerates away on the mirrored curve, quicker than the entrance
+  // because an exit should clear the screen rather than perform.
+  const easePanel = cubicBezier(0.25, 0.6, 0.35, 1);
   const easeDismiss = cubicBezier(0.4, 0, 1, 1);
-  const PRESENT_MS = 280;
-  const DISMISS_MS = 160;
+  const PRESENT_MS = 150;
+  const DISMISS_MS = 120;
 
   function reducedMotion(): boolean {
     return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
