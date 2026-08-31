@@ -94,47 +94,65 @@
     width: 100%;
   }
 
+  /* Bare field: the matcher row is already inside a hairline card, so drawing a
+     box here would nest a border in a border in a border. Focus is the only
+     state that gets a frame. */
   .input {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 3px;
-    color: #e2e8f0;
-    font-size: calc(12px * var(--font-scale, 1));
-    padding: 3px 6px;
-    outline: none;
     width: 100%;
     box-sizing: border-box;
-    font-family: monospace;
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--ctrl-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: calc(11.5px * var(--font-scale, 1));
+    outline: none;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   }
-  .input:focus { border-color: #3b82f6; }
-  .invalid .input { border-color: #f87171; }
+  .input::placeholder { color: #566579; }
+  .input:hover { background: rgba(148, 163, 184, 0.09); }
+  .input:focus {
+    background: var(--chrome-field-bg);
+    border-color: rgba(96, 165, 250, 0.6);
+    box-shadow: var(--focus-ring);
+  }
+  .invalid .input { color: #fca5a5; }
+  .invalid .input:focus { border-color: rgba(248, 113, 113, 0.7); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.24); }
 
   .dropdown {
     position: absolute;
-    top: calc(100% + 2px);
+    top: calc(100% + 4px);
     left: 0;
     right: 0;
     z-index: 20;
     margin: 0;
-    padding: 2px 0;
+    padding: 4px;
     list-style: none;
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 3px;
+    background: var(--popover-bg);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
     max-height: 180px;
     overflow-y: auto;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
   .dropdown li {
-    padding: 3px 8px;
-    font-size: calc(12px * var(--font-scale, 1));
+    padding: 4px 7px;
+    border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: calc(11.5px * var(--font-scale, 1));
     color: #cbd5e1;
     cursor: pointer;
-    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .dropdown li.highlighted,
   .dropdown li:hover {
-    background: #1e40af;
+    background: var(--accent);
     color: #fff;
   }
 </style>

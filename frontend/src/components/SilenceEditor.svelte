@@ -1,6 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { createEventDispatcher } from 'svelte';
+  import { afterUpdate, createEventDispatcher } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
   import { alerts, sourceCapabilities } from '../stores/alerts';
@@ -388,6 +388,23 @@
     if (e.key === 'Escape') close();
   }
 
+  // Header/footer dividers only exist to say "there is more content past this
+  // edge", so they're tied to the body's actual scroll position: a dialog whose
+  // content fits shows none and reads as one uninterrupted surface. Recomputed
+  // after every update because the body's height changes as matchers are added,
+  // revealed or removed — not just when the user scrolls.
+  let bodyEl: HTMLDivElement | null = null;
+  let scrolledPastTop = false;
+  let scrolledBeforeEnd = false;
+
+  function updateScrollEdges() {
+    if (!bodyEl) return;
+    scrolledPastTop = bodyEl.scrollTop > 1;
+    scrolledBeforeEnd = bodyEl.scrollTop + bodyEl.clientHeight < bodyEl.scrollHeight - 1;
+  }
+
+  afterUpdate(updateScrollEdges);
+
   function formatRemaining(endsAt: string): string {
     const diffMs = new Date(endsAt).getTime() - Date.now();
     if (diffMs <= 0) return 'expired';
@@ -408,42 +425,78 @@
       aria-modal="true"
       aria-labelledby="silence-title"
     >
-      <div class="dialog-header">
+      <div class="dialog-header" class:divided={scrolledPastTop}>
         <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : isScratchCreate ? 'New silence' : 'Silence alert'}</h3>
-        <button class="btn-close" on:click={close} aria-label="Close">✕</button>
+        <button class="btn-close" on:click={close} aria-label="Close">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
-      <div class="dialog-body">
-        {#if alert || mode === 'edit'}
-          <div class="context-strip">
-            {#if mode === 'edit' && silence}
-            <span class="ctx-item"><strong>id:</strong> {silence.id.slice(0, 10)}…</span>
-            <span class="ctx-item"><strong>started:</strong> {new Date(silence.startsAt).toLocaleString()}</span>
-            <span class="ctx-item"><strong>by:</strong> {silence.createdBy}</span>
-            <span class="ctx-item"><strong>expires in:</strong> {formatRemaining(silence.endsAt)}</span>
-            {:else if alert}
-            <span class="alert-name">{alert.name}</span>
-            <span class="alert-source">{alert.source}</span>
-            {/if}
-          </div>
+      <div class="dialog-body" bind:this={bodyEl} on:scroll={updateScrollEdges}>
+        {#if mode === 'edit' && silence}
+          <section class="section">
+            <span class="section-label">Silence</span>
+            <div class="group">
+              <div class="row">
+                <span class="row-label">ID</span>
+                <span class="row-value mono">{silence.id.slice(0, 10)}…</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Started</span>
+                <span class="row-value">{new Date(silence.startsAt).toLocaleString()}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Created by</span>
+                <span class="row-value">{silence.createdBy}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Expires in</span>
+                <span class="row-value">{formatRemaining(silence.endsAt)}</span>
+              </div>
+            </div>
+          </section>
+        {:else if alert}
+          <section class="section">
+            <span class="section-label">Alert</span>
+            <div class="group">
+              <div class="row">
+                <span class="alert-name">{alert.name}</span>
+                <span class="alert-source">{alert.source}</span>
+              </div>
+            </div>
+          </section>
         {/if}
 
         {#if isAlertlessCreate}
-          <div class="field">
-            <span class="field-label">Target source</span>
-            <select class="input" bind:value={selectedSource}>
-              {#each sourceCandidates as c}
-                <option value={c.source}>{c.source} ({c.count})</option>
-              {/each}
-              {#if sourceCandidates.length === 0}
-                <option value="" disabled>No silence-capable sources</option>
-              {/if}
-            </select>
-          </div>
+          <section class="section">
+            <span class="section-label">Target source</span>
+            <div class="group group-fields select-wrap">
+              <select class="bare-select" aria-label="Target source" bind:value={selectedSource}>
+                {#each sourceCandidates as c}
+                  <option value={c.source}>{c.source} ({c.count})</option>
+                {/each}
+                {#if sourceCandidates.length === 0}
+                  <!-- Not `disabled`: WebKit paints a disabled selected option in
+                       its own low-contrast system colour, which on this surface
+                       renders as an empty picker that looks broken. The empty
+                       value already blocks submit via canSubmit. -->
+                  <option value="">No silence-capable sources</option>
+                {/if}
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
+              </svg>
+            </div>
+          </section>
         {/if}
 
-        <div class="field">
-          <span class="field-label">Matchers ({allMatchers.length})</span>
+        <section class="section">
+          <span class="section-label">
+            Matchers
+            {#if allMatchers.length}<span class="section-count">{allMatchers.length}</span>{/if}
+          </span>
           <MatcherEditor
             bind:matchers={editorMatchers}
             textMatchers={allMatchers}
@@ -455,277 +508,503 @@
             <svelte:fragment slot="actions">
               {#if canExpand}
                 <button type="button" class="matcher-toggle" on:click={expandMatchers}>
-                  ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
+                  Show {hiddenMatchers.length} more
                 </button>
               {:else if canCollapse}
                 <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
-                  ▾ Hide matchers
+                  Hide matchers
                 </button>
               {/if}
             </svelte:fragment>
           </MatcherEditor>
+          {#if previewValid && activeSource}
+            <p class="section-note preview" class:warn={previewWarn}>
+              Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
+            </p>
+          {/if}
           {#if droppedTerms.length > 0}
-            <p class="dropped-note">
+            <p class="section-note">
               Not included in silence:
               {#each droppedTerms as d, i}
                 <code>{d.label}</code><span class="dropped-reason"> ({d.reason})</span>{i < droppedTerms.length - 1 ? ', ' : ''}
               {/each}
             </p>
           {/if}
-        </div>
+        </section>
 
-        <div class="field">
-          <span class="field-label">Ends in</span>
-          <input
-            class="input"
-            type="text"
-            bind:value={duration}
-            placeholder="e.g. 2h, 1h30m, 45m"
-          />
-          <div class="presets">
+        <section class="section">
+          <span class="section-label">Ends in</span>
+          <div class="group group-fields">
+            <div class="row row-field">
+              <input
+                class="bare-input"
+                type="text"
+                aria-label="Duration"
+                bind:value={duration}
+                placeholder="e.g. 2h, 1h30m, 45m"
+              />
+            </div>
+          </div>
+          <div class="segmented" role="group" aria-label="Duration presets">
             {#each basePresets as p}
-              <button class="preset-btn" class:active={duration === p} on:click={() => setDurationPreset(p)}>{p}</button>
+              <button
+                type="button"
+                class="segment"
+                class:selected={duration === p}
+                aria-pressed={duration === p}
+                on:click={() => setDurationPreset(p)}
+              >{p}</button>
             {/each}
           </div>
           {#if mode === 'edit'}
-            <div class="presets">
+            <div class="steppers">
               {#each extendPresets as p}
-                <button class="preset-btn" on:click={() => extendDuration(p)}>{p}</button>
+                <button type="button" class="stepper" on:click={() => extendDuration(p)}>{p}</button>
               {/each}
             </div>
           {/if}
-        </div>
+        </section>
 
-        <label class="field">
-          <span class="field-label">Comment</span>
-          <textarea
-            class="input textarea"
-            bind:value={comment}
-            placeholder="Reason for silencing…"
-            rows="3"
-          />
-        </label>
-
-        <label class="field">
-          <span class="field-label">Created by</span>
-          <input class="input" type="text" bind:value={createdBy} placeholder="Username" />
-        </label>
+        <section class="section">
+          <span class="section-label">Details</span>
+          <div class="group group-fields">
+            <div class="row row-block">
+              <textarea
+                class="bare-input textarea"
+                aria-label="Comment"
+                bind:value={comment}
+                placeholder="Reason for silencing…"
+                rows="3"
+              />
+            </div>
+            <label class="row">
+              <span class="row-label">Created by</span>
+              <input class="bare-input align-end" type="text" bind:value={createdBy} placeholder="Username" />
+            </label>
+          </div>
+        </section>
 
         {#if error}
           <p class="error">{error}</p>
         {/if}
       </div>
 
-      <div class="dialog-footer">
+      <div class="dialog-footer" class:divided={scrolledBeforeEnd}>
         <div class="footer-left">
-          {#if previewValid && activeSource}
-            <span class="match-preview" class:warn={previewWarn}>
-              Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
-            </span>
-          {/if}
           {#if mode === 'edit' && silence}
             {#if confirmExpire}
-              <span class="expire-confirm-text">Expire now?</span>
-              <button class="btn btn-expire" on:click={doExpire} disabled={loading}>
-                {loading ? 'Expiring…' : 'Confirm'}
+              <span class="expire-confirm-text">Expire this silence now?</span>
+              <button class="btn btn-danger" on:click={doExpire} disabled={loading}>
+                {loading ? 'Expiring…' : 'Expire'}
               </button>
-              <button class="btn btn-cancel" on:click={() => (confirmExpire = false)} disabled={loading}>
-                Cancel
+              <button class="btn btn-quiet" on:click={() => (confirmExpire = false)} disabled={loading}>
+                Keep
               </button>
             {:else}
-              <button class="btn btn-expire" on:click={() => (confirmExpire = true)} disabled={loading}>
+              <button class="btn btn-quiet btn-destructive" on:click={() => (confirmExpire = true)} disabled={loading}>
                 Expire now
               </button>
             {/if}
           {/if}
         </div>
-        <div class="footer-right">
-          <button class="btn btn-cancel" on:click={close} disabled={loading}>Cancel</button>
-          <button class="btn btn-primary" on:click={submit} disabled={!canSubmit}>
-            {loading ? (mode === 'edit' ? 'Saving…' : 'Silencing…') : mode === 'edit' ? 'Save changes' : 'Silence'}
-          </button>
-        </div>
+        <!-- Hidden while the expire confirmation is armed: leaving Save next to
+             a live Expire invites the exact misclick the confirmation exists to
+             prevent. -->
+        {#if !confirmExpire}
+          <div class="footer-right">
+            <button class="btn btn-quiet" on:click={close} disabled={loading}>Cancel</button>
+            <button class="btn btn-primary" on:click={submit} disabled={!canSubmit}>
+              {loading ? (mode === 'edit' ? 'Saving…' : 'Silencing…') : mode === 'edit' ? 'Save changes' : 'Silence'}
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
 {/if}
 
 <style>
+  /* The scrim frosts the list rather than just dimming it, so the panel reads
+     as floating above a live window instead of over a flat grey sheet. */
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--panel-scrim);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
     display: flex;
     align-items: center;
     justify-content: center;
+    /* The overlay covers the whole window, titlebar included, so on macOS a
+       centred panel slides straight under the traffic lights. Reserve the same
+       inset the chrome band uses; --titlebar-min-h is 0 on platforms that draw
+       their own titlebar, where the plain 16px wins. */
+    padding: max(16px, calc(var(--titlebar-min-h) + 10px)) 16px 16px;
     z-index: 1000;
+    animation: scrim-in 0.22s var(--ease-panel) both;
   }
   .dialog {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
     width: 520px;
-    max-width: 92vw;
-    max-height: 92vh;
+    max-width: 100%;
+    max-height: 100%;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    /* The inset highlight is the top edge catching light; without it a large
+       radius on a dark fill just looks like a hole. */
+    box-shadow: var(--panel-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: panel-in 0.28s var(--ease-panel) both;
   }
+  @keyframes scrim-in {
+    from { opacity: 0; }
+  }
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .overlay, .dialog { animation: none; }
+  }
+
   .dialog-header {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid #334155;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 13px 44px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
   }
+  .dialog-header.divided { border-bottom-color: var(--chrome-hairline); }
   h3 {
     margin: 0;
-    font-size: calc(15px * var(--font-scale, 1));
+    font-size: calc(13.5px * var(--font-scale, 1));
     font-weight: 600;
+    letter-spacing: -0.01em;
     color: #f1f5f9;
+    text-align: center;
   }
+  /* Same ghost circle as the search field's clear button, so the two dismiss
+     affordances in the app are one control. */
   .btn-close {
-    background: none;
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
     border: none;
-    color: #64748b;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.16);
+    color: #b6c4d6;
     cursor: pointer;
-    font-size: calc(14px * var(--font-scale, 1));
-    padding: 2px 6px;
+    transition: background 0.15s, color 0.15s;
   }
-  .btn-close:hover { color: #e2e8f0; }
-
-  .matcher-toggle {
-    background: none;
-    border: none;
-    color: #94a3b8;
-    font-size: calc(11px * var(--font-scale, 1));
-    cursor: pointer;
-    padding: 2px 0;
-    white-space: nowrap;
-  }
-  .matcher-toggle:hover {
-    color: #e2e8f0;
-  }
+  .btn-close:hover { background: rgba(148, 163, 184, 0.3); color: #f1f5f9; }
 
   .dialog-body {
-    padding: 14px 18px;
+    padding: 4px 18px 16px;
     flex: 1;
     overflow-y: auto;
     min-height: 0;
   }
 
-  .context-strip {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: baseline;
-    margin-bottom: 14px;
-    padding: 6px 10px;
-    background: #0f172a;
-    border-radius: 4px;
-    font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
-  }
-  .ctx-item strong { color: #cbd5e1; margin-right: 3px; font-weight: 600; }
-  .alert-name { color: #f1f5f9; font-weight: 600; font-size: calc(13px * var(--font-scale, 1)); }
-  .alert-source { color: #64748b; font-size: calc(11px * var(--font-scale, 1)); }
-
-  .field {
+  /* Grouping, not boxing: a small dim caption over a hairline card. This is
+     what replaces eight individually-bordered fields stacked on each other. */
+  .section {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 12px;
-    font-size: calc(12px * var(--font-scale, 1));
-    color: #94a3b8;
+    gap: 7px;
+    margin-top: 16px;
   }
-  .field-label { font-weight: 500; color: #94a3b8; }
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 2px;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--ctrl-fg-dim);
+  }
+  .section-count {
+    min-width: 15px;
+    padding: 0 4px;
+    border-radius: 7px;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--ctrl-fg-dim);
+    font-size: calc(9.5px * var(--font-scale, 1));
+    font-weight: 600;
+    line-height: 15px;
+    text-align: center;
+  }
 
-  .input {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
-    color: #e2e8f0;
-    font-size: calc(13px * var(--font-scale, 1));
-    padding: 6px 10px;
-    outline: none;
-    width: 100%;
+  .group {
+    background: var(--group-bg);
+    border: 1px solid var(--chrome-hairline);
+    border-radius: 9px;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  /* The fields group has no per-field borders, so focus has to land somewhere:
+     the card itself takes the ring. */
+  .group-fields:focus-within {
+    border-color: rgba(96, 165, 250, 0.6);
+    box-shadow: var(--focus-ring);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 11px;
+    min-height: 30px;
     box-sizing: border-box;
   }
-  .input:focus { border-color: #3b82f6; }
-  .textarea { resize: vertical; font-family: inherit; }
-
-  .presets {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-  }
-  .preset-btn {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 3px;
-    color: #94a3b8;
-    cursor: pointer;
-    font-size: calc(11px * var(--font-scale, 1));
-    padding: 3px 8px;
-  }
-  .preset-btn:hover { border-color: #3b82f6; color: #e2e8f0; }
-  .preset-btn.active { border-color: #3b82f6; background: #1e40af; color: #fff; }
-
-  .error {
-    color: #f87171;
+  .row + .row { border-top: 1px solid var(--group-divider); }
+  .row-block { display: block; padding: 4px 5px; }
+  .row-field { display: block; padding: 4px 5px; }
+  .row-label {
+    flex-shrink: 0;
     font-size: calc(12px * var(--font-scale, 1));
-    margin: 8px 0 0;
+    color: var(--ctrl-fg-dim);
+  }
+  .row-value {
+    min-width: 0;
+    font-size: calc(12px * var(--font-scale, 1));
+    color: var(--ctrl-fg);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .alert-name {
+    min-width: 0;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    font-weight: 600;
+    color: #f1f5f9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .alert-source {
+    flex-shrink: 0;
+    font-size: calc(11px * var(--font-scale, 1));
+    color: #64748b;
   }
 
-  .dropped-note {
-    font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
-    margin: 6px 0 0;
+  /* Bare fields: the group card supplies the border and the focus ring, so the
+     controls inside it carry none of their own. */
+  .bare-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: var(--ctrl-fg);
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    padding: 3px 6px;
+    box-sizing: border-box;
   }
-  .dropped-note code {
-    background: #0f172a;
-    border-radius: 3px;
-    padding: 1px 4px;
+  .align-end { text-align: right; }
+  .textarea {
+    display: block;
+    /* No grip: on a borderless field inside a card it reads as a stray
+       artifact, and the dialog lives in a fixed-height popup anyway. */
+    resize: none;
+    height: 56px;
+    line-height: 1.45;
+  }
+  .bare-input::placeholder { color: #5b6b83; }
+
+  /* WebKit renders a native popup button here — a tall, near-white slab that
+     ignores every dark token in the app. Strip the appearance and draw the
+     chevrons ourselves, so the picker sits in its card like every other
+     control rather than as a system object dropped on top of one. */
+  .select-wrap { position: relative; }
+  .bare-select {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    height: 30px;
+    padding: 0 30px 0 11px;
+    border: none;
+    background: transparent;
+    color: var(--ctrl-fg);
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    outline: none;
+    cursor: pointer;
+  }
+  .select-chevron {
+    position: absolute;
+    top: 50%;
+    right: 11px;
+    transform: translateY(-50%);
+    color: var(--ctrl-fg-dim);
+    pointer-events: none;
+  }
+
+  /* Segmented control: one track, and the selection is a raised pill inside it
+     rather than eight separate buttons each drawing its own border. */
+  .segmented {
+    display: flex;
+    height: 28px;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--chrome-hairline);
+    border-radius: 8px;
+    background: var(--chrome-capsule-bg);
+    box-sizing: border-box;
+  }
+  .segment {
+    flex: 1;
+    min-width: 0;
+    padding: 0 2px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ctrl-fg-dim);
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .segment:hover { background: var(--chrome-ctrl-hover); color: var(--ctrl-fg); }
+  .segment.selected {
+    background: rgba(255, 255, 255, 0.13);
+    color: #f1f5f9;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  }
+  .segment.selected:hover { background: rgba(255, 255, 255, 0.16); }
+
+  /* Extend shortcuts are actions, not a selection — so they stay discrete
+     buttons and deliberately do NOT look like the segmented control above. */
+  .steppers { display: flex; gap: 5px; }
+  .stepper {
+    height: 24px;
+    padding: 0 10px;
+    border: 1px solid var(--chrome-hairline);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ctrl-fg-dim);
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .stepper:hover {
+    background: var(--chrome-ctrl-hover);
+    border-color: var(--chrome-field-border);
+    color: var(--ctrl-fg);
+  }
+
+  .matcher-toggle {
+    background: none;
+    border: none;
+    color: var(--ctrl-fg-dim);
+    font-size: calc(11px * var(--font-scale, 1));
+    cursor: pointer;
+    padding: 2px 0;
+    white-space: nowrap;
+  }
+  .matcher-toggle:hover { color: var(--ctrl-fg); }
+
+  .section-note {
+    font-size: calc(11px * var(--font-scale, 1));
+    color: var(--ctrl-fg-dim);
+    margin: 0;
+    padding-left: 2px;
+    line-height: 1.5;
+  }
+  .section-note code {
+    background: rgba(148, 163, 184, 0.14);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     color: #cbd5e1;
   }
   .dropped-reason { color: #64748b; }
+  /* Sits under the matcher card because that is what it reports on — in the
+     footer it was just another thing competing with the buttons. */
+  .preview.warn { color: #fbbf24; }
+
+  .error {
+    color: var(--danger);
+    font-size: calc(12px * var(--font-scale, 1));
+    margin: 16px 0 0;
+  }
 
   .dialog-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 12px 18px;
-    border-top: 1px solid #334155;
+    flex-shrink: 0;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid transparent;
+    transition: border-color 0.15s;
   }
-  .footer-left { display: flex; align-items: center; gap: 8px; }
-  .footer-right { display: flex; align-items: center; gap: 8px; }
-  .match-preview {
-    font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
-  }
-  .match-preview.warn { color: #fbbf24; }
+  .dialog-footer.divided { border-top-color: var(--chrome-hairline); }
+  .footer-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .footer-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .expire-confirm-text {
-    font-size: calc(12px * var(--font-scale, 1));
-    color: #f87171;
+    font-size: calc(11.5px * var(--font-scale, 1));
+    color: var(--danger);
   }
 
   .btn {
-    border-radius: 4px;
-    border: none;
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 7px;
+    border: 1px solid transparent;
     cursor: pointer;
-    font-size: calc(13px * var(--font-scale, 1));
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
     font-weight: 500;
-    padding: 7px 16px;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-  .btn-cancel { background: #334155; color: #94a3b8; }
-  .btn-cancel:hover:not(:disabled) { background: #475569; }
+  .btn-quiet {
+    background: var(--chrome-capsule-bg);
+    border-color: var(--chrome-hairline);
+    color: var(--ctrl-fg);
+  }
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--chrome-ctrl-hover);
+    border-color: var(--chrome-field-border);
+  }
 
-  .btn-primary { background: #3b82f6; color: #fff; }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 
-  .btn-expire { background: #7f1d1d; color: #fecaca; }
-  .btn-expire:hover:not(:disabled) { background: #991b1b; color: #fff; }
+  /* Destructive weight lands on the step that actually destroys: arming the
+     confirmation is quiet red text, only Confirm goes solid. */
+  .btn-destructive { color: var(--danger); }
+  .btn-destructive:hover:not(:disabled) {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.4);
+    color: #fca5a5;
+  }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #b91c1c; }
 </style>

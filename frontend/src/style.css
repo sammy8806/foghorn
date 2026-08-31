@@ -44,6 +44,35 @@
   --ctrl-fg: #dbe4f0;
   --ctrl-fg-dim: #9fb2c9;
   --ctrl-fg-active: #bcd9ff;
+
+  /* Modal panel primitives. The chrome tokens above describe controls that sit
+     IN a band; a floating panel needs two things they don't cover — its own
+     elevated material, and a scrim. Everything else (hairlines, control fills,
+     the text ramp) is deliberately shared with the toolbar, so a dialog reads
+     as the same product as the window behind it. */
+  --panel-bg: rgba(24, 34, 54, 0.95);
+  --panel-border: rgba(148, 163, 184, 0.18);
+  --panel-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.4);
+  --panel-scrim: rgba(3, 7, 18, 0.5);
+  /* A popover opens ON a panel, so it has to sit a step above one — at the
+     panel's own fill it just reads as another row of the form underneath. */
+  --popover-bg: rgba(41, 54, 80, 0.98);
+
+  /* Grouped "inset" sections. A form gets its structure from a few hairline
+     cards whose rows are split by an even fainter divider — not from giving
+     every single field its own box, which is what makes a dense form read as a
+     stack of loose slabs. */
+  --group-bg: rgba(255, 255, 255, 0.035);
+  --group-divider: rgba(148, 163, 184, 0.13);
+
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #f87171;
+  --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.32);
+
+  /* The system's own panel curve: fast out of the gate, long settle, no
+     overshoot. Used for anything that presents or dismisses. */
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 html[data-platform="darwin"] {
@@ -61,6 +90,9 @@ html[data-platform="darwin"] {
   --titlebar-min-h: 36px;
   --surface-alpha: 0.72;
   --chrome-tint: rgba(255, 255, 255, 0.035);
+  /* The scrim behind a panel is already blurring the list, so the panel itself
+     can stay a material rather than going opaque and killing the depth. */
+  --panel-bg: rgba(30, 41, 64, 0.84);
 }
 
 html, body {
