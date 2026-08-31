@@ -81,24 +81,32 @@ func Default() *Config {
 // other problem is reported as a Diagnostic against a config that is still
 // usable, with the offending entries dropped.
 func Load(path string) (*Config, Diagnostics, error) {
+	cfg, diags, _, err := LoadWithContent(path)
+	return cfg, diags, err
+}
+
+// LoadWithContent parses one exact file snapshot and returns the bytes that
+// produced its diagnostics. Consumers that render source context must keep
+// those bytes with the diagnostics rather than rereading a later save.
+func LoadWithContent(path string) (*Config, Diagnostics, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading config: %w", err)
+		return nil, nil, nil, fmt.Errorf("reading config: %w", err)
 	}
 
 	expanded := expandEnvVars(string(data))
 
 	cfg := *Default()
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
-		return nil, nil, fmt.Errorf("parsing config: %w", err)
+		return nil, nil, data, fmt.Errorf("parsing config: %w", err)
 	}
 
 	var diags Diagnostics
 	if err := validate(&cfg, &diags); err != nil {
-		return nil, nil, fmt.Errorf("validating config: %w", err)
+		return nil, nil, data, fmt.Errorf("validating config: %w", err)
 	}
 
-	return &cfg, diags, nil
+	return &cfg, diags, data, nil
 }
 
 func expandEnvVars(input string) string {

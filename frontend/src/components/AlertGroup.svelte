@@ -145,7 +145,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px;
+    /* Left padding is 4px, not the 10px the right side uses: the scroller's
+       own 8px gutter plus this puts the dot on --chrome-text-x (12px), the
+       traffic lights' line, so the header hangs off the same edge as the
+       alert count above it. */
+    padding: 6px 10px 6px 4px;
     background: rgba(255,255,255,0.04);
     border-radius: 4px;
     cursor: pointer;

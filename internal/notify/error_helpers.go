@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,7 @@ func formatMacNotificationError(domain string, code int, description string, bun
 		if description != "" && description != "The operation couldn’t be completed. (UNErrorDomain error 1.)" {
 			message += fmt.Sprintf(": %s", description)
 		}
-		return fmt.Errorf(message)
+		return errors.New(message)
 	}
 
 	if domain != "" && code != 0 && description != "" {
@@ -31,9 +32,9 @@ func formatMacNotificationError(domain string, code int, description string, bun
 		return fmt.Errorf("%s error %d", domain, code)
 	}
 	if description != "" {
-		return fmt.Errorf(description)
+		return errors.New(description)
 	}
-	return fmt.Errorf("notification failed")
+	return errors.New("notification failed")
 }
 
 func runningInsideAppBundle(executablePath string) bool {

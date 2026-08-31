@@ -3,23 +3,120 @@
 :root {
   --font-scale: 1;
   --ui-scale: 1;
+
+  /* Window chrome geometry. Zero everywhere except macOS, where the titlebar
+     is hidden-inset and the app draws underneath the traffic lights. The
+     filter bar is always the row flush against the lights and reserves width
+     beside them. */
+  --titlebar-inset-left: 0px;
+  --titlebar-min-h: 0px;
+
+  /* One horizontal grid for the whole window, so the chrome band lines up with
+     the list under it instead of using its own arbitrary padding.
+       --chrome-gutter  the window's content margin (matches .alerts-scroll),
+                        so a control's trailing edge lands on the same vertical
+                        line as an alert card's trailing edge.
+       --chrome-text-x  the text column. Set to the traffic lights' own left
+                        edge, so the lights, the alert count and the group
+                        dots below all hang off one line; .group-header trims
+                        its left padding to meet it. */
+  --chrome-gutter: 8px;
+  --chrome-text-x: 12px;
+
+  /* Surface layering. On opaque platforms every layer is solid slate; on macOS
+     the base goes translucent so the NSVisualEffectView blurs through, and the
+     chrome rows switch from a solid fill to a light tint so they still read as
+     chrome without stacking a second layer of opacity on top of the base. */
+  --surface-rgb: 15, 23, 42;
+  --surface-alpha: 1;
+  --surface-base: rgba(var(--surface-rgb), var(--surface-alpha));
+  --chrome-tint: rgb(var(--surface-rgb));
+
+  /* Toolbar control primitives. White overlays (rather than solid navy fills)
+     so controls sit IN the chrome band instead of floating on it as islands;
+     they composite correctly on both the opaque slate and the macOS vibrancy. */
+  --chrome-hairline: rgba(148, 163, 184, 0.14);
+  --chrome-ctrl-hover: rgba(255, 255, 255, 0.07);
+  --chrome-ctrl-on: rgba(96, 165, 250, 0.16);
+  --chrome-capsule-bg: rgba(255, 255, 255, 0.035);
+  --chrome-field-bg: rgba(8, 14, 26, 0.55);
+  --chrome-field-border: rgba(148, 163, 184, 0.22);
+  --ctrl-fg: #dbe4f0;
+  --ctrl-fg-dim: #9fb2c9;
+  --ctrl-fg-active: #bcd9ff;
+}
+
+html[data-platform="darwin"] {
+  /* Measured off the real hidden-inset panel, not the standard document-window
+     figure: the lights are three 12px buttons running x=12..64 with 8px gaps
+     (a document window would start them at 20px). Reserving 76px leaves 12px
+     of clear space past the green light, which the toolbar's own gutter then
+     extends — the step from the lights to the first icon has to stay the
+     largest gap in the row, since it separates OS chrome from app chrome. */
+  --titlebar-inset-left: 76px;
+  /* Floor sized so a 28px control box centres on the lights. Their centre
+     measures 18.8px from the window top, so the bar pads 5px above and 3px
+     below rather than 4/4 — symmetric padding lands the controls 0.8px high,
+     which is what made them read as floating in the first place. */
+  --titlebar-min-h: 36px;
+  --surface-alpha: 0.72;
+  --chrome-tint: rgba(255, 255, 255, 0.035);
 }
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #0f172a;
+  background: rgb(var(--surface-rgb));
   color: #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: calc(13px * var(--font-scale, 1));
   -webkit-font-smoothing: antialiased;
 }
 
+/* Let the vibrancy view behind the webview show through. The opaque fill moves
+   to <main>, which is the single layer that defines the window's tint. */
+html[data-platform="darwin"], html[data-platform="darwin"] body {
+  background: transparent;
+}
+
 #app { height: 100%; }
 
 #app.scale-interface {
   zoom: var(--ui-scale);
+}
+
+/* Applied to every element that can end up flush against the top of the window
+   (the filter bar, the About header). It marks the row as a native drag
+   region; the traffic-light inset itself is applied by each component's own
+   scoped CSS, which reads --titlebar-inset-left and --titlebar-min-h. Doing it
+   that way avoids fighting the specificity of the scoped `padding` shorthands
+   these rows already set. */
+.titlebar-zone {
+  --wails-draggable: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The filter bar is the topmost zone of the list view under every in-view
+   state — the notification, config and health cards render below the chrome
+   rows — and the About header is the topmost zone of the about view. */
+
+/* --wails-draggable is a CSS custom property, so it INHERITS: without this,
+   every control inside a drag region drags the window instead of activating.
+   Anything interactive has to opt back out explicitly. */
+.titlebar-zone button,
+.titlebar-zone a,
+.titlebar-zone input,
+.titlebar-zone select,
+.titlebar-zone textarea,
+.titlebar-zone label,
+.titlebar-zone [role="button"],
+.titlebar-zone .filter-menu,
+.titlebar-zone .search {
+  --wails-draggable: no-drag;
+  -webkit-user-select: auto;
+  user-select: auto;
 }
 
 ::-webkit-scrollbar { width: 6px; }

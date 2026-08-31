@@ -82,6 +82,7 @@ func handleConfigCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 		Path:        path,
 		Fingerprint: diags.Fingerprint(),
 		Items:       diags,
+		Excerpt:     config.ExcerptFor(path, diags),
 	}
 
 	if len(args) == 2 {
@@ -102,7 +103,11 @@ func handleConfigCLI(args []string, stdout, stderr io.Writer) (bool, int) {
 			} else if diag.Field == "config" {
 				outcome = "config unusable"
 			}
-			fmt.Fprintf(stdout, "- %s: %s (%s)\n", diag.Field, diag.Message, outcome)
+			location := diag.Field
+			if diag.Locator != "" {
+				location = fmt.Sprintf("%s (%s)", diag.Field, diag.Locator)
+			}
+			fmt.Fprintf(stdout, "- %s: %s (%s)\n", location, diag.Message, outcome)
 		}
 	}
 
@@ -122,9 +127,11 @@ func checkCLIConfig(path string) (config.Diagnostics, error) {
 }
 
 func configFailureDiagnostics(err error) config.Diagnostics {
+	locator, message := config.DescribeLoadFailure(err)
 	return config.Diagnostics{{
 		Field:   "config",
-		Message: fmt.Sprintf("could not read or parse the config: %v", err),
+		Locator: locator,
+		Message: message,
 		Dropped: false,
 	}}
 }

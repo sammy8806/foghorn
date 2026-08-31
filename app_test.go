@@ -191,7 +191,7 @@ func TestGetAboutReturnsMetadata(t *testing.T) {
 func TestGetConfigDiagnosticsReturnsPayloadCopy(t *testing.T) {
 	app := NewApp(&config.Config{}, state.New())
 	diags := config.Diagnostics{{Field: "sources[0]", Message: "name is required", Dropped: true}}
-	app.setConfigDiagnostics("/tmp/foghorn/config.yaml", diags)
+	app.setConfigDiagnostics("/tmp/foghorn/config.yaml", diags, nil)
 
 	payload := app.GetConfigDiagnostics()
 	if payload.Path != "/tmp/foghorn/config.yaml" || payload.Fingerprint != diags.Fingerprint() || len(payload.Items) != 1 {

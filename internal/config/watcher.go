@@ -12,12 +12,12 @@ import (
 // OnChangeFunc is called when the config file changes and produced a usable
 // config. Diagnostics may be non-empty: entries that could not be loaded were
 // dropped from cfg.
-type OnChangeFunc func(*Config, Diagnostics)
+type OnChangeFunc func(*Config, Diagnostics, []byte)
 
 // OnFailureFunc is called when a changed config file could not be read or
 // parsed at all. The caller keeps its running config — tearing a working
 // session down because of a half-saved file would be destructive.
-type OnFailureFunc func(error)
+type OnFailureFunc func(error, []byte)
 
 // Watch starts a file watcher on the config path, calling onChange for every
 // successful reload and onFailure when a reload could not produce a config.
@@ -59,11 +59,11 @@ func Watch(path string, onChange OnChangeFunc, onFailure OnFailureFunc) (stop fu
 				}
 			case <-debounce:
 				debounce = nil
-				cfg, diags, err := Load(path)
+				cfg, diags, content, err := LoadWithContent(path)
 				if err != nil {
 					log.Printf("config: reload failed, keeping running config: %v", err)
 					if onFailure != nil {
-						onFailure(err)
+						onFailure(err, content)
 					}
 					continue
 				}
@@ -71,7 +71,7 @@ func Watch(path string, onChange OnChangeFunc, onFailure OnFailureFunc) (stop fu
 				for _, diag := range diags {
 					log.Printf("config: %s: %s", diag.Field, diag.Message)
 				}
-				onChange(cfg, diags)
+				onChange(cfg, diags, content)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return

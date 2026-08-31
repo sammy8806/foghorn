@@ -2,44 +2,52 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import {
   applyConfigDiagnostics,
+  configDiagnostics,
   connectConfigDiagnostics,
-  dismissConfigDiagnostics,
   resetConfigDiagnosticsForTest,
-  visibleConfigDiagnostics,
+  type ConfigDiagnosticsPayload,
 } from './diagnostics';
 
-const first = {
+const first: ConfigDiagnosticsPayload = {
   path: '/tmp/config.yaml',
   fingerprint: 'first',
-  items: [{ field: 'resolvers[0]', message: 'stdin is required', dropped: true }],
+  items: [{ field: 'resolvers[0]', message: 'stdin is required', locator: '', dropped: true }],
+  excerpt: [],
 };
 
 describe('config diagnostics lifecycle', () => {
   beforeEach(resetConfigDiagnosticsForTest);
 
-  it('dismisses only the current fingerprint', () => {
+  it('clears the payload after a clean reload', () => {
     applyConfigDiagnostics(first);
-    expect(get(visibleConfigDiagnostics)?.fingerprint).toBe('first');
+    expect(get(configDiagnostics).items).toHaveLength(1);
 
-    dismissConfigDiagnostics();
-    expect(get(visibleConfigDiagnostics)).toBeNull();
-
-    applyConfigDiagnostics({ ...first, fingerprint: 'second' });
-    expect(get(visibleConfigDiagnostics)?.fingerprint).toBe('second');
+    applyConfigDiagnostics({ path: first.path, fingerprint: '', items: [], excerpt: [] });
+    expect(get(configDiagnostics).items).toEqual([]);
   });
 
-  it('clears the banner after a clean reload', () => {
-    applyConfigDiagnostics(first);
-    applyConfigDiagnostics({ path: first.path, fingerprint: '', items: [] });
-    expect(get(visibleConfigDiagnostics)).toBeNull();
+  it('fills in what a payload from the bridge leaves out', () => {
+    applyConfigDiagnostics(undefined);
+
+    expect(get(configDiagnostics)).toEqual({ path: '', fingerprint: '', items: [], excerpt: [] });
+  });
+
+  it('keeps the excerpt that came with the payload', () => {
+    applyConfigDiagnostics({
+      ...first,
+      items: [{ field: 'config', message: 'mapping values are not allowed', locator: 'line 4', dropped: false }],
+      excerpt: [{ number: 4, text: '  severity: warn: high', marked: true }],
+    });
+
+    expect(get(configDiagnostics).excerpt).toEqual([{ number: 4, text: '  severity: warn: high', marked: true }]);
   });
 
   it('does not let the startup fetch overwrite a newer event', async () => {
-    let resolveFetch!: (payload: typeof first) => void;
-    const fetchPromise = new Promise<typeof first>(resolve => {
+    let resolveFetch!: (payload: ConfigDiagnosticsPayload) => void;
+    const fetchPromise = new Promise<ConfigDiagnosticsPayload>(resolve => {
       resolveFetch = resolve;
     });
-    let onEvent!: (payload: typeof first) => void;
+    let onEvent!: (payload: ConfigDiagnosticsPayload) => void;
 
     connectConfigDiagnostics(
       () => fetchPromise,
@@ -54,6 +62,6 @@ describe('config diagnostics lifecycle', () => {
     await fetchPromise;
     await Promise.resolve();
 
-    expect(get(visibleConfigDiagnostics)?.fingerprint).toBe('event');
+    expect(get(configDiagnostics).fingerprint).toBe('event');
   });
 });

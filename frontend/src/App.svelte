@@ -4,8 +4,8 @@
   import { isWails, waitForBridge } from './stores/alerts';
   import AlertList from './components/AlertList.svelte';
   import About from './components/About.svelte';
-  import ConfigDiagnostics from './components/ConfigDiagnostics.svelte';
   import { initConfigDiagnostics } from './stores/diagnostics';
+  import { syncPlatform } from './stores/platform';
   import { initUIScale, uiScale } from './stores/uiScale';
   import { safeExternalURL } from './utils/url';
 
@@ -45,6 +45,10 @@
       await waitForBridge();
       if (disposed || !isWails()) return;
 
+      // Replaces main.ts's user-agent guess with the runtime's answer before
+      // anything else touches the chrome variables.
+      await syncPlatform();
+
       unlistenScale = initUIScale();
       unlistenDiagnostics = initConfigDiagnostics();
       unlistenAbout = EventsOn('about:show', () => {
@@ -67,7 +71,6 @@
 </script>
 
 <main>
-  <ConfigDiagnostics />
   <div class="view">
     {#if view === 'about'}
       <About on:back={() => (view = 'list')} />
@@ -78,28 +81,18 @@
 </main>
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-  }
+  /* Document-level resets live in style.css so there is a single source of
+     truth for the surface variables; duplicating them here would win on
+     injection order and silently undo the macOS translucency. */
 
-  :global(html, body) {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    background: #0f172a;
-    color: #e2e8f0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: calc(13px * var(--font-scale, 1));
-  }
-
-  :global(#app) {
-    height: 100%;
-  }
-
+  /* The one layer that paints the window's tint. On macOS --surface-alpha is
+     below 1 so the NSVisualEffectView blurs through; everywhere else this is
+     solid slate. */
   main {
     height: 100%;
     display: flex;
     flex-direction: column;
+    background: var(--surface-base);
   }
 
   .view {

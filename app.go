@@ -12,23 +12,25 @@ import (
 	"foghorn/internal/notify"
 	"foghorn/internal/provider"
 	"foghorn/internal/resolve"
+	"foghorn/internal/reveal"
 	"foghorn/internal/silence"
 	"foghorn/internal/state"
 )
 
 // App is the Wails-bound struct. Its exported methods become JS bindings.
 type App struct {
-	mu          sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	cfg         *config.Config
-	configPath  string
-	diagnostics config.Diagnostics
-	store       *state.Store
-	providers   map[string]provider.Provider
-	silenceMgr  *silence.Manager
-	resolveEng  *resolve.Engine
-	hideEng     *hide.Engine
+	mu                 sync.RWMutex
+	ctx                context.Context
+	cancel             context.CancelFunc
+	cfg                *config.Config
+	configPath         string
+	diagnostics        config.Diagnostics
+	diagnosticsExcerpt []config.ExcerptLine
+	store              *state.Store
+	providers          map[string]provider.Provider
+	silenceMgr         *silence.Manager
+	resolveEng         *resolve.Engine
+	hideEng            *hide.Engine
 
 	// refreshTrigger asks the poll engine to poll every source immediately,
 	// off its normal cycle. Wired by main.go to the current engine, re-set on
@@ -55,13 +57,18 @@ type ConfigDiagnostics struct {
 	Path        string             `json:"path"`
 	Fingerprint string             `json:"fingerprint"`
 	Items       config.Diagnostics `json:"items"`
+	// Excerpt is the handful of config lines around the problem, when one of
+	// the items points at a line. Empty otherwise, and never load-bearing: the
+	// items say what is wrong on their own.
+	Excerpt []config.ExcerptLine `json:"excerpt"`
 }
 
-func (a *App) setConfigDiagnostics(path string, diags config.Diagnostics) {
+func (a *App) setConfigDiagnostics(path string, diags config.Diagnostics, content []byte) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.configPath = path
 	a.diagnostics = append(config.Diagnostics(nil), diags...)
+	a.diagnosticsExcerpt = append([]config.ExcerptLine(nil), config.ExcerptFromContent(content, diags)...)
 }
 
 func buildHideEngine(rules []config.HideRule) *hide.Engine {
@@ -122,13 +129,17 @@ func (a *App) updateConfig(cfg *config.Config) {
 // file the user should edit.
 func (a *App) GetConfigDiagnostics() ConfigDiagnostics {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
+	path := a.configPath
 	items := make(config.Diagnostics, len(a.diagnostics))
 	copy(items, a.diagnostics)
+	excerpt := append([]config.ExcerptLine(nil), a.diagnosticsExcerpt...)
+	a.mu.RUnlock()
+
 	return ConfigDiagnostics{
-		Path:        a.configPath,
+		Path:        path,
 		Fingerprint: items.Fingerprint(),
 		Items:       items,
+		Excerpt:     excerpt,
 	}
 }
 
@@ -328,6 +339,20 @@ func (a *App) RequestNotificationPermission() (string, error) {
 
 func (a *App) OpenNotificationSettings() error {
 	return notify.OpenNotificationSettings()
+}
+
+// RevealConfigFile shows the config in the file manager. It takes no path on
+// purpose: the frontend asks to reveal *the config*, and which file that is
+// stays a decision of the backend that loaded it.
+func (a *App) RevealConfigFile() error {
+	a.mu.RLock()
+	path := a.configPath
+	a.mu.RUnlock()
+
+	if path == "" {
+		return fmt.Errorf("no config path is known yet")
+	}
+	return reveal.InFileManager(path)
 }
 
 // CreateSilence creates a silence with the caller-supplied matchers on the named source.

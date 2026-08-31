@@ -40,10 +40,23 @@
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { severityConfig, severityLabel } from '../stores/severity';
-  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission } from '../../wailsjs/go/main/App';
-  import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen } from '../../wailsjs/runtime/runtime';
+  import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission, RevealConfigFile } from '../../wailsjs/go/main/App';
+  import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
+  import { platform, syncPlatform } from '../stores/platform';
+  import { configDiagnostics } from '../stores/diagnostics';
+  import {
+    configProblems,
+    dismissProblems,
+    dismissedProblems,
+    notificationProblem,
+    problemsFingerprint,
+    sourceProblem,
+    type Problem,
+    type ProblemActionKind,
+  } from '../stores/problems';
   import AlertGroup from './AlertGroup.svelte';
   import AlertCard from './AlertCard.svelte';
+  import ProblemStrip from './ProblemStrip.svelte';
   import SilenceEditor from './SilenceEditor.svelte';
   import SearchHelpPopover from './SearchHelpPopover.svelte';
   import { silenceEditor, closeSilenceEditor, openSilenceFromQuery } from '../stores/silenceEditor';
@@ -57,18 +70,24 @@
   const popupHeightBuffer = 25;
   type PopupPosition = 'top_right' | 'top_left' | 'bottom_right' | 'bottom_left';
   let notificationPermissionStatus = '';
-  let notificationSettingsError = '';
-  let notificationPermissionActionPending = false;
-  let environmentPlatform = '';
+  let problemActionError = '';
   let environmentBuildType = '';
   let idleImage = defaultIdleImage;
-  let healthBannerExpanded = false;
 
   async function syncEnvironmentInfo() {
     if (!isWails()) return;
     const environment = await Environment();
-    environmentPlatform = environment.platform;
     environmentBuildType = environment.buildType;
+    await syncPlatform();
+  }
+
+  // macOS hides the titlebar, so the standard double-click-to-zoom gesture has
+  // to be re-implemented on the drag region that replaced it. Other platforms
+  // keep their native titlebar and already have the gesture there.
+  function handleChromeDoubleClick(event: MouseEvent) {
+    if ($platform !== 'darwin' || !isWails()) return;
+    if (event.target !== event.currentTarget) return;
+    WindowToggleMaximise();
   }
 
   async function syncNotificationPermissionStatus() {
@@ -354,30 +373,25 @@
   $: anySourcePending = $sourcesHealth.some(h => h.pending);
   $: failingSources = $sourcesHealth.filter(h => !h.ok && !h.pending);
   $: anySourceFailing = failingSources.length > 0;
-  $: showHealthBanner = anySourceFailing && !$loading;
   $: normalizedBuildType = environmentBuildType.trim().toLowerCase();
-  $: isMacOSDevMode = environmentPlatform === 'darwin' && (
+  $: isMacOSDevMode = $platform === 'darwin' && (
     normalizedBuildType === 'dev' ||
     normalizedBuildType === 'development'
   );
-  $: showNotificationInfoCard = !isMacOSDevMode && (
-    notificationPermissionStatus === 'denied' ||
-    notificationPermissionStatus === 'not_determined' ||
-    notificationPermissionStatus === 'unsupported_legacy'
-  );
-  $: notificationInfoTitle = notificationPermissionStatus === 'denied'
-    ? 'Notifications are configured, but currently blocked'
-    : 'Notifications are configured, but not allowed yet';
-  $: notificationInfoText = notificationPermissionStatus === 'denied'
-    ? 'Foghorn is not allowed to show notifications in macOS Notification Center.'
-    : notificationPermissionStatus === 'unsupported_legacy'
-      ? 'This macOS version does not expose notification permission status directly. Open Notification settings and make sure Foghorn is allowed.'
-      : 'macOS has not granted notification permission to Foghorn yet.';
-  $: notificationActionLabel = notificationPermissionActionPending
-    ? 'Requesting…'
-    : notificationPermissionStatus === 'not_determined'
-      ? 'Allow Notifications'
-      : 'Open Notification Settings';
+  // Everything wrong with the workspace, in one list, in the order you would
+  // want to hear it: a source that is not answering makes the alerts below
+  // untrustworthy, so it outranks settings that merely did not apply.
+  //
+  // A failing source is not a problem yet during the first load — there is no
+  // poll to have failed — and a dev build never asks about notifications,
+  // since it signs as a different bundle than the one the permission is on.
+  $: problems = [
+    ...(!$loading ? failingSources.map(sourceProblem) : []),
+    ...configProblems($configDiagnostics, $platform),
+    ...(!isMacOSDevMode ? [notificationProblem(notificationPermissionStatus)].filter((p): p is Problem => p !== null) : []),
+  ];
+  $: problemsKey = problemsFingerprint(problems);
+  $: showProblems = problems.length > 0 && problemsKey !== $dismissedProblems;
   $: healthTitle = noHealthYet
     ? 'Waiting for first poll…'
     : ['Per-source status:', ...$sourcesHealth.map(formatHealthLine)].join('\n');
@@ -395,12 +409,6 @@
   function formatTime(d: Date): string {
     if (d.getTime() === 0) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-
-  function formatHealthLastPoll(health: { pending: boolean; lastPoll: string }): string {
-    if (health.pending) return 'waiting for first poll';
-    if (!health.lastPoll) return 'never polled';
-    return `last poll ${formatTime(new Date(health.lastPoll))}`;
   }
 
   function formatHealthLine(health: {
@@ -531,20 +539,24 @@
     return Math.min(Math.max(value, min), max);
   }
 
-  async function handleNotificationPermissionAction() {
-    if (notificationPermissionActionPending) return;
-    notificationPermissionActionPending = true;
-    notificationSettingsError = '';
+  // Every problem action lands here, so the one place that can report a failure
+  // is the one place the strip has room to show it.
+  async function handleProblemAction(kind: ProblemActionKind) {
+    problemActionError = '';
     try {
-      const result = await requestNotificationPermissionOrOpenSettings(
-        notificationPermissionStatus,
-        RequestNotificationPermission,
-        OpenNotificationSettings,
-      );
-      notificationPermissionStatus = result.status;
-      notificationSettingsError = result.error;
-    } finally {
-      notificationPermissionActionPending = false;
+      if (kind === 'retry') await handleRefresh();
+      else if (kind === 'reveal') await RevealConfigFile();
+      else if (kind === 'notification-settings') {
+        const result = await requestNotificationPermissionOrOpenSettings(
+          notificationPermissionStatus,
+          RequestNotificationPermission,
+          OpenNotificationSettings,
+        );
+        notificationPermissionStatus = result.status;
+        if (result.error) throw new Error(result.error);
+      }
+    } catch (e) {
+      problemActionError = String(e);
     }
   }
 </script>
@@ -552,288 +564,267 @@
 <svelte:window on:click={closeAllMenus} on:keydown={handleGlobalKeydown} />
 
 <div class="alert-list-container">
-  {#if showNotificationInfoCard}
-    <div class="info-card info-card-warning">
-      <div class="info-card-copy">
-        <div class="info-card-title">{notificationInfoTitle}</div>
-        <div class="info-card-text">{notificationInfoText}</div>
-        {#if notificationSettingsError}
-          <div class="info-card-detail-error">{notificationSettingsError}</div>
-        {/if}
-      </div>
-      <button class="info-card-action" on:click={handleNotificationPermissionAction} disabled={notificationPermissionActionPending}>
-        {notificationActionLabel}
-      </button>
-    </div>
-  {/if}
-
-  {#if showHealthBanner}
-    <div class="health-banner" class:expanded={healthBannerExpanded} role="alert">
-      <button
-        class="health-banner-summary"
-        on:click={() => healthBannerExpanded = !healthBannerExpanded}
-        aria-expanded={healthBannerExpanded}
-        aria-controls="health-banner-details"
+  <!-- Top chrome: the toolbar and the status line are one band, not two
+     stacked rows of chrome. The tint and the single hairline belong to
+     <header>; the rows inside are told apart by rhythm and type weight. -->
+  <header class="chrome">
+    <!-- Filter & view controls -->
+    <div class="filter-bar titlebar-zone" bind:this={filterBarEl} on:dblclick={handleChromeDoubleClick}>
+      <!-- Expanding search: collapsed to an icon, click to expand. -->
+      <div
+        class="search"
+        bind:this={searchEl}
+        class:open={searchOpen}
+        on:click={openSearch}
+        on:focusout={onSearchFocusOut}
+        on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
+        on:transitionend={onSearchTransitionEnd}
+        role="button"
+        aria-label="Filter alerts"
+        title="Filter alerts (Ctrl/⌘+F)"
+        tabindex={searchOpen ? -1 : 0}
       >
-        <span class="health-banner-heading">
-          <span>{failingSources.length === 1 ? 'Source polling failed' : `${failingSources.length} sources are failing`}</span>
-        </span>
-        <span class="health-banner-source-list">{failingSources.map(health => health.source).join(', ')}</span>
-        <svg class="health-banner-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </button>
-      <button class="health-banner-action" on:click={handleRefresh} disabled={refreshing}>
-        {refreshing ? 'Retrying…' : 'Retry'}
-      </button>
-      {#if healthBannerExpanded}
-        <div class="health-banner-sources" id="health-banner-details">
-        {#each failingSources as health}
-          <div class="health-banner-source">
-            <div class="health-banner-source-title">
-              <span class="health-banner-source-name">{health.source}</span>
-              {#if health.consecFails > 1}<span class="health-banner-fail-count">{health.consecFails} consecutive failures</span>{/if}
-            </div>
-            <div class="health-banner-source-error">{health.lastError || 'Poll failed'}</div>
-            <span class="health-banner-source-meta">
-              {formatHealthLastPoll(health)}
-            </span>
-          </div>
-        {/each}
-      </div>
-      {/if}
-    </div>
-  {/if}
-
-  <!-- Filter & view controls -->
-  <div class="filter-bar" bind:this={filterBarEl}>
-    <!-- Expanding search: collapsed to an icon, click to expand. -->
-    <div
-      class="search"
-      bind:this={searchEl}
-      class:open={searchOpen}
-      on:click={openSearch}
-      on:focusout={onSearchFocusOut}
-      on:keydown={(e) => { if (!searchOpen && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSearch(); } }}
-      on:transitionend={onSearchTransitionEnd}
-      role="button"
-      aria-label="Filter alerts"
-      title="Filter alerts (Ctrl/⌘+F)"
-      tabindex={searchOpen ? -1 : 0}
-    >
-      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
-      <input
-        class="search-input"
-        type="text"
-        placeholder="Filter alerts…"
-        bind:this={searchInputEl}
-        bind:value={$filter.text}
-      />
-      {#if searchOpen}
-        <button
-          class="search-help"
-          type="button"
-          class:active={searchHelpOpen}
-          on:mousedown|stopPropagation={(e) => e.preventDefault()}
-          on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
-          title="Search syntax help"
-          aria-label="Search syntax help"
-          aria-expanded={searchHelpOpen}
-        >?</button>
-      {/if}
-      {#if hasSearchText}
-        <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
-      {/if}
-    </div>
-
-    <!-- Create a silence from the current search, or start one from scratch. -->
-    <button
-      class="icon-toggle"
-      disabled={!canOpenSilenceEditor}
-      on:click={silenceFromSearch}
-      title={silenceFromSearchTitle}
-      aria-label="Silence from search"
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
-    </button>
-
-    <!-- Icon-button toggles -->
-    <button
-      class="icon-toggle"
-      class:active={$filter.showAll}
-      on:click={toggleShowAll}
-      title={showAllTitle}
-      aria-label={$filter.showAll
-        ? 'Showing all alerts; return to default view'
-        : hiddenByFiltersCount > 0
-          ? `Show all alerts, ${hiddenByFiltersCount} hidden`
-          : 'Show all alerts'}
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-      {#if hiddenByFiltersCount > 0}
-        <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
-      {/if}
-    </button>
-    <button
-      class="icon-toggle"
-      class:active={$verbose}
-      on:click={() => verbose.update(v => !v)}
-      title="Toggle verbose display"
-    >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>
-    </button>
-
-    <div class="filter-spacer"></div>
-
-    <!-- Fused view block: Severity · [Source] · Group · Sort -->
-    <div class="view-block" class:compact={widthCompact}>
-      <div class="segment-wrap">
-        <button
-          class="segment"
-          class:active={severityMenuOpen}
-          class:filtered={$filter.severity !== 'all'}
-          on:click|stopPropagation={() => openMenu('severity')}
-          title="Filter by severity"
-        >
-          <span class="segment-label">Severity</span>
-          <span class="segment-value" style="--value-w: {severityValueWidthCh}">{severityText}</span>
-          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-        </button>
-        {#if severityMenuOpen}
-          <div class="filter-menu">
-            <button class="filter-menu-option" class:selected={$filter.severity === 'all'} on:click|stopPropagation={() => setSeverityFilter('all')}>
-              <span>All severities</span>
-              {#if $filter.severity === 'all'}<span class="filter-menu-check">✓</span>{/if}
-            </button>
-            {#each $severityConfig.levels as level}
-              <button class="filter-menu-option" class:selected={$filter.severity === level.name} on:click|stopPropagation={() => setSeverityFilter(level.name)}>
-                <span>{severityLabel(level.name)}</span>
-                {#if $filter.severity === level.name}<span class="filter-menu-check">✓</span>{/if}
-              </button>
-            {/each}
-          </div>
+        <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Filter alerts…"
+          bind:this={searchInputEl}
+          bind:value={$filter.text}
+        />
+        {#if searchOpen}
+          <button
+            class="search-help"
+            type="button"
+            class:active={searchHelpOpen}
+            on:mousedown|stopPropagation={(e) => e.preventDefault()}
+            on:click|stopPropagation={() => searchHelpOpen = !searchHelpOpen}
+            title="Search syntax help"
+            aria-label="Search syntax help"
+            aria-expanded={searchHelpOpen}
+          >?</button>
+        {/if}
+        {#if hasSearchText}
+          <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
         {/if}
       </div>
 
-      {#if $availableSources.length > 1}
+      <!-- Create a silence from the current search, or start one from scratch. -->
+      <button
+        class="icon-toggle"
+        disabled={!canOpenSilenceEditor}
+        on:click={silenceFromSearch}
+        title={silenceFromSearchTitle}
+        aria-label="Silence from search"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+      </button>
+
+      <!-- Icon-button toggles -->
+      <button
+        class="icon-toggle"
+        class:active={$filter.showAll}
+        on:click={toggleShowAll}
+        title={showAllTitle}
+        aria-label={$filter.showAll
+          ? 'Showing all alerts; return to default view'
+          : hiddenByFiltersCount > 0
+            ? `Show all alerts, ${hiddenByFiltersCount} hidden`
+            : 'Show all alerts'}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        {#if hiddenByFiltersCount > 0}
+          <span class="icon-toggle-badge">{hiddenByFiltersCount > 99 ? '99+' : hiddenByFiltersCount}</span>
+        {/if}
+      </button>
+      <button
+        class="icon-toggle"
+        class:active={$verbose}
+        on:click={() => verbose.update(v => !v)}
+        title="Toggle verbose display"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="15" y2="18"></line></svg>
+      </button>
+
+      <div class="filter-spacer"></div>
+
+      <!-- Fused view block: Severity · [Source] · Group · Sort -->
+      <div class="view-block" class:compact={widthCompact}>
         <div class="segment-wrap">
           <button
             class="segment"
-            class:active={sourceMenuOpen}
-            class:filtered={$filter.source !== 'all'}
-            on:click|stopPropagation={() => openMenu('source')}
-            title="Filter by source"
+            class:active={severityMenuOpen}
+            class:filtered={$filter.severity !== 'all'}
+            on:click|stopPropagation={() => openMenu('severity')}
+            title="Filter by severity"
           >
-            <span class="segment-label">Source</span>
-            <span class="segment-value" style="--value-w: {sourceValueWidthCh}">{sourceText}</span>
+            <span class="segment-label">Severity</span>
+            <span class="segment-value" style="--value-w: {severityValueWidthCh}">{severityText}</span>
             <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
           </button>
-          {#if sourceMenuOpen}
+          {#if severityMenuOpen}
             <div class="filter-menu">
-              <button class="filter-menu-option" class:selected={$filter.source === 'all'} on:click|stopPropagation={() => setSourceFilter('all')}>
-                <span>All sources</span>
-                {#if $filter.source === 'all'}<span class="filter-menu-check">✓</span>{/if}
+              <button class="filter-menu-option" class:selected={$filter.severity === 'all'} on:click|stopPropagation={() => setSeverityFilter('all')}>
+                <span>All severities</span>
+                {#if $filter.severity === 'all'}<span class="filter-menu-check">✓</span>{/if}
               </button>
-              {#each $availableSources as src}
-                <button class="filter-menu-option" class:selected={$filter.source === src} on:click|stopPropagation={() => setSourceFilter(src)}>
-                  <span>{src}</span>
-                  {#if $filter.source === src}<span class="filter-menu-check">✓</span>{/if}
+              {#each $severityConfig.levels as level}
+                <button class="filter-menu-option" class:selected={$filter.severity === level.name} on:click|stopPropagation={() => setSeverityFilter(level.name)}>
+                  <span>{severityLabel(level.name)}</span>
+                  {#if $filter.severity === level.name}<span class="filter-menu-check">✓</span>{/if}
                 </button>
               {/each}
             </div>
           {/if}
         </div>
-      {/if}
 
-      <div class="segment-wrap">
-        <button
-          class="segment"
-          class:active={groupMenuOpen}
-          class:filtered={$activeGroupMode !== 'default'}
-          on:click|stopPropagation={() => openMenu('group')}
-          title="Change alert grouping"
-        >
-          <span class="segment-label">Group</span>
-          <span class="segment-value" style="--value-w: {groupValueWidthCh}">{currentGroupLabel}</span>
-          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-        </button>
-        {#if groupMenuOpen}
-          <div class="filter-menu">
-            {#each GROUP_PRESET_OPTIONS as option}
-              <button class="filter-menu-option" class:selected={$activeGroupMode === option.mode} on:click|stopPropagation={() => setGroupMode(option.mode)}>
-                <span>{option.label}</span>
-                {#if $activeGroupMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
-              </button>
-            {/each}
+        {#if $availableSources.length > 1}
+          <div class="segment-wrap">
+            <button
+              class="segment"
+              class:active={sourceMenuOpen}
+              class:filtered={$filter.source !== 'all'}
+              on:click|stopPropagation={() => openMenu('source')}
+              title="Filter by source"
+            >
+              <span class="segment-label">Source</span>
+              <span class="segment-value" style="--value-w: {sourceValueWidthCh}">{sourceText}</span>
+              <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+            </button>
+            {#if sourceMenuOpen}
+              <div class="filter-menu">
+                <button class="filter-menu-option" class:selected={$filter.source === 'all'} on:click|stopPropagation={() => setSourceFilter('all')}>
+                  <span>All sources</span>
+                  {#if $filter.source === 'all'}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+                {#each $availableSources as src}
+                  <button class="filter-menu-option" class:selected={$filter.source === src} on:click|stopPropagation={() => setSourceFilter(src)}>
+                    <span>{src}</span>
+                    {#if $filter.source === src}<span class="filter-menu-check">✓</span>{/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
-      </div>
 
-      <div class="segment-wrap">
-        <button
-          class="segment"
-          class:active={sortMenuOpen}
-          class:filtered={$activeSortMode !== 'default'}
-          on:click|stopPropagation={() => openMenu('sort')}
-          title="Change alert sort order"
-        >
-          <span class="segment-label">Sort</span>
-          <span class="segment-value" style="--value-w: {sortValueWidthCh}">{currentSortLabel}</span>
-          <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
-        </button>
-        {#if sortMenuOpen}
-          <div class="filter-menu">
-            {#each SORT_PRESET_OPTIONS as option}
-              <button class="filter-menu-option" class:selected={$activeSortMode === option.mode} on:click|stopPropagation={() => setSortMode(option.mode)}>
-                <span>{option.label}</span>
-                {#if $activeSortMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
+        <div class="segment-wrap">
+          <button
+            class="segment"
+            class:active={groupMenuOpen}
+            class:filtered={$activeGroupMode !== 'default'}
+            on:click|stopPropagation={() => openMenu('group')}
+            title="Change alert grouping"
+          >
+            <span class="segment-label">Group</span>
+            <span class="segment-value" style="--value-w: {groupValueWidthCh}">{currentGroupLabel}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          </button>
+          {#if groupMenuOpen}
+            <div class="filter-menu">
+              {#each GROUP_PRESET_OPTIONS as option}
+                <button class="filter-menu-option" class:selected={$activeGroupMode === option.mode} on:click|stopPropagation={() => setGroupMode(option.mode)}>
+                  <span>{option.label}</span>
+                  {#if $activeGroupMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <div class="segment-wrap">
+          <button
+            class="segment"
+            class:active={sortMenuOpen}
+            class:filtered={$activeSortMode !== 'default'}
+            on:click|stopPropagation={() => openMenu('sort')}
+            title="Change alert sort order"
+          >
+            <span class="segment-label">Sort</span>
+            <span class="segment-value" style="--value-w: {sortValueWidthCh}">{currentSortLabel}</span>
+            <svg class="segment-caret" width="9" height="9" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4z"></path></svg>
+          </button>
+          {#if sortMenuOpen}
+            <div class="filter-menu">
+              {#each SORT_PRESET_OPTIONS as option}
+                <button class="filter-menu-option" class:selected={$activeSortMode === option.mode} on:click|stopPropagation={() => setSortMode(option.mode)}>
+                  <span>{option.label}</span>
+                  {#if $activeSortMode === option.mode}<span class="filter-menu-check">✓</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Status bar -->
-  <div class="status-bar">
-    {#if $loading}
-      <span class="status-loading">Loading…</span>
-    {:else if $error}
-      <span class="status-error">Error: {$error}</span>
-    {:else}
-      <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
-      {#if newVisibleCount > 0}
-        <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
-          <span class="status-chip-x" aria-hidden="true">×</span>
-          {newVisibleCount} New
-        </button>
-      {/if}
-      {#if resolvedVisibleCount > 0}
-        <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
-          <span class="status-chip-x" aria-hidden="true">×</span>
-          {resolvedVisibleCount} Resolved
-        </button>
-      {/if}
+    <!-- Status bar -->
+    <div class="status-bar">
+      {#if $loading}
+        <span class="status-loading">Loading…</span>
+      {:else}
+        <span class="status-count">{totalCount} alert{totalCount !== 1 ? 's' : ''}</span>
+        <!-- A short chip plus a truncating message, rather than one long red
+           line. The message used to live in its own branch of this row, which
+           also took away the count, the on-call name and the refresh button —
+           the very control you want when a poll has just failed. -->
+        {#if $error}
+          <span class="status-chip status-chip-error" title={$error}>
+            <span class="status-chip-bang" aria-hidden="true">!</span>
+            Error
+          </span>
+          <span class="status-error-text" title={$error}>{$error}</span>
+        {/if}
+        {#if newVisibleCount > 0}
+          <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
+            <span class="status-chip-x" aria-hidden="true">×</span>
+            {newVisibleCount} New
+          </button>
+        {/if}
+        {#if resolvedVisibleCount > 0}
+          <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
+            <span class="status-chip-x" aria-hidden="true">×</span>
+            {resolvedVisibleCount} Resolved
+          </button>
+        {/if}
 
-      <div class="status-spacer"></div>
+        <div class="status-spacer"></div>
 
-      {#if $onCallStatus.length > 0}
-        <span class="status-oncall-label">On call</span>
-        <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
+        {#if $onCallStatus.length > 0}
+          <span class="status-oncall-label">On call</span>
+          <span class="status-oncall" title={onCallTitle}>{onCallSummary}</span>
+        {/if}
+        <!-- The health dot is the refresh control's state light, so the two
+           are one unit: tight together, set apart from the on-call name. -->
+        <div class="status-health">
+          <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
+            class:refresh-ok={allSourcesOK && !refreshing}
+            class:refresh-fail={anySourceFailing && !refreshing}
+            class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
+          >●</span>
+          <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
+            <svg class="refresh-icon" class:spinning={refreshing} viewBox="0 0 640 640" width="14" height="14" fill="currentColor">
+              <path d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z" />
+            </svg>
+          </button>
+        </div>
       {/if}
-      <span class="refresh-status" title={refreshing ? 'Refreshing…' : healthTitle}
-        class:refresh-ok={allSourcesOK && !refreshing}
-        class:refresh-fail={anySourceFailing && !refreshing}
-        class:refresh-pending={!anySourceFailing && (noHealthYet || refreshing || anySourcePending)}
-      >●</span>
-      <button class="refresh-btn" on:click={handleRefresh} disabled={refreshing} title={refreshing ? 'Refreshing…' : `Refresh alerts\n\n${healthTitle}`}>
-        <svg class="refresh-icon" class:spinning={refreshing} viewBox="0 0 640 640" width="14" height="14" fill="currentColor">
-          <path d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z" />
-        </svg>
-      </button>
-    {/if}
-  </div>
+    </div>
+  </header>
+
+  <!-- Row zero of the list. It sits below the chrome rows (not above the filter
+     bar) so the filter bar stays the topmost element and the macOS traffic
+     lights always align with the same row — and directly above the alerts,
+     because what it says is mostly about how far to trust them. -->
+  {#if showProblems}
+    <ProblemStrip
+      {problems}
+      retrying={refreshing}
+      actionError={problemActionError}
+      on:action={event => handleProblemAction(event.detail.kind)}
+      on:dismiss={() => dismissProblems(problemsKey)}
+    />
+  {/if}
 
   <!-- Alert content -->
   <div class="alerts-scroll">
@@ -906,201 +897,28 @@
     overflow: hidden;
   }
 
-  .info-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 8px 8px 0;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid #7c2d12;
-    background: linear-gradient(135deg, rgba(120, 53, 15, 0.22), rgba(30, 41, 59, 0.92));
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  }
-
-  .info-card-copy {
-    min-width: 0;
-  }
-
-  .info-card-title {
-    color: #fed7aa;
-    font-size: calc(12px * var(--font-scale, 1));
-    font-weight: 700;
-  }
-
-  .info-card-text {
-    color: #fdba74;
-    font-size: calc(11px * var(--font-scale, 1));
-    margin-top: 2px;
-  }
-
-  .info-card-detail-error {
-    color: #fecaca;
-    font-size: calc(11px * var(--font-scale, 1));
-    margin-top: 4px;
-  }
-
-  .info-card-action {
+  /* The toolbar and the status line are one chrome band. Painting the tint
+     and the closing hairline once, here, is what keeps them from reading as
+     two stacked lids; the rows themselves are transparent. */
+  .chrome {
     flex-shrink: 0;
-    border: 1px solid #fb923c;
-    background: rgba(251, 146, 60, 0.12);
-    color: #ffedd5;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: calc(11px * var(--font-scale, 1));
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .info-card-action:hover {
-    background: rgba(251, 146, 60, 0.2);
-  }
-
-  .health-banner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 8px 8px 0;
-    padding: 7px 9px;
-    border: 1px solid #7f1d1d;
-    border-radius: 6px;
-    background: #1e1821;
-  }
-
-  .health-banner.expanded {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 7px 10px;
-  }
-
-  .health-banner-summary {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-    gap: 6px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .health-banner-summary:hover .health-banner-heading {
-    color: #fff1f2;
-  }
-
-  .health-banner-heading {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    color: #fecaca;
-    font-size: calc(11px * var(--font-scale, 1));
-    font-weight: 700;
-  }
-
-  .health-banner-source-list {
-    min-width: 0;
-    overflow: hidden;
-    color: #fda4af;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: calc(10px * var(--font-scale, 1));
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .health-banner-chevron {
-    flex-shrink: 0;
-    color: #f87171;
-    transition: transform 120ms ease;
-  }
-
-  .health-banner.expanded .health-banner-chevron {
-    transform: rotate(180deg);
-  }
-
-  .health-banner-action {
-    flex-shrink: 0;
-    border: 0;
-    border-radius: 4px;
-    padding: 3px 5px;
-    background: transparent;
-    color: #fca5a5;
-    font-size: calc(10px * var(--font-scale, 1));
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .health-banner-action:hover:not(:disabled) {
-    color: #fff1f2;
-    background: rgba(248, 113, 113, 0.16);
-  }
-
-  .health-banner-action:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-
-  .health-banner-sources {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding-top: 7px;
-    border-top: 1px solid rgba(248, 113, 113, 0.2);
-  }
-
-  .health-banner-source {
-    padding: 6px 7px;
-    border-radius: 4px;
-    background: rgba(15, 23, 42, 0.45);
-    border: 1px solid rgba(248, 113, 113, 0.12);
-    font-size: calc(10px * var(--font-scale, 1));
-  }
-
-  .health-banner-source-title {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .health-banner-source-name {
-    color: #fda4af;
-    font-weight: 700;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-
-  .health-banner-fail-count {
-    flex-shrink: 0;
-    color: #94a3b8;
-    font-size: calc(9px * var(--font-scale, 1));
-  }
-
-  .health-banner-source-error {
-    color: #fca5a5;
-    margin-top: 3px;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .health-banner-source-meta {
-    display: block;
-    color: #94a3b8;
-    margin-top: 3px;
+    background: var(--chrome-tint);
+    border-bottom: 1px solid var(--chrome-hairline);
   }
 
   .filter-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    background: #0f172a;
-    border-bottom: 1px solid #1b2740;
-    flex-shrink: 0;
+    /* Tight inside the icon cluster; .search opens the gap to the toggles so
+       the left side reads as two shapes rather than four loose glyphs. */
+    gap: 3px;
+    /* On macOS this row sits under the hidden titlebar, so it reserves space
+       for the traffic lights and matches the inset titlebar's height; both
+       variables are 0 on platforms that draw their own titlebar. The 5/3
+       vertical padding is deliberately lopsided: it centres the 28px controls
+       at 19px, on the traffic lights' measured 18.8px centre line. */
+    padding: 5px var(--chrome-gutter) 3px calc(var(--chrome-gutter) + var(--titlebar-inset-left));
+    min-height: var(--titlebar-min-h);
     /* Stay on one line; when it would overflow we strip the segment values
        (captions only) rather than wrapping onto a second row. */
     flex-wrap: nowrap;
@@ -1108,38 +926,53 @@
 
   .filter-spacer {
     flex: 1;
+    /* Holds the two clusters apart once the row is tight enough that the
+       spacer itself has collapsed to nothing. */
+    margin-left: 9px;
   }
 
-  /* Expanding search: collapsed to a 28px icon button; expands to a field. */
+  /* Expanding search: a ghost icon while collapsed (no box — controls read as
+     part of the chrome band, not islands on it); expands into a sunken field.
+     Box and glyph match the icon toggles exactly so the cluster reads as one
+     toolbar. */
   .search {
     display: flex;
     align-items: center;
-    gap: 7px;
+    justify-content: center;
+    gap: 0;
+    /* The one control that changes shape, so it sits off on its own: the row
+       gap is 3px, this makes the step to the toggles 10px. */
+    margin-right: 7px;
     height: 28px;
     width: 28px;
     box-sizing: border-box;
-    padding: 0 0 0 7px;
-    border-radius: 6px;
-    border: 1px solid #2a3650;
-    background: #162033;
+    padding: 0;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
     overflow: hidden;
-    cursor: text;
+    cursor: pointer;
     flex-shrink: 0;
-    transition: width 0.18s cubic-bezier(0.2, 0, 0.2, 1), padding 0.18s;
+    transition: width 0.18s cubic-bezier(0.2, 0, 0.2, 1), padding 0.18s, background 0.15s, border-color 0.15s;
+  }
+  .search:not(.open):hover {
+    background: var(--chrome-ctrl-hover);
   }
   .search.open {
     width: 200px;
-    padding-right: 4px;
-  }
-  .search:not(.open) {
-    justify-content: center;
-    gap: 0;
-    padding: 0;
-    cursor: pointer;
+    padding: 0 4px 0 9px;
+    justify-content: flex-start;
+    gap: 7px;
+    border-color: var(--chrome-field-border);
+    background: var(--chrome-field-bg);
+    cursor: text;
   }
   .search-icon {
-    stroke: #7c8aa3;
+    stroke: var(--ctrl-fg-dim);
     flex-shrink: 0;
+  }
+  .search.open .search-icon {
+    stroke: var(--ctrl-fg);
   }
   .search-input {
     flex: 1;
@@ -1170,14 +1003,14 @@
     padding: 0;
     border: none;
     border-radius: 50%;
-    background: #2a3650;
+    background: rgba(148, 163, 184, 0.22);
     color: #cbd5e1;
     font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
     line-height: 1;
     cursor: pointer;
   }
-  .search-clear:hover { background: #34425f; color: #f1f5f9; }
+  .search-clear:hover { background: rgba(148, 163, 184, 0.34); color: #f1f5f9; }
 
   .search-help {
     flex-shrink: 0;
@@ -1199,34 +1032,48 @@
   }
   .search-help:hover,
   .search-help.active {
-    background: #2a3650;
+    background: rgba(148, 163, 184, 0.24);
     color: #93c5fd;
   }
 
-  /* Square icon-button toggles (Show all, Verbose) */
+  /* Borderless icon toggles (Silence, Show all, Verbose): ghost until hovered,
+     tinted while active. One shared visual language with the search icon.
+
+     Every glyph in this row is Feather at its native 24-unit geometry, drawn at
+     15px with a 2px stroke. Keep them there. Feather centres each icon's ink box
+     on y=12, which is what puts them all on one line inside these 28px boxes —
+     hand-tweaking a radius or a rule position breaks that silently, because the
+     box stays centred while the artwork inside it stops being. The magnifier is
+     the trap: its round line cap always reaches y=22, so shrinking the circle
+     drops the ink box's centre below 12 and the glyph sags. */
   .icon-toggle {
     position: relative;
     width: 28px;
     height: 28px;
+    /* WebKit's UA sheet gives <button> an asymmetric 2px/3px block padding.
+       With box-sizing:border-box and a fixed height that shifts the content
+       box — and so the glyph — half a pixel up, which is why these three sat
+       above the traffic lights while .search (a div, padding:0) did not.
+       Blink pads 1px/1px, so the bug is invisible outside WKWebView. */
+    padding: 0;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
-    border: 1px solid #2a3650;
-    background: #162033;
-    color: #94a3b8;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ctrl-fg-dim);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.15s, color 0.15s;
   }
   .icon-toggle:hover {
-    color: #dbe4f0;
-    border-color: #3a496a;
+    color: var(--ctrl-fg);
+    background: var(--chrome-ctrl-hover);
   }
   .icon-toggle.active {
-    color: #bcd9ff;
-    background: rgba(47, 129, 247, 0.18);
-    border-color: rgba(47, 129, 247, 0.45);
+    color: var(--ctrl-fg-active);
+    background: var(--chrome-ctrl-on);
   }
   .icon-toggle:disabled {
     opacity: 0.4;
@@ -1234,8 +1081,8 @@
   }
   .icon-toggle-badge {
     position: absolute;
-    top: -5px;
-    right: -5px;
+    top: -4px;
+    right: -4px;
     min-width: 14px;
     height: 14px;
     padding: 0 3px;
@@ -1247,62 +1094,69 @@
     line-height: 14px;
     text-align: center;
     pointer-events: none;
-    box-shadow: 0 0 0 1px #0f172a;
+    box-shadow: 0 0 0 1px rgba(8, 14, 26, 0.9);
   }
 
-  /* Fused view block: Severity · [Source] · Group · Sort */
+  /* Fused view block: Severity · [Source] · Group · Sort. One quiet capsule
+     keyed to the chrome band instead of a heavy navy slab. Height and radius
+     match the 28px icon toggles so the two clusters read as peers. */
   .view-block {
     display: inline-flex;
     height: 28px;
-    border: 1px solid #2a3650;
-    border-radius: 6px;
-    background: #162033;
+    border: 1px solid var(--chrome-hairline);
+    border-radius: 7px;
+    background: var(--chrome-capsule-bg);
     flex-shrink: 0;
   }
   .view-block.compact .segment {
     gap: 0;
+    padding: 0 8px;
   }
   .segment-wrap {
     position: relative;
     display: inline-flex;
   }
+  /* Inset divider: a short centered hairline rather than a full-height cut,
+     so adjacent segments read as one capsule instead of butted slabs. */
   .segment-wrap + .segment-wrap::before {
     content: '';
+    align-self: center;
+    height: 14px;
     width: 1px;
-    background: #2a3650;
+    background: var(--chrome-hairline);
   }
   .segment {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
     height: 100%;
-    padding: 0 10px;
+    padding: 0 11px;
     background: transparent;
     border: none;
-    color: #dbe4f0;
+    color: var(--ctrl-fg);
     font-family: inherit;
     font-size: calc(12px * var(--font-scale, 1));
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .segment-wrap:first-child .segment { border-radius: 5px 0 0 5px; }
-  .segment-wrap:last-child .segment { border-radius: 0 5px 5px 0; }
+  .segment-wrap:first-child .segment { border-radius: 6px 0 0 6px; }
+  .segment-wrap:last-child .segment { border-radius: 0 6px 6px 0; }
   .segment:hover,
   .segment.active {
-    background: rgba(47, 129, 247, 0.12);
+    background: var(--chrome-ctrl-hover);
     color: #f1f5f9;
   }
   .segment.filtered {
-    background: rgba(47, 129, 247, 0.18);
-    color: #bcd9ff;
+    background: var(--chrome-ctrl-on);
+    color: var(--ctrl-fg-active);
   }
   .segment-label {
     font-size: calc(8.5px * var(--font-scale, 1));
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #7c8aa3;
+    color: var(--ctrl-fg-dim);
   }
   .segment.filtered .segment-label { color: #9fc2f5; }
   /* Width tracks the current value's length (via --value-w, in ch), clamped
@@ -1351,13 +1205,14 @@
     align-items: center;
     align-content: center;
     gap: 8px;
-    padding: 7px 10px;
+    /* Left edge is the shared text column, so the count sits above the group
+       labels it counts. The trailing gutter gives back the refresh button's
+       own 3px padding, putting its glyph on the view capsule's edge. */
+    padding: 5px calc(var(--chrome-gutter) - 3px) 8px var(--chrome-text-x);
     box-sizing: border-box;
     font-size: calc(11px * var(--font-scale, 1));
     line-height: 1.119;
-    color: #475569;
-    background: #0f172a;
-    border-bottom: 1px solid #1e293b;
+    color: #64748b;
     flex-shrink: 0;
     /* Stay on one line: the on-call name truncates rather than wrapping the
        clock/refresh onto a second row. */
@@ -1367,15 +1222,28 @@
   .status-count,
   .status-chip,
   .status-oncall-label,
-  .refresh-status,
-  .refresh-btn {
+  .status-health {
     flex-shrink: 0;
+  }
+
+  /* State light + refresh, read as one control. */
+  .status-health {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
   }
   .status-spacer {
     flex: 1;
   }
 
-  .status-error { color: #ef4444; }
+  .status-error-text {
+    min-width: 0;
+    overflow: hidden;
+    color: #94a3b8;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .status-loading { color: #94a3b8; }
   .status-count {
     display: inline-flex;
@@ -1427,6 +1295,22 @@
     box-shadow: 0 0 10px rgba(34, 197, 94, 0.24);
   }
   .status-chip-resolved .status-chip-x { color: #052e16; }
+  /* Read-only, unlike the New/Resolved chips: retry lives on the refresh
+     button at the end of the row, so this one takes no hover affordance. */
+  .status-chip-error {
+    color: #fef2f2;
+    background: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.28);
+    cursor: default;
+  }
+  .status-chip-error:hover { filter: none; }
+  .status-chip-bang {
+    display: inline-flex;
+    align-items: center;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-weight: 800;
+    line-height: 1;
+  }
   .status-oncall-label {
     display: inline-flex;
     align-items: center;
@@ -1497,6 +1381,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 12px;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
     font-size: calc(9px * var(--font-scale, 1));
@@ -1512,15 +1397,17 @@
     justify-content: center;
     background: none;
     border: none;
-    color: #94a3b8;
+    border-radius: 4px;
+    color: var(--ctrl-fg-dim);
     font-size: calc(14px * var(--font-scale, 1));
     line-height: 1;
     height: var(--status-item-height);
     min-height: var(--status-item-height);
-    padding: 0 2px;
+    padding: 0 3px;
     cursor: pointer;
+    transition: background 0.15s, color 0.15s;
   }
-  .refresh-btn:hover { background: #1e293b; color: #e2e8f0; }
+  .refresh-btn:hover { background: var(--chrome-ctrl-hover); color: #e2e8f0; }
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .refresh-icon { display: block; }

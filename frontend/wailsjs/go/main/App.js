@@ -78,6 +78,10 @@ export function RequestNotificationPermission() {
   return window['go']['main']['App']['RequestNotificationPermission']();
 }
 
+export function RevealConfigFile() {
+  return window['go']['main']['App']['RevealConfigFile']();
+}
+
 export function TestNotificationForAlert(arg1, arg2) {
   return window['go']['main']['App']['TestNotificationForAlert'](arg1, arg2);
 }

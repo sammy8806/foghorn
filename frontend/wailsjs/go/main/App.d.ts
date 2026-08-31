@@ -43,6 +43,8 @@ export function RefreshAlerts():Promise<void>;
 
 export function RequestNotificationPermission():Promise<string>;
 
+export function RevealConfigFile():Promise<void>;
+
 export function TestNotificationForAlert(arg1:string,arg2:string):Promise<void>;
 
 export function Unsilence(arg1:string,arg2:string):Promise<void>;
