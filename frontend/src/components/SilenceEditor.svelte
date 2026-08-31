@@ -1,6 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { afterUpdate, createEventDispatcher } from 'svelte';
+  import { afterUpdate, createEventDispatcher, tick } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
   import { alerts, sourceCapabilities } from '../stores/alerts';
@@ -37,6 +37,9 @@
   let initializedForOpen = false;
   let droppedTerms: DroppedTerm[] = [];
   let selectedSource = '';
+  let dialogEl: HTMLDivElement | null = null;
+  let previouslyFocused: HTMLElement | null = null;
+  let focusMovedIn = false;
 
   // Combined source of truth: hidden matchers are always part of the silence.
   $: allMatchers = [...editorMatchers, ...hiddenMatchers];
@@ -381,7 +384,28 @@
     initializedForOpen = false;
   }
 
+  // Move focus into the dialog on open so keyboard and screen-reader users
+  // land in the modal instead of on the page behind it (WAI-ARIA dialog
+  // pattern). The panel itself takes focus rather than the first field:
+  // auto-focusing a matcher input would pop its autocomplete over the form.
+  $: if (open && !focusMovedIn) {
+    focusMovedIn = true;
+    previouslyFocused = document.activeElement as HTMLElement | null;
+    void tick().then(() => dialogEl?.focus());
+  }
+  $: if (!open) {
+    focusMovedIn = false;
+  }
+
+  function restoreFocus() {
+    // Hand focus back to whatever opened the dialog, if it is still around —
+    // alert cards are destroyed and recreated on every list refresh.
+    if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    previouslyFocused = null;
+  }
+
   function close() {
+    restoreFocus();
     dispatch('close');
   }
 
@@ -400,6 +424,7 @@
         await CreateSilence(activeSource, allMatchers, duration, createdBy, comment);
       }
       dispatch('silenced');
+      restoreFocus();
       dispatch('close');
     } catch (e) {
       error = String(e);
@@ -415,6 +440,7 @@
     try {
       await Unsilence(alert.source, silence.id);
       dispatch('silenced');
+      restoreFocus();
       dispatch('close');
     } catch (e) {
       error = String(e);
@@ -424,8 +450,38 @@
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') close();
+  // Tab/Shift+Tab cycle inside the dialog (WAI-ARIA modal dialog pattern):
+  // without the trap, focus walks out of the modal onto the list behind the
+  // scrim. Escape closes unless an inner popup already claimed it.
+  function onDialogKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      // Inner popups (source picker, autocomplete) mark their own Escape with
+      // preventDefault; only a bare Escape dismisses the whole dialog.
+      if (!e.defaultPrevented) {
+        e.stopPropagation();
+        close();
+      }
+      return;
+    }
+    if (e.key !== 'Tab' || !dialogEl) return;
+    const focusable = Array.from(
+      dialogEl.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (e.shiftKey) {
+      if (!active || active === first || !dialogEl.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (!active || active === last || !dialogEl.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   // Header/footer dividers only exist to say "there is more content past this
@@ -461,15 +517,16 @@
     in:scrim={{ duration: PRESENT_MS }}
     out:scrim={{ duration: DISMISS_MS }}
     on:click={close}
-    on:keydown={handleKeydown}
     role="presentation"
   >
     <div
       class="dialog"
+      bind:this={dialogEl}
+      tabindex="-1"
       in:panel={{ duration: PRESENT_MS, easing: easePanel }}
       out:panel={{ duration: DISMISS_MS, easing: easeDismiss }}
       on:click|stopPropagation
-      on:keydown|stopPropagation
+      on:keydown={onDialogKeydown}
       role="dialog"
       aria-modal="true"
       aria-labelledby="silence-title"
@@ -486,7 +543,7 @@
       <div class="dialog-body" bind:this={bodyEl} on:scroll={updateScrollEdges}>
         {#if mode === 'edit' && silence}
           <section class="section">
-            <span class="section-label">Silence</span>
+            <h4 class="section-label">Silence</h4>
             <div class="group">
               <div class="row">
                 <span class="row-label">ID</span>
@@ -508,7 +565,7 @@
           </section>
         {:else if alert}
           <section class="section">
-            <span class="section-label">Alert</span>
+            <h4 class="section-label">Alert</h4>
             <div class="group">
               <div class="row">
                 <span class="alert-name">{alert.name}</span>
@@ -520,7 +577,7 @@
 
         {#if isAlertlessCreate}
           <section class="section">
-            <span class="section-label">Target source</span>
+            <h4 class="section-label" id="se-source-label">Target source</h4>
             <div class="group">
               <SelectMenu
                 ariaLabel="Target source"
@@ -533,10 +590,10 @@
         {/if}
 
         <section class="section">
-          <span class="section-label">
+          <h4 class="section-label" id="se-matchers-label">
             Matchers
             {#if allMatchers.length}<span class="section-count">{allMatchers.length}</span>{/if}
-          </span>
+          </h4>
           <MatcherEditor
             bind:matchers={editorMatchers}
             textMatchers={allMatchers}
@@ -558,7 +615,7 @@
             </svelte:fragment>
           </MatcherEditor>
           {#if previewValid && activeSource}
-            <p class="section-note preview" class:warn={previewWarn}>
+            <p class="section-note preview" class:warn={previewWarn} role="status">
               Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
             </p>
           {/if}
@@ -573,28 +630,28 @@
         </section>
 
         <section class="section">
-          <span class="section-label">Ends in</span>
+          <h4 class="section-label" id="se-duration-label">Ends in</h4>
           <div class="group group-fields">
             <div class="row row-field">
               <input
                 class="bare-input"
                 type="text"
-                aria-label="Duration"
+                aria-labelledby="se-duration-label"
                 bind:value={duration}
                 placeholder="e.g. 2h, 1h30m, 45m"
               />
             </div>
-          </div>
-          <div class="segmented" role="group" aria-label="Duration presets">
-            {#each basePresets as p}
-              <button
-                type="button"
-                class="segment tap-target"
-                class:selected={duration === p}
-                aria-pressed={duration === p}
-                on:click={() => setDurationPreset(p)}
-              >{p}</button>
-            {/each}
+            <div class="segmented" role="group" aria-label="Duration presets">
+              {#each basePresets as p}
+                <button
+                  type="button"
+                  class="segment tap-target"
+                  class:selected={duration === p}
+                  aria-pressed={duration === p}
+                  on:click={() => setDurationPreset(p)}
+                >{p}</button>
+              {/each}
+            </div>
           </div>
           {#if mode === 'edit'}
             <div class="steppers">
@@ -606,7 +663,7 @@
         </section>
 
         <section class="section">
-          <span class="section-label">Details</span>
+          <h4 class="section-label">Details</h4>
           <div class="group group-fields">
             <div class="row row-block">
               <textarea
@@ -619,13 +676,13 @@
             </div>
             <label class="row">
               <span class="row-label">Created by</span>
-              <input class="bare-input align-end" type="text" bind:value={createdBy} placeholder="Username" />
+              <input class="bare-input grow" type="text" bind:value={createdBy} placeholder="Username" />
             </label>
           </div>
         </section>
 
         {#if error}
-          <p class="error">{error}</p>
+          <p class="error" role="alert">{error}</p>
         {/if}
       </div>
 
@@ -705,6 +762,9 @@
        radius on a dark fill just looks like a hole. */
     box-shadow: var(--panel-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
+  /* The frame takes programmatic focus on open (see the trap in the script);
+     an outline on it would read as an error flash, not a focus indicator. */
+  .dialog:focus { outline: none; }
 
   .dialog-header {
     position: relative;
@@ -746,6 +806,7 @@
     transition: background 0.15s, color 0.15s;
   }
   .btn-close:hover { background: rgba(148, 163, 184, 0.3); color: #f1f5f9; }
+  .btn-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   .dialog-body {
     padding: 2px 16px 13px;
@@ -754,31 +815,41 @@
     min-height: 0;
   }
 
-  /* Grouping, not boxing: a small dim caption over a hairline card. This is
+  /* Grouping, not boxing: a small quiet caption over a hairline card. This is
      what replaces eight individually-bordered fields stacked on each other. */
   .section {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    /* Wider than the 5px inside a section: a caption that carries real weight
+    gap: 7px;
+    /* Wider than the 7px inside a section: a caption that carries real weight
        has to read as attached to the card under it, not floating between two. */
-    margin-top: 14px;
+    margin-top: 18px;
   }
-  /* The caption has to win against the card it heads. At 11px/500 in the dim
-     ramp it was the same ink as .row-label and .section-note *inside* the card,
-     so the form read as one undifferentiated column of grey. Size, weight and a
-     brighter ramp step do the separating; the case stays sentence, because
-     these get read as words rather than scanned as a rule. */
+  /* The header's own bottom padding already opens the gap; the first section
+     only needs the optical difference between 10px of chrome and 7px of gap. */
+  .section:first-child { margin-top: 13px; }
+  /* Section labels are headings (h4) so the form has a real document outline —
+     screen readers can jump between sections instead of wading through every
+     control. Visually they read as small eyebrow captions: at 11.5px they sat
+     at nearly the same size/weight as the 12.5px field text, so "Alert" and
+     "Matchers" collapsed into the form and the dialog read as one long column.
+     The drop to 10px + uppercase + tracking opens a clear step: smaller than
+     the value, louder in presence. #93a5bd keeps ~6.5:1 on the panel (WCAG
+     1.4.3 still holds: labels aren't body text). */
   .section-label {
     display: flex;
     align-items: center;
     gap: 6px;
+    margin: 0;
     padding-left: 2px;
-    font-size: calc(11.5px * var(--font-scale, 1));
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    color: #cbd5e1;
+    font-size: calc(10px * var(--font-scale, 1));
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #93a5bd;
   }
+  /* The count pill matches the section label at 9.5px; the uppercase label
+     shifted the baseline, so the pill aligns to the cap height now. */
   .section-count {
     min-width: 15px;
     padding: 0 4px;
@@ -870,32 +941,39 @@
     padding: 3px 6px;
     box-sizing: border-box;
   }
-  .align-end { text-align: right; }
+  /* Label + field on one line: the input takes the space the label leaves and
+     keeps its text left-aligned — a right-aligned value next to a left label
+     read as a settings sheet, not a form, and broke the tab-order reading. */
+  .grow { flex: 1; min-width: 0; }
   .textarea {
     display: block;
     /* No grip: on a borderless field inside a card it reads as a stray
-       artifact, and the dialog lives in a fixed-height popup anyway. */
+       artifact, and the dialog lives in a fixed-height popup anyway. Height
+       comes from the rows attribute so a bigger --font-scale grows the field
+       instead of clipping it. */
     resize: none;
-    height: 46px;
     line-height: 1.45;
   }
   .bare-input::placeholder { color: var(--group-placeholder); }
 
-  /* Segmented control: one track, and the selection is a raised pill inside it
-     rather than eight separate buttons each drawing its own border. */
+  /* Segmented control lives INSIDE the duration card now, under a hairline:
+     the input and the presets set one value, so drawing two bordered boxes
+     made one field read as two. The card supplies the frame; a fainter inset
+     track keeps the pills legible without a second border. */
   .segmented {
     display: flex;
-    height: 26px;
-    padding: 2px;
     gap: 2px;
-    border: 1px solid var(--group-border);
-    border-radius: 8px;
-    background: var(--group-bg);
+    padding: 3px;
+    border-top: 1px solid var(--group-divider);
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background: rgba(8, 14, 26, 0.28);
     box-sizing: border-box;
   }
   .segment {
     flex: 1;
     min-width: 0;
+    height: 22px;
     padding: 0 2px;
     border: none;
     border-radius: 6px;
@@ -915,6 +993,16 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.09);
   }
   .segment.selected:hover { background: rgba(255, 255, 255, 0.16); }
+  /* The card already draws the soft outer ring on focus-within; a second full
+     ring on the pill would double it. An inset 2px line stays visible at 3:1
+     against both the track and the selected fill without the nesting. */
+  .segment:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.9);
+  }
+  .segment.selected:focus-visible {
+    box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.9), 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
 
   /* Extend shortcuts are actions, not a selection — so they stay discrete
      buttons and deliberately do NOT look like the segmented control above. */
@@ -937,17 +1025,20 @@
     border-color: var(--chrome-field-border);
     color: var(--ctrl-fg);
   }
+  .stepper:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   .matcher-toggle {
     background: none;
     border: none;
+    border-radius: 5px;
     color: var(--ctrl-fg-dim);
     font-size: calc(11px * var(--font-scale, 1));
     cursor: pointer;
-    padding: 2px 0;
+    padding: 2px 4px;
     white-space: nowrap;
   }
   .matcher-toggle:hover { color: var(--ctrl-fg); }
+  .matcher-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   .section-note {
     font-size: calc(11px * var(--font-scale, 1));

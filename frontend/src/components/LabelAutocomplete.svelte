@@ -64,6 +64,11 @@
         void pick(filtered[highlighted]);
       }
     } else if (e.key === 'Escape') {
+      // Swallow Escape only when it actually dismisses a visible dropdown —
+      // the dialog checks defaultPrevented, so a bare Escape in an empty
+      // field still closes the dialog, an Escape with suggestions open only
+      // closes the suggestions.
+      if (filtered.length > 0) e.preventDefault();
       focused = false;
     }
   }
