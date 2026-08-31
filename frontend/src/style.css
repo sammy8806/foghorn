@@ -58,12 +58,31 @@
      panel's own fill it just reads as another row of the form underneath. */
   --popover-bg: rgba(41, 54, 80, 0.98);
 
-  /* Grouped "inset" sections. A form gets its structure from a few hairline
-     cards whose rows are split by an even fainter divider — not from giving
-     every single field its own box, which is what makes a dense form read as a
-     stack of loose slabs. */
-  --group-bg: rgba(255, 255, 255, 0.035);
-  --group-divider: rgba(148, 163, 184, 0.13);
+  /* Grouped "inset" sections. A form gets its structure from a few cards whose
+     rows are split by a fainter divider — not from giving every single field
+     its own box, which is what makes a dense form read as a stack of loose
+     slabs.
+
+     The fill was 0.035, which composited to 1.10:1 against the panel: a step
+     you could only find because the label above it said a field was there. At
+     0.10 it lands at 1.37:1 and reads as its own surface without inverting the
+     hierarchy and making the fields louder than the dialog holding them.
+
+     The fill alone still can't carry the boundary — a fill at the 3:1 that
+     WCAG 1.4.11 wants for a control's edge would be a light grey slab. So the
+     border does that job and the fill does the separating. --group-border is
+     deliberately NOT --chrome-hairline: a hairline works in the toolbar
+     because those controls sit in a tinted band that already frames them, and
+     at 1.27:1 it disappears completely on a flat panel. Dividers *between*
+     rows stay on the faint ramp; they separate, they don't identify. */
+  --group-bg: rgba(255, 255, 255, 0.10);
+  /* Placeholders on a group card, which the lighter fill above dragged down to
+     2.0:1 — the old #5b6b83 was picked against a fill two steps darker. Only
+     for controls sitting ON the card; the paste and search wells go the other
+     way (darker than their surround) and keep their own dimmer ramp. */
+  --group-placeholder: #8fa9cf;
+  --group-border: rgba(148, 163, 184, 0.62);
+  --group-divider: rgba(148, 163, 184, 0.22);
 
   --accent: #3b82f6;
   --accent-hover: #2563eb;
@@ -146,6 +165,27 @@ html[data-platform="darwin"], html[data-platform="darwin"] body {
   --wails-draggable: no-drag;
   -webkit-user-select: auto;
   user-select: auto;
+}
+
+/* Pointer target floor (WCAG 2.5.8 asks for 24x24). A few controls are
+   deliberately small as marks rather than buttons — a 17px ✕ on a matcher row,
+   the 18px dismiss circle, a 20px duration preset — and growing their ink to
+   24px would turn quiet affordances into a row of chunky buttons. This grows
+   the clickable box around the mark instead and leaves the drawing alone.
+   Only safe where the control has clear space around it: every use below was
+   checked so the expanded boxes stay inside their row's padding and never
+   overlap a neighbouring target, which is the other half of 2.5.8. Controls
+   packed edge to edge (menu items) grow for real instead. Not usable on
+   <input>, which cannot carry a pseudo-element; those grow for real too. */
+.tap-target { position: relative; }
+.tap-target::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, 24px);
+  height: max(100%, 24px);
 }
 
 ::-webkit-scrollbar { width: 6px; }

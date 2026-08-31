@@ -113,7 +113,9 @@
   .input {
     width: 100%;
     box-sizing: border-box;
-    height: 22px;
+    /* An <input> cannot carry the .tap-target pseudo-element, so the 24px
+       target floor has to be real height here. */
+    height: 24px;
     padding: 0 6px;
     border: 1px solid transparent;
     border-radius: 5px;
@@ -124,7 +126,7 @@
     outline: none;
     transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   }
-  .input::placeholder { color: #566579; }
+  .input::placeholder { color: var(--group-placeholder); }
   .input:hover { background: rgba(148, 163, 184, 0.09); }
   .input:focus {
     background: var(--chrome-field-bg);
@@ -155,6 +157,10 @@
   }
   .dropdown.up { top: auto; bottom: calc(100% + 4px); }
   .dropdown li {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    box-sizing: border-box;
     padding: 4px 7px;
     border-radius: 5px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

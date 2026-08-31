@@ -166,13 +166,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .trigger-label.placeholder { color: #5b6b83; }
+  .trigger-label.placeholder { color: var(--group-placeholder); }
   .chevron { flex-shrink: 0; color: var(--ctrl-fg-dim); }
 
   /* The operator sits in a fixed grid cell, so it drops the chevron and keeps
      the quiet pill fill that marks it as the row's one popup. */
   .compact .trigger {
-    height: 20px;
+    /* Matches the matcher row's other two controls, which sit at the 24px
+       target floor; a shorter pill between them read as a dropped baseline. */
+    height: 24px;
     padding: 0;
     justify-content: center;
     border-radius: 5px;
@@ -203,9 +205,13 @@
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
   .menu.up { top: auto; bottom: calc(100% + 4px); }
+  /* Menu rows stack edge to edge, so there is no clear space to expand a tap
+     box into — the floor has to come out of real height. */
   .menu li {
     display: flex;
     align-items: center;
+    min-height: 24px;
+    box-sizing: border-box;
     gap: 6px;
     padding: 4px 8px 4px 5px;
     border-radius: 5px;

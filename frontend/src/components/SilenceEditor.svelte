@@ -476,7 +476,7 @@
     >
       <div class="dialog-header" class:divided={scrolledPastTop}>
         <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : isScratchCreate ? 'New silence' : 'Silence alert'}</h3>
-        <button class="btn-close" on:click={close} aria-label="Close">
+        <button class="btn-close tap-target" on:click={close} aria-label="Close">
           <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
@@ -547,11 +547,11 @@
           >
             <svelte:fragment slot="actions">
               {#if canExpand}
-                <button type="button" class="matcher-toggle" on:click={expandMatchers}>
+                <button type="button" class="matcher-toggle tap-target" on:click={expandMatchers}>
                   Show {hiddenMatchers.length} more
                 </button>
               {:else if canCollapse}
-                <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
+                <button type="button" class="matcher-toggle tap-target" on:click={collapseMatchers}>
                   Hide matchers
                 </button>
               {/if}
@@ -589,7 +589,7 @@
             {#each basePresets as p}
               <button
                 type="button"
-                class="segment"
+                class="segment tap-target"
                 class:selected={duration === p}
                 aria-pressed={duration === p}
                 on:click={() => setDurationPreset(p)}
@@ -599,7 +599,7 @@
           {#if mode === 'edit'}
             <div class="steppers">
               {#each extendPresets as p}
-                <button type="button" class="stepper" on:click={() => extendDuration(p)}>{p}</button>
+                <button type="button" class="stepper tap-target" on:click={() => extendDuration(p)}>{p}</button>
               {/each}
             </div>
           {/if}
@@ -760,17 +760,24 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    margin-top: 11px;
+    /* Wider than the 5px inside a section: a caption that carries real weight
+       has to read as attached to the card under it, not floating between two. */
+    margin-top: 14px;
   }
+  /* The caption has to win against the card it heads. At 11px/500 in the dim
+     ramp it was the same ink as .row-label and .section-note *inside* the card,
+     so the form read as one undifferentiated column of grey. Size, weight and a
+     brighter ramp step do the separating; the case stays sentence, because
+     these get read as words rather than scanned as a rule. */
   .section-label {
     display: flex;
     align-items: center;
     gap: 6px;
     padding-left: 2px;
-    font-size: calc(11px * var(--font-scale, 1));
-    font-weight: 500;
+    font-size: calc(11.5px * var(--font-scale, 1));
+    font-weight: 600;
     letter-spacing: 0.01em;
-    color: var(--ctrl-fg-dim);
+    color: #cbd5e1;
   }
   .section-count {
     min-width: 15px;
@@ -786,7 +793,7 @@
 
   .group {
     background: var(--group-bg);
-    border: 1px solid var(--chrome-hairline);
+    border: 1px solid var(--group-border);
     border-radius: 9px;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
@@ -872,7 +879,7 @@
     height: 46px;
     line-height: 1.45;
   }
-  .bare-input::placeholder { color: #5b6b83; }
+  .bare-input::placeholder { color: var(--group-placeholder); }
 
   /* Segmented control: one track, and the selection is a raised pill inside it
      rather than eight separate buttons each drawing its own border. */
@@ -881,9 +888,9 @@
     height: 26px;
     padding: 2px;
     gap: 2px;
-    border: 1px solid var(--chrome-hairline);
+    border: 1px solid var(--group-border);
     border-radius: 8px;
-    background: var(--chrome-capsule-bg);
+    background: var(--group-bg);
     box-sizing: border-box;
   }
   .segment {
@@ -915,7 +922,7 @@
   .stepper {
     height: 22px;
     padding: 0 9px;
-    border: 1px solid var(--chrome-hairline);
+    border: 1px solid var(--group-border);
     border-radius: 6px;
     background: transparent;
     color: var(--ctrl-fg-dim);
@@ -1001,8 +1008,8 @@
   .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   .btn-quiet {
-    background: var(--chrome-capsule-bg);
-    border-color: var(--chrome-hairline);
+    background: var(--group-bg);
+    border-color: var(--group-border);
     color: var(--ctrl-fg);
   }
   .btn-quiet:hover:not(:disabled) {

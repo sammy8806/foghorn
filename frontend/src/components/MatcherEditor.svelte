@@ -163,7 +163,7 @@
           on:change={(e) => updateValue(i, e.detail)}
         />
       </div>
-      <button class="remove" aria-label="Remove matcher" on:click={() => removeAt(i)}>
+      <button class="remove tap-target" aria-label="Remove matcher" on:click={() => removeAt(i)}>
         <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
           <path d="M18 6 6 18M6 6l12 12" />
         </svg>
@@ -176,13 +176,13 @@
 
   <div class="row footer-row">
     <div class="footer-actions">
-      <button class="ghost" type="button" on:click={addBlank}>
+      <button class="ghost tap-target" type="button" on:click={addBlank}>
         <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
         Add matcher
       </button>
-      <button class="ghost" type="button" class:on={showPaste} on:click={togglePaste}>Paste</button>
+      <button class="ghost tap-target" type="button" class:on={showPaste} on:click={togglePaste}>Paste</button>
     </div>
     <slot name="actions" />
   </div>
@@ -202,8 +202,8 @@
       />
       <div class="paste-actions">
         {#if pasteNote}<span class="paste-note" class:error={pasteParseError}>{pasteNote}</span>{/if}
-        <button class="ghost" type="button" on:click={copyPasteText}>Copy</button>
-        <button class="ghost" type="button" on:click={() => { showPaste = false; pasteNote = ''; pasteParseError = false; pasteFocused = false; }}>Done</button>
+        <button class="ghost tap-target" type="button" on:click={copyPasteText}>Copy</button>
+        <button class="ghost tap-target" type="button" on:click={() => { showPaste = false; pasteNote = ''; pasteParseError = false; pasteFocused = false; }}>Done</button>
       </div>
     </div>
   {/if}
@@ -218,7 +218,7 @@
     display: flex;
     flex-direction: column;
     background: var(--group-bg);
-    border: 1px solid var(--chrome-hairline);
+    border: 1px solid var(--group-border);
     border-radius: 9px;
   }
   /* The card can't clip its overflow — the operator popup and the label
@@ -366,7 +366,7 @@
     width: 100%;
     box-sizing: border-box;
     padding: 7px 9px;
-    border: 1px solid var(--chrome-field-border);
+    border: 1px solid var(--group-border);
     border-radius: 7px;
     background: var(--chrome-field-bg);
     color: var(--ctrl-fg);
