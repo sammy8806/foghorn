@@ -70,9 +70,6 @@
   --danger: #f87171;
   --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.32);
 
-  /* The system's own panel curve: fast out of the gate, long settle, no
-     overshoot. Used for anything that presents or dismisses. */
-  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 html[data-platform="darwin"] {

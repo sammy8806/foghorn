@@ -9,6 +9,7 @@
   import { matchesAllMatchers } from '../stores/matchers';
   import MatcherEditor from './MatcherEditor.svelte';
   import SelectMenu from './SelectMenu.svelte';
+  import { cubicBezier } from '../utils/easing';
 
   export let alert: Alert | null = null;
   export let silence: SilenceInfo | null = null;
@@ -89,6 +90,39 @@
     collapseEnabled &&
     expanded &&
     editorMatchers.some((m) => !alwaysVisible.includes(m.name));
+
+  // Present and dismiss both run as Svelte transitions rather than CSS
+  // animations: a keyframe animation can't play on a node Svelte is removing,
+  // which is why closing used to just vanish. easePanel is the system's own
+  // panel curve — fast out of the gate, long settle, no overshoot; dismissal
+  // uses its mirror and a shorter duration, so the dialog settles into place on
+  // the way in and accelerates away on the way out.
+  const easePanel = cubicBezier(0.32, 0.72, 0, 1);
+  const easeDismiss = cubicBezier(0.4, 0, 1, 1);
+  const PRESENT_MS = 280;
+  const DISMISS_MS = 160;
+
+  function reducedMotion(): boolean {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function panel(_node: Element, { duration, easing }: { duration: number; easing: (t: number) => number }) {
+    return {
+      duration: reducedMotion() ? 0 : duration,
+      easing,
+      css: (t: number, u: number) => `opacity: ${t}; transform: translateY(${u * 8}px) scale(${1 - u * 0.03});`,
+    };
+  }
+
+  function scrim(_node: Element, { duration }: { duration: number }) {
+    return {
+      duration: reducedMotion() ? 0 : duration,
+      // pointer-events is inherited, so this makes the whole dialog inert while
+      // it moves — no clicking a target that is still sliding into place, and no
+      // clicking through one that is on its way out.
+      css: (t: number) => `opacity: ${t}; pointer-events: none;`,
+    };
+  }
 
   const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h', '3d', '1w'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
@@ -417,9 +451,18 @@
 </script>
 
 {#if open && (alert || query || seedMatchers)}
-  <div class="overlay" on:click={close} on:keydown={handleKeydown} role="presentation">
+  <div
+    class="overlay"
+    in:scrim={{ duration: PRESENT_MS }}
+    out:scrim={{ duration: DISMISS_MS }}
+    on:click={close}
+    on:keydown={handleKeydown}
+    role="presentation"
+  >
     <div
       class="dialog"
+      in:panel={{ duration: PRESENT_MS, easing: easePanel }}
+      out:panel={{ duration: DISMISS_MS, easing: easeDismiss }}
       on:click|stopPropagation
       on:keydown|stopPropagation
       role="dialog"
@@ -639,7 +682,6 @@
        their own titlebar, where the plain 16px wins. */
     padding: max(16px, calc(var(--titlebar-min-h) + 10px)) 16px 16px;
     z-index: 1000;
-    animation: scrim-in 0.22s var(--ease-panel) both;
   }
   .dialog {
     background: var(--panel-bg);
@@ -657,16 +699,6 @@
     /* The inset highlight is the top edge catching light; without it a large
        radius on a dark fill just looks like a hole. */
     box-shadow: var(--panel-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    animation: panel-in 0.28s var(--ease-panel) both;
-  }
-  @keyframes scrim-in {
-    from { opacity: 0; }
-  }
-  @keyframes panel-in {
-    from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .overlay, .dialog { animation: none; }
   }
 
   .dialog-header {
