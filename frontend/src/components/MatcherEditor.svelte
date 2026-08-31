@@ -288,7 +288,12 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 4px 8px;
+    /* Trailing padding reserves the remove column (6px edge + 20px button +
+       5px gap) all the way down the card. Removing matchers walks this row up
+       under a pointer that is repeatedly clicking ✕, and without the reservation
+       the overshoot click lands on "Show N more" and expands the list instead of
+       hitting dead space. */
+    padding: 4px 31px 4px 8px;
   }
   .footer-actions { display: flex; align-items: center; gap: 5px; }
   .ghost {

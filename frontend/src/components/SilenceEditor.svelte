@@ -625,10 +625,16 @@
     -webkit-backdrop-filter: blur(20px) saturate(140%);
     backdrop-filter: blur(20px) saturate(140%);
     display: flex;
-    align-items: center;
+    /* Top-anchored, NOT centred. Centring re-positions the panel every time its
+       height changes, so removing a matcher moved the panel down while the rows
+       moved up — the two don't cancel, and the next row's ✕ landed somewhere
+       other than under the pointer. Anchored, a removal shifts the rows below
+       by exactly one row height, putting the next ✕ where the last one was.
+       (It also matches how a macOS sheet hangs from the top of its window.) */
+    align-items: flex-start;
     justify-content: center;
-    /* The overlay covers the whole window, titlebar included, so on macOS a
-       centred panel slides straight under the traffic lights. Reserve the same
+    /* The overlay covers the whole window, titlebar included, so on macOS the
+       panel would otherwise start under the traffic lights. Reserve the same
        inset the chrome band uses; --titlebar-min-h is 0 on platforms that draw
        their own titlebar, where the plain 16px wins. */
     padding: max(16px, calc(var(--titlebar-min-h) + 10px)) 16px 16px;
