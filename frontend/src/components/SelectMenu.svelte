@@ -1,0 +1,225 @@
+<script lang="ts">
+  import { createEventDispatcher, onDestroy, tick } from 'svelte';
+  import { shouldDropUp } from '../utils/popover';
+
+  export let value: string = '';
+  export let options: { value: string; label: string }[] = [];
+  export let ariaLabel: string = '';
+  export let placeholder: string = '';
+  /** Narrow, centred, monospace trigger — the matcher operator. */
+  export let compact: boolean = false;
+
+  const dispatch = createEventDispatcher<{ change: string }>();
+
+  let open = false;
+  let highlighted = -1;
+  let measured = false;
+  let dropUp = false;
+  let wrapEl: HTMLDivElement;
+  let triggerEl: HTMLButtonElement;
+  let menuEl: HTMLUListElement | null = null;
+
+  $: selected = options.find((o) => o.value === value) ?? null;
+
+  async function openMenu() {
+    if (open) return;
+    open = true;
+    measured = false;
+    highlighted = Math.max(0, options.findIndex((o) => o.value === value));
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    await tick();
+    dropUp = shouldDropUp(triggerEl, menuEl?.offsetHeight ?? 0);
+    measured = true;
+  }
+
+  function closeMenu() {
+    if (!open) return;
+    open = false;
+    measured = false;
+    document.removeEventListener('mousedown', onDocMouseDown, true);
+  }
+
+  function onDocMouseDown(e: MouseEvent) {
+    if (!wrapEl?.contains(e.target as Node)) closeMenu();
+  }
+
+  onDestroy(() => document.removeEventListener('mousedown', onDocMouseDown, true));
+
+  function pick(v: string) {
+    value = v;
+    dispatch('change', v);
+    closeMenu();
+    triggerEl?.focus();
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        void openMenu();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlighted = (highlighted + 1) % options.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlighted = (highlighted - 1 + options.length) % options.length;
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      highlighted = 0;
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      highlighted = options.length - 1;
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (highlighted >= 0 && highlighted < options.length) pick(options[highlighted].value);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMenu();
+    } else if (e.key === 'Tab') {
+      closeMenu();
+    }
+  }
+</script>
+
+<div class="select-menu" class:compact bind:this={wrapEl}>
+  <button
+    class="trigger"
+    class:open
+    type="button"
+    aria-label={ariaLabel}
+    aria-haspopup="listbox"
+    aria-expanded={open}
+    bind:this={triggerEl}
+    on:click={() => (open ? closeMenu() : openMenu())}
+    on:keydown={onKeydown}
+  >
+    <span class="trigger-label" class:placeholder={!selected}>{selected ? selected.label : placeholder}</span>
+    {#if !compact}
+      <svg class="chevron" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
+      </svg>
+    {/if}
+  </button>
+
+  {#if open}
+    <ul
+      class="menu"
+      class:up={dropUp}
+      role="listbox"
+      aria-label={ariaLabel}
+      bind:this={menuEl}
+      style:visibility={measured ? 'visible' : 'hidden'}
+    >
+      {#each options as o, i}
+        <li
+          role="option"
+          aria-selected={o.value === value}
+          class:highlighted={i === highlighted}
+          on:mousedown|preventDefault={() => pick(o.value)}
+          on:mouseenter={() => (highlighted = i)}
+        >
+          <span class="check" aria-hidden="true">{o.value === value ? '✓' : ''}</span>
+          <span class="option-label">{o.label}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</div>
+
+<style>
+  .select-menu { position: relative; min-width: 0; }
+
+  /* Matches the bare controls the grouped cards hold: no box of its own, the
+     card supplies the frame. */
+  .trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ctrl-fg);
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  }
+  .trigger:hover { background: var(--chrome-ctrl-hover); }
+  .trigger:focus-visible,
+  .trigger.open {
+    outline: none;
+    border-color: rgba(96, 165, 250, 0.6);
+    box-shadow: var(--focus-ring);
+  }
+  .trigger-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .trigger-label.placeholder { color: #5b6b83; }
+  .chevron { flex-shrink: 0; color: var(--ctrl-fg-dim); }
+
+  /* The operator sits in a fixed grid cell, so it drops the chevron and keeps
+     the quiet pill fill that marks it as the row's one popup. */
+  .compact .trigger {
+    height: 20px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 5px;
+    background: rgba(148, 163, 184, 0.1);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: calc(11.5px * var(--font-scale, 1));
+    text-align: center;
+  }
+  .compact .trigger:hover { background: rgba(148, 163, 184, 0.18); }
+  .compact .trigger-label { overflow: visible; }
+
+  .menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 30;
+    min-width: 100%;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--popover-bg);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+  .menu.up { top: auto; bottom: calc(100% + 4px); }
+  .menu li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 5px;
+    border-radius: 5px;
+    font-size: calc(12px * var(--font-scale, 1));
+    color: #cbd5e1;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .menu li.highlighted { background: var(--accent); color: #fff; }
+  .check {
+    width: 11px;
+    flex-shrink: 0;
+    font-size: calc(10px * var(--font-scale, 1));
+    text-align: center;
+  }
+  .compact .menu li { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>

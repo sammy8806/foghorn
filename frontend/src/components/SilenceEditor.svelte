@@ -8,6 +8,7 @@
   import { queryToMatchers, type ParsedQuery, type DroppedTerm } from '../stores/query';
   import { matchesAllMatchers } from '../stores/matchers';
   import MatcherEditor from './MatcherEditor.svelte';
+  import SelectMenu from './SelectMenu.svelte';
 
   export let alert: Alert | null = null;
   export let silence: SilenceInfo | null = null;
@@ -472,22 +473,13 @@
         {#if isAlertlessCreate}
           <section class="section">
             <span class="section-label">Target source</span>
-            <div class="group group-fields select-wrap">
-              <select class="bare-select" aria-label="Target source" bind:value={selectedSource}>
-                {#each sourceCandidates as c}
-                  <option value={c.source}>{c.source} ({c.count})</option>
-                {/each}
-                {#if sourceCandidates.length === 0}
-                  <!-- Not `disabled`: WebKit paints a disabled selected option in
-                       its own low-contrast system colour, which on this surface
-                       renders as an empty picker that looks broken. The empty
-                       value already blocks submit via canSubmit. -->
-                  <option value="">No silence-capable sources</option>
-                {/if}
-              </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
-              </svg>
+            <div class="group">
+              <SelectMenu
+                ariaLabel="Target source"
+                placeholder="No silence-capable sources"
+                options={sourceCandidates.map((c) => ({ value: c.source, label: `${c.source} (${c.count})` }))}
+                bind:value={selectedSource}
+              />
             </div>
           </section>
         {/if}
@@ -673,7 +665,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    padding: 13px 44px;
+    padding: 10px 40px;
     border-bottom: 1px solid transparent;
     transition: border-color 0.15s;
   }
@@ -709,7 +701,7 @@
   .btn-close:hover { background: rgba(148, 163, 184, 0.3); color: #f1f5f9; }
 
   .dialog-body {
-    padding: 4px 18px 16px;
+    padding: 2px 16px 13px;
     flex: 1;
     overflow-y: auto;
     min-height: 0;
@@ -720,8 +712,8 @@
   .section {
     display: flex;
     flex-direction: column;
-    gap: 7px;
-    margin-top: 16px;
+    gap: 5px;
+    margin-top: 11px;
   }
   .section-label {
     display: flex;
@@ -749,11 +741,22 @@
     background: var(--group-bg);
     border: 1px solid var(--chrome-hairline);
     border-radius: 9px;
-    overflow: hidden;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
-  /* The fields group has no per-field borders, so focus has to land somewhere:
-     the card itself takes the ring. */
+  /* Deliberately not `overflow: hidden` — the source picker's menu opens out
+     of this card. Round the end rows instead so row fills still stop at the
+     corners. */
+  .group > :first-child {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+  }
+  .group > :last-child {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+  /* Only for cards holding bare inputs, which have no ring of their own. A card
+     whose control rings itself (the source picker) stays plain — two nested
+     rings read as one heavy blue slab. */
   .group-fields:focus-within {
     border-color: rgba(96, 165, 250, 0.6);
     box-shadow: var(--focus-ring);
@@ -763,13 +766,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 7px 11px;
-    min-height: 30px;
+    padding: 5px 10px;
+    min-height: 26px;
     box-sizing: border-box;
   }
   .row + .row { border-top: 1px solid var(--group-divider); }
-  .row-block { display: block; padding: 4px 5px; }
-  .row-field { display: block; padding: 4px 5px; }
+  .row-block { display: block; padding: 3px 4px; }
+  .row-field { display: block; padding: 2px 4px; }
   .row-label {
     flex-shrink: 0;
     font-size: calc(12px * var(--font-scale, 1));
@@ -819,46 +822,16 @@
     /* No grip: on a borderless field inside a card it reads as a stray
        artifact, and the dialog lives in a fixed-height popup anyway. */
     resize: none;
-    height: 56px;
+    height: 46px;
     line-height: 1.45;
   }
   .bare-input::placeholder { color: #5b6b83; }
-
-  /* WebKit renders a native popup button here — a tall, near-white slab that
-     ignores every dark token in the app. Strip the appearance and draw the
-     chevrons ourselves, so the picker sits in its card like every other
-     control rather than as a system object dropped on top of one. */
-  .select-wrap { position: relative; }
-  .bare-select {
-    -webkit-appearance: none;
-    appearance: none;
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    height: 30px;
-    padding: 0 30px 0 11px;
-    border: none;
-    background: transparent;
-    color: var(--ctrl-fg);
-    font-family: inherit;
-    font-size: calc(12.5px * var(--font-scale, 1));
-    outline: none;
-    cursor: pointer;
-  }
-  .select-chevron {
-    position: absolute;
-    top: 50%;
-    right: 11px;
-    transform: translateY(-50%);
-    color: var(--ctrl-fg-dim);
-    pointer-events: none;
-  }
 
   /* Segmented control: one track, and the selection is a raised pill inside it
      rather than eight separate buttons each drawing its own border. */
   .segmented {
     display: flex;
-    height: 28px;
+    height: 26px;
     padding: 2px;
     gap: 2px;
     border: 1px solid var(--chrome-hairline);
@@ -893,8 +866,8 @@
      buttons and deliberately do NOT look like the segmented control above. */
   .steppers { display: flex; gap: 5px; }
   .stepper {
-    height: 24px;
-    padding: 0 10px;
+    height: 22px;
+    padding: 0 9px;
     border: 1px solid var(--chrome-hairline);
     border-radius: 6px;
     background: transparent;
@@ -944,7 +917,7 @@
   .error {
     color: var(--danger);
     font-size: calc(12px * var(--font-scale, 1));
-    margin: 16px 0 0;
+    margin: 11px 0 0;
   }
 
   .dialog-footer {
@@ -953,7 +926,7 @@
     justify-content: space-between;
     flex-shrink: 0;
     gap: 10px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-top: 1px solid transparent;
     transition: border-color 0.15s;
   }
@@ -966,8 +939,8 @@
   }
 
   .btn {
-    height: 28px;
-    padding: 0 14px;
+    height: 26px;
+    padding: 0 13px;
     border-radius: 7px;
     border: 1px solid transparent;
     cursor: pointer;

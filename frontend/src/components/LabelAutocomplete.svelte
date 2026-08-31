@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, tick } from 'svelte';
+  import { shouldDropUp } from '../utils/popover';
 
   export let value: string = '';
   export let suggestions: string[] = [];
@@ -13,6 +14,17 @@
   let focused = false;
   let highlighted = -1;
   let inputEl: HTMLInputElement | null = null;
+  let dropdownEl: HTMLUListElement | null = null;
+  let dropUp = false;
+
+  // The list is inside the dialog's scrolling body, so on the last matcher row
+  // it would otherwise render straight into the clipped edge.
+  $: if (focused && filtered.length > 0) void positionDropdown();
+
+  async function positionDropdown() {
+    await tick();
+    if (inputEl && dropdownEl) dropUp = shouldDropUp(inputEl, dropdownEl.offsetHeight);
+  }
 
   $: filtered = filterSuggestions(value, suggestions);
 
@@ -71,7 +83,7 @@
     on:keydown={onKeydown}
   />
   {#if focused && filtered.length > 0}
-    <ul class="dropdown" role="listbox">
+    <ul class="dropdown" class:up={dropUp} role="listbox" bind:this={dropdownEl}>
       {#each filtered as candidate, i}
         <li
           role="option"
@@ -124,6 +136,7 @@
   .dropdown {
     position: absolute;
     top: calc(100% + 4px);
+    /* z-index has to clear the sibling matcher rows this list overlaps. */
     left: 0;
     right: 0;
     z-index: 20;
@@ -139,6 +152,7 @@
     overflow-y: auto;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
+  .dropdown.up { top: auto; bottom: calc(100% + 4px); }
   .dropdown li {
     padding: 4px 7px;
     border-radius: 5px;

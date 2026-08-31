@@ -3,6 +3,7 @@
   import { alerts, labelNamesForSource, labelValuesForSource, type Matcher } from '../stores/alerts';
   import { formatMatcherBlock, parseMatcherBlock } from '../stores/matchers';
   import LabelAutocomplete from './LabelAutocomplete.svelte';
+  import SelectMenu from './SelectMenu.svelte';
 
   export let matchers: Matcher[] = [];
   export let textMatchers: Matcher[] = matchers;
@@ -14,6 +15,7 @@
 
   type Op = '=' | '!=' | '=~' | '!~';
   const OPS: Op[] = ['=', '!=', '=~', '!~'];
+  const OP_OPTIONS = OPS.map((op) => ({ value: op, label: op }));
 
   function toOp(m: Matcher): Op {
     if (m.isRegex && m.isEqual) return '=~';
@@ -62,9 +64,10 @@
     const { isRegex, isEqual } = fromOp(op);
     matchers = matchers.map((m, idx) => (idx === i ? { ...m, isRegex, isEqual } : m));
   }
-  function onOpChange(i: number, e: Event) {
-    const raw = (e.currentTarget as HTMLSelectElement).value;
-    updateOp(i, raw as Op);
+  // The cast lives here rather than in the template: Svelte parses template
+  // expressions as plain JS, so a TS `as` inside one is a parse error.
+  function onOpChange(i: number, op: string) {
+    updateOp(i, op as Op);
   }
   function removeAt(i: number) {
     matchers = matchers.filter((_, idx) => idx !== i);
@@ -143,16 +146,13 @@
           on:change={(e) => updateName(i, e.detail)}
         />
       </div>
-      <select
-        class="op"
-        aria-label="Matcher operator"
+      <SelectMenu
+        compact
+        ariaLabel="Matcher operator"
+        options={OP_OPTIONS}
         value={toOp(m)}
-        on:change={(e) => onOpChange(i, e)}
-      >
-        {#each OPS as op}
-          <option value={op}>{op}</option>
-        {/each}
-      </select>
+        on:change={(e) => onOpChange(i, e.detail)}
+      />
       <div class="cell">
         <LabelAutocomplete
           value={m.value}
@@ -220,17 +220,28 @@
     background: var(--group-bg);
     border: 1px solid var(--chrome-hairline);
     border-radius: 9px;
-    overflow: hidden;
+  }
+  /* The card can't clip its overflow — the operator popup and the label
+     autocomplete both open out of it. Round the end rows directly instead, so
+     row fills (the invalid tint, the reveal highlight) still stop at the
+     corners without trapping the popups inside. */
+  .matcher-editor > :first-child {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+  }
+  .matcher-editor > :last-child {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
   }
   .row {
     display: grid;
     /* Values run longer than label names, and giving them the wider share also
        pulls the operator in off the middle of the row so each matcher reads as
        one phrase rather than three scattered columns. */
-    grid-template-columns: minmax(0, 0.78fr) 44px minmax(0, 1.22fr) 22px;
+    grid-template-columns: minmax(0, 0.78fr) 42px minmax(0, 1.22fr) 20px;
     gap: 5px;
     align-items: center;
-    padding: 5px 7px 5px 9px;
+    padding: 3px 6px 3px 8px;
     transition: background 0.15s;
   }
   .row + .row,
@@ -238,39 +249,14 @@
   .row.invalid { background: rgba(248, 113, 113, 0.07); }
   .cell { min-width: 0; }
 
-  /* Bare popup: the row is the control's frame, so the operator draws no box
-     of its own until it's focused. */
-  .op {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 22px;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    background: rgba(148, 163, 184, 0.1);
-    color: var(--ctrl-fg);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: calc(11.5px * var(--font-scale, 1));
-    text-align: center;
-    text-align-last: center;
-    outline: none;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-  }
-  .op:hover { background: rgba(148, 163, 184, 0.18); }
-  .op:focus {
-    border-color: rgba(96, 165, 250, 0.6);
-    box-shadow: var(--focus-ring);
-  }
-
   /* Quiet until the row is under the pointer: eight of these at full strength
      read as a column of delete buttons rather than a list of matchers. */
   .remove {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 17px;
+    height: 17px;
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -302,15 +288,15 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 6px 9px;
+    padding: 4px 8px;
   }
   .footer-actions { display: flex; align-items: center; gap: 5px; }
   .ghost {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    height: 22px;
-    padding: 0 8px;
+    height: 21px;
+    padding: 0 7px;
     border: none;
     border-radius: 6px;
     background: transparent;
@@ -329,7 +315,7 @@
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 3px 9px;
+    padding: 2px 8px;
     border-top: 1px solid var(--group-divider);
     user-select: none;
   }
@@ -368,7 +354,7 @@
        strip and park it mid-row instead of at the trailing edge. */
     align-items: stretch;
     gap: 6px;
-    padding: 8px 9px;
+    padding: 7px 8px;
     border-top: 1px solid var(--group-divider);
   }
   .paste-input {
