@@ -645,8 +645,12 @@
     background: var(--panel-bg);
     border: 1px solid var(--panel-border);
     border-radius: 12px;
-    width: 520px;
-    max-width: 100%;
+    /* Fluid, not fixed. Matcher rows are the widest thing in here and long
+       label names (app_kubernetes_io_component) truncate at the old 520px, so
+       the panel takes the width the window can spare — capped, because a modal
+       that keeps growing stops reading as a modal. */
+    width: 100%;
+    max-width: 720px;
     max-height: 100%;
     display: flex;
     flex-direction: column;

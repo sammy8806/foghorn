@@ -77,6 +77,7 @@
     aria-label={ariaLabel}
     {placeholder}
     {value}
+    title={value || ''}
     on:input={onInput}
     on:focus={() => (focused = true)}
     on:blur={() => setTimeout(() => (focused = false), 120)}
