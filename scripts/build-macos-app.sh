@@ -39,10 +39,12 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 require_tool wails
+require_tool node
 require_tool codesign
 require_tool plutil
 
 VERSION="$("$ROOT_DIR/scripts/version.sh")"
+PRODUCT_VERSION="$(node "$ROOT_DIR/scripts/run-versioned-wails-build.mjs" --print "$VERSION")"
 
 # Decide signing mode.
 DEV_ID_VARS=(
@@ -90,7 +92,7 @@ echo "Version: $VERSION"
 cd "$ROOT_DIR"
 
 # Forward any extra args the caller passed, but always set platform + ldflags.
-wails build \
+node "$ROOT_DIR/scripts/run-versioned-wails-build.mjs" "$VERSION" -- wails build \
   -platform darwin/universal \
   -ldflags "-X main.version=$VERSION" \
   "$@"
@@ -106,6 +108,13 @@ if [[ -z "$BUNDLE_ID" ]]; then
 fi
 if [[ -z "$BUNDLE_ID" ]]; then
   echo "Unable to determine CFBundleIdentifier from $APP_PATH/Contents/Info.plist" >&2
+  exit 1
+fi
+
+BUNDLE_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")"
+if [[ "$BUNDLE_SHORT_VERSION" != "$PRODUCT_VERSION" || "$BUNDLE_VERSION" != "$PRODUCT_VERSION" ]]; then
+  echo "Built app has the wrong bundle version: short=$BUNDLE_SHORT_VERSION build=$BUNDLE_VERSION, expected $PRODUCT_VERSION" >&2
   exit 1
 fi
 
@@ -167,4 +176,4 @@ fi
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-echo "Built and signed $APP_PATH ($SIGNING_MODE, version $VERSION, bundle id $BUNDLE_ID)"
+echo "Built and signed $APP_PATH ($SIGNING_MODE, version $VERSION, bundle version $PRODUCT_VERSION, bundle id $BUNDLE_ID)"

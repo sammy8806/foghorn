@@ -67,6 +67,7 @@ require_tool() {
 }
 
 require_tool wails
+require_tool node
 require_tool pkg-config
 require_tool curl
 require_tool perl
@@ -166,7 +167,7 @@ if [[ -n "$WEBKIT_BUILD_TAG" ]]; then
 fi
 
 cd "$ROOT_DIR"
-wails build \
+node "$ROOT_DIR/scripts/run-versioned-wails-build.mjs" "$VERSION" -- wails build \
   -tags "$BUILD_TAGS" \
   -ldflags "-X main.version=$VERSION"
 
