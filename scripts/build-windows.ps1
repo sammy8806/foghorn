@@ -88,7 +88,7 @@ if (-not (Test-Path $Installer)) {
 }
 
 $InstallerProductVersion = (Get-Item $Installer).VersionInfo.ProductVersion
-if (-not $InstallerProductVersion.StartsWith($ProductVersion)) {
+if ($InstallerProductVersion -ne $ProductVersion -and $InstallerProductVersion -ne "$ProductVersion.0") {
     throw "Built installer has product version '$InstallerProductVersion'; expected '$ProductVersion'"
 }
 
