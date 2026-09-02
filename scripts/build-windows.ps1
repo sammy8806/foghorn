@@ -47,6 +47,9 @@ function Resolve-Version {
 if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
     throw "Missing required tool: wails (install with 'go install github.com/wailsapp/wails/v2/cmd/wails@latest')"
 }
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw "Missing required tool: node"
+}
 
 # Wails shells out to makensis to build the NSIS installer. If it isn't on
 # PATH, try the standard NSIS install locations and prepend the one we find so
@@ -67,9 +70,13 @@ if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
 }
 
 $Version = Resolve-Version
+$ProductVersion = & node "$PSScriptRoot/run-versioned-wails-build.mjs" --print $Version
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to resolve Wails product version"
+}
 Write-Host "Version: $Version"
 
-wails build --platform windows/amd64 --nsis --ldflags "-X main.version=$Version"
+& node "$PSScriptRoot/run-versioned-wails-build.mjs" $Version -- wails build --platform windows/amd64 --nsis --ldflags "-X main.version=$Version"
 if ($LASTEXITCODE -ne 0) {
     throw "wails build failed (exit $LASTEXITCODE)"
 }
@@ -78,6 +85,11 @@ $BinDir = Join-Path $RootDir 'build\bin'
 $Installer = Join-Path $BinDir 'foghorn-amd64-installer.exe'
 if (-not (Test-Path $Installer)) {
     throw "Expected wails NSIS output not found: $Installer"
+}
+
+$InstallerProductVersion = (Get-Item $Installer).VersionInfo.ProductVersion
+if ($InstallerProductVersion -ne $ProductVersion -and $InstallerProductVersion -ne "$ProductVersion.0") {
+    throw "Built installer has product version '$InstallerProductVersion'; expected '$ProductVersion'"
 }
 
 $OutPath = Join-Path $BinDir "foghorn-$Version-amd64-installer.exe"
