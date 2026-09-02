@@ -516,7 +516,7 @@
     class="overlay"
     in:scrim={{ duration: PRESENT_MS }}
     out:scrim={{ duration: DISMISS_MS }}
-    on:click={close}
+    on:mousedown|self={close}
     role="presentation"
   >
     <div
