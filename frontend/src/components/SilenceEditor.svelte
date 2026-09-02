@@ -478,7 +478,7 @@
         e.preventDefault();
         last.focus();
       }
-    } else if (!active || active === last || !dialogEl.contains(active)) {
+    } else if (!active || active === dialogEl || active === last || !dialogEl.contains(active)) {
       e.preventDefault();
       first.focus();
     }
