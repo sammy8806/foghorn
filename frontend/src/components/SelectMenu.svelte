@@ -1,3 +1,7 @@
+<script context="module" lang="ts">
+  let nextSelectMenuId = 0;
+</script>
+
 <script lang="ts">
   import { createEventDispatcher, onDestroy, tick } from 'svelte';
   import { shouldDropUp } from '../utils/popover';
@@ -16,7 +20,9 @@
   let measured = false;
   let dropUp = false;
   let wrapEl: HTMLDivElement;
-  let triggerEl: HTMLButtonElement;
+  const id = `select-menu-${++nextSelectMenuId}`;
+  const menuId = `${id}-listbox`;
+  let triggerEl: HTMLDivElement;
   let menuEl: HTMLUListElement | null = null;
 
   $: selected = options.find((o) => o.value === value) ?? null;
@@ -45,11 +51,22 @@
 
   onDestroy(() => document.removeEventListener('mousedown', onDocMouseDown, true));
 
-  function pick(v: string) {
+  function pick(v: string, restoreFocus = true) {
     value = v;
     dispatch('change', v);
     closeMenu();
-    triggerEl?.focus();
+    if (restoreFocus) triggerEl?.focus();
+  }
+
+  async function moveHighlight(next: number) {
+    if (options.length === 0) return;
+    highlighted = Math.max(0, Math.min(next, options.length - 1));
+    await tick();
+    document.getElementById(optionId(highlighted))?.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  function optionId(index: number): string {
+    return `${id}-option-${index}`;
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -62,16 +79,16 @@
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      highlighted = (highlighted + 1) % options.length;
+      void moveHighlight(highlighted + 1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      highlighted = (highlighted - 1 + options.length) % options.length;
+      void moveHighlight(highlighted - 1);
     } else if (e.key === 'Home') {
       e.preventDefault();
-      highlighted = 0;
+      void moveHighlight(0);
     } else if (e.key === 'End') {
       e.preventDefault();
-      highlighted = options.length - 1;
+      void moveHighlight(options.length - 1);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (highlighted >= 0 && highlighted < options.length) pick(options[highlighted].value);
@@ -79,19 +96,26 @@
       e.preventDefault();
       closeMenu();
     } else if (e.key === 'Tab') {
-      closeMenu();
+      if (highlighted >= 0 && highlighted < options.length) {
+        pick(options[highlighted].value, false);
+      } else {
+        closeMenu();
+      }
     }
   }
 </script>
 
 <div class="select-menu" class:compact bind:this={wrapEl}>
-  <button
+  <div
     class="trigger"
     class:open
-    type="button"
+    role="combobox"
+    tabindex="0"
     aria-label={ariaLabel}
     aria-haspopup="listbox"
     aria-expanded={open}
+    aria-controls={menuId}
+    aria-activedescendant={open && highlighted >= 0 ? optionId(highlighted) : undefined}
     bind:this={triggerEl}
     on:click={() => (open ? closeMenu() : openMenu())}
     on:keydown={onKeydown}
@@ -102,10 +126,11 @@
         <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
       </svg>
     {/if}
-  </button>
+  </div>
 
   {#if open}
     <ul
+      id={menuId}
       class="menu"
       class:up={dropUp}
       role="listbox"
@@ -115,8 +140,9 @@
     >
       {#each options as o, i}
         <li
+          id={optionId(i)}
           role="option"
-          aria-selected={o.value === value}
+          aria-selected={i === highlighted}
           class:highlighted={i === highlighted}
           on:mousedown|preventDefault={() => pick(o.value)}
           on:mouseenter={() => (highlighted = i)}
