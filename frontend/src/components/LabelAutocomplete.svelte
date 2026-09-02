@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, tick } from 'svelte';
+  import { shouldDropUp } from '../utils/popover';
 
   export let value: string = '';
   export let suggestions: string[] = [];
@@ -13,6 +14,17 @@
   let focused = false;
   let highlighted = -1;
   let inputEl: HTMLInputElement | null = null;
+  let dropdownEl: HTMLUListElement | null = null;
+  let dropUp = false;
+
+  // The list is inside the dialog's scrolling body, so on the last matcher row
+  // it would otherwise render straight into the clipped edge.
+  $: if (focused && filtered.length > 0) void positionDropdown();
+
+  async function positionDropdown() {
+    await tick();
+    if (inputEl && dropdownEl) dropUp = shouldDropUp(inputEl, dropdownEl.offsetHeight);
+  }
 
   $: filtered = filterSuggestions(value, suggestions);
 
@@ -52,6 +64,11 @@
         void pick(filtered[highlighted]);
       }
     } else if (e.key === 'Escape') {
+      // Swallow Escape only when it actually dismisses a visible dropdown —
+      // the dialog checks defaultPrevented, so a bare Escape in an empty
+      // field still closes the dialog, an Escape with suggestions open only
+      // closes the suggestions.
+      if (filtered.length > 0) e.preventDefault();
       focused = false;
     }
   }
@@ -65,13 +82,14 @@
     aria-label={ariaLabel}
     {placeholder}
     {value}
+    title={value || ''}
     on:input={onInput}
     on:focus={() => (focused = true)}
     on:blur={() => setTimeout(() => (focused = false), 120)}
     on:keydown={onKeydown}
   />
   {#if focused && filtered.length > 0}
-    <ul class="dropdown" role="listbox">
+    <ul class="dropdown" class:up={dropUp} role="listbox" bind:this={dropdownEl}>
       {#each filtered as candidate, i}
         <li
           role="option"
@@ -94,47 +112,73 @@
     width: 100%;
   }
 
+  /* Bare field: the matcher row is already inside a hairline card, so drawing a
+     box here would nest a border in a border in a border. Focus is the only
+     state that gets a frame. */
   .input {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 3px;
-    color: #e2e8f0;
-    font-size: calc(12px * var(--font-scale, 1));
-    padding: 3px 6px;
-    outline: none;
     width: 100%;
     box-sizing: border-box;
-    font-family: monospace;
+    /* An <input> cannot carry the .tap-target pseudo-element, so the 24px
+       target floor has to be real height here. */
+    height: 24px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--ctrl-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: calc(11.5px * var(--font-scale, 1));
+    outline: none;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   }
-  .input:focus { border-color: #3b82f6; }
-  .invalid .input { border-color: #f87171; }
+  .input::placeholder { color: var(--group-placeholder); }
+  .input:hover { background: rgba(148, 163, 184, 0.09); }
+  .input:focus {
+    background: var(--chrome-field-bg);
+    border-color: rgba(96, 165, 250, 0.6);
+    box-shadow: var(--focus-ring);
+  }
+  .invalid .input { color: #fca5a5; }
+  .invalid .input:focus { border-color: rgba(248, 113, 113, 0.7); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.24); }
 
   .dropdown {
     position: absolute;
-    top: calc(100% + 2px);
+    top: calc(100% + 4px);
+    /* z-index has to clear the sibling matcher rows this list overlaps. */
     left: 0;
     right: 0;
     z-index: 20;
     margin: 0;
-    padding: 2px 0;
+    padding: 4px;
     list-style: none;
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 3px;
+    background: var(--popover-bg);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
     max-height: 180px;
     overflow-y: auto;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
+  .dropdown.up { top: auto; bottom: calc(100% + 4px); }
   .dropdown li {
-    padding: 3px 8px;
-    font-size: calc(12px * var(--font-scale, 1));
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    box-sizing: border-box;
+    padding: 4px 7px;
+    border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: calc(11.5px * var(--font-scale, 1));
     color: #cbd5e1;
     cursor: pointer;
-    font-family: monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .dropdown li.highlighted,
   .dropdown li:hover {
-    background: #1e40af;
+    background: var(--accent);
     color: #fff;
   }
 </style>

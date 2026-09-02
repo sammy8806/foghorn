@@ -1,6 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { createEventDispatcher } from 'svelte';
+  import { afterUpdate, createEventDispatcher, tick } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
   import { alerts, sourceCapabilities } from '../stores/alerts';
@@ -8,6 +8,8 @@
   import { queryToMatchers, type ParsedQuery, type DroppedTerm } from '../stores/query';
   import { matchesAllMatchers } from '../stores/matchers';
   import MatcherEditor from './MatcherEditor.svelte';
+  import SelectMenu from './SelectMenu.svelte';
+  import { cubicBezier } from '../utils/easing';
 
   export let alert: Alert | null = null;
   export let silence: SilenceInfo | null = null;
@@ -35,6 +37,9 @@
   let initializedForOpen = false;
   let droppedTerms: DroppedTerm[] = [];
   let selectedSource = '';
+  let dialogEl: HTMLDivElement | null = null;
+  let previouslyFocused: HTMLElement | null = null;
+  let focusMovedIn = false;
 
   // Combined source of truth: hidden matchers are always part of the silence.
   $: allMatchers = [...editorMatchers, ...hiddenMatchers];
@@ -88,6 +93,44 @@
     collapseEnabled &&
     expanded &&
     editorMatchers.some((m) => !alwaysVisible.includes(m.name));
+
+  // Present and dismiss both run as Svelte transitions rather than CSS
+  // animations: a keyframe animation can't play on a node Svelte is removing,
+  // which is why closing used to just vanish.
+  //
+  // easePanel spreads its motion across the duration on purpose. The obvious
+  // panel curve (0.32, 0.72, 0, 1) is 95% done at half its duration, so most of
+  // the time is an invisible tail — it costs the delay without reading as
+  // movement, and at a short duration it degrades straight into a pop. This one
+  // is 57% at a quarter and 87% at half, so 150ms still reads as travel.
+  // Dismissal accelerates away on the mirrored curve, quicker than the entrance
+  // because an exit should clear the screen rather than perform.
+  const easePanel = cubicBezier(0.25, 0.6, 0.35, 1);
+  const easeDismiss = cubicBezier(0.4, 0, 1, 1);
+  const PRESENT_MS = 150;
+  const DISMISS_MS = 120;
+
+  function reducedMotion(): boolean {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function panel(_node: Element, { duration, easing }: { duration: number; easing: (t: number) => number }) {
+    return {
+      duration: reducedMotion() ? 0 : duration,
+      easing,
+      css: (t: number, u: number) => `opacity: ${t}; transform: translateY(${u * 8}px) scale(${1 - u * 0.03});`,
+    };
+  }
+
+  function scrim(_node: Element, { duration }: { duration: number }) {
+    return {
+      duration: reducedMotion() ? 0 : duration,
+      // pointer-events is inherited, so this makes the whole dialog inert while
+      // it moves — no clicking a target that is still sliding into place, and no
+      // clicking through one that is on its way out.
+      css: (t: number) => `opacity: ${t}; pointer-events: none;`,
+    };
+  }
 
   const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h', '3d', '1w'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
@@ -341,7 +384,28 @@
     initializedForOpen = false;
   }
 
+  // Move focus into the dialog on open so keyboard and screen-reader users
+  // land in the modal instead of on the page behind it (WAI-ARIA dialog
+  // pattern). The panel itself takes focus rather than the first field:
+  // auto-focusing a matcher input would pop its autocomplete over the form.
+  $: if (open && !focusMovedIn) {
+    focusMovedIn = true;
+    previouslyFocused = document.activeElement as HTMLElement | null;
+    void tick().then(() => dialogEl?.focus());
+  }
+  $: if (!open) {
+    focusMovedIn = false;
+  }
+
+  function restoreFocus() {
+    // Hand focus back to whatever opened the dialog, if it is still around —
+    // alert cards are destroyed and recreated on every list refresh.
+    if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    previouslyFocused = null;
+  }
+
   function close() {
+    restoreFocus();
     dispatch('close');
   }
 
@@ -360,6 +424,7 @@
         await CreateSilence(activeSource, allMatchers, duration, createdBy, comment);
       }
       dispatch('silenced');
+      restoreFocus();
       dispatch('close');
     } catch (e) {
       error = String(e);
@@ -375,6 +440,7 @@
     try {
       await Unsilence(alert.source, silence.id);
       dispatch('silenced');
+      restoreFocus();
       dispatch('close');
     } catch (e) {
       error = String(e);
@@ -384,9 +450,56 @@
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') close();
+  // Tab/Shift+Tab cycle inside the dialog (WAI-ARIA modal dialog pattern):
+  // without the trap, focus walks out of the modal onto the list behind the
+  // scrim. Escape closes unless an inner popup already claimed it.
+  function onDialogKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      // Inner popups (source picker, autocomplete) mark their own Escape with
+      // preventDefault; only a bare Escape dismisses the whole dialog.
+      if (!e.defaultPrevented) {
+        e.stopPropagation();
+        close();
+      }
+      return;
+    }
+    if (e.key !== 'Tab' || !dialogEl) return;
+    const focusable = Array.from(
+      dialogEl.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (e.shiftKey) {
+      if (!active || active === first || !dialogEl.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (!active || active === dialogEl || active === last || !dialogEl.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    }
   }
+
+  // Header/footer dividers only exist to say "there is more content past this
+  // edge", so they're tied to the body's actual scroll position: a dialog whose
+  // content fits shows none and reads as one uninterrupted surface. Recomputed
+  // after every update because the body's height changes as matchers are added,
+  // revealed or removed — not just when the user scrolls.
+  let bodyEl: HTMLDivElement | null = null;
+  let scrolledPastTop = false;
+  let scrolledBeforeEnd = false;
+
+  function updateScrollEdges() {
+    if (!bodyEl) return;
+    scrolledPastTop = bodyEl.scrollTop > 1;
+    scrolledBeforeEnd = bodyEl.scrollTop + bodyEl.clientHeight < bodyEl.scrollHeight - 1;
+  }
+
+  afterUpdate(updateScrollEdges);
 
   function formatRemaining(endsAt: string): string {
     const diffMs = new Date(endsAt).getTime() - Date.now();
@@ -399,51 +512,88 @@
 </script>
 
 {#if open && (alert || query || seedMatchers)}
-  <div class="overlay" on:click={close} on:keydown={handleKeydown} role="presentation">
+  <div
+    class="overlay"
+    in:scrim={{ duration: PRESENT_MS }}
+    out:scrim={{ duration: DISMISS_MS }}
+    on:mousedown|self={close}
+    role="presentation"
+  >
     <div
       class="dialog"
+      bind:this={dialogEl}
+      tabindex="-1"
+      in:panel={{ duration: PRESENT_MS, easing: easePanel }}
+      out:panel={{ duration: DISMISS_MS, easing: easeDismiss }}
       on:click|stopPropagation
-      on:keydown|stopPropagation
+      on:keydown={onDialogKeydown}
       role="dialog"
       aria-modal="true"
       aria-labelledby="silence-title"
     >
-      <div class="dialog-header">
+      <div class="dialog-header" class:divided={scrolledPastTop}>
         <h3 id="silence-title">{mode === 'edit' ? 'Edit silence' : isScratchCreate ? 'New silence' : 'Silence alert'}</h3>
-        <button class="btn-close" on:click={close} aria-label="Close">✕</button>
+        <button class="btn-close tap-target" on:click={close} aria-label="Close">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
-      <div class="dialog-body">
-        {#if alert || mode === 'edit'}
-          <div class="context-strip">
-            {#if mode === 'edit' && silence}
-            <span class="ctx-item"><strong>id:</strong> {silence.id.slice(0, 10)}…</span>
-            <span class="ctx-item"><strong>started:</strong> {new Date(silence.startsAt).toLocaleString()}</span>
-            <span class="ctx-item"><strong>by:</strong> {silence.createdBy}</span>
-            <span class="ctx-item"><strong>expires in:</strong> {formatRemaining(silence.endsAt)}</span>
-            {:else if alert}
-            <span class="alert-name">{alert.name}</span>
-            <span class="alert-source">{alert.source}</span>
-            {/if}
-          </div>
+      <div class="dialog-body" bind:this={bodyEl} on:scroll={updateScrollEdges}>
+        {#if mode === 'edit' && silence}
+          <section class="section">
+            <h4 class="section-label">Silence</h4>
+            <div class="group">
+              <div class="row">
+                <span class="row-label">ID</span>
+                <span class="row-value mono">{silence.id.slice(0, 10)}…</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Started</span>
+                <span class="row-value">{new Date(silence.startsAt).toLocaleString()}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Created by</span>
+                <span class="row-value">{silence.createdBy}</span>
+              </div>
+              <div class="row">
+                <span class="row-label">Expires in</span>
+                <span class="row-value">{formatRemaining(silence.endsAt)}</span>
+              </div>
+            </div>
+          </section>
+        {:else if alert}
+          <section class="section">
+            <h4 class="section-label">Alert</h4>
+            <div class="group">
+              <div class="row">
+                <span class="alert-name">{alert.name}</span>
+                <span class="alert-source">{alert.source}</span>
+              </div>
+            </div>
+          </section>
         {/if}
 
         {#if isAlertlessCreate}
-          <div class="field">
-            <span class="field-label">Target source</span>
-            <select class="input" bind:value={selectedSource}>
-              {#each sourceCandidates as c}
-                <option value={c.source}>{c.source} ({c.count})</option>
-              {/each}
-              {#if sourceCandidates.length === 0}
-                <option value="" disabled>No silence-capable sources</option>
-              {/if}
-            </select>
-          </div>
+          <section class="section">
+            <h4 class="section-label" id="se-source-label">Target source</h4>
+            <div class="group">
+              <SelectMenu
+                ariaLabel="Target source"
+                placeholder="No silence-capable sources"
+                options={sourceCandidates.map((c) => ({ value: c.source, label: `${c.source} (${c.count})` }))}
+                bind:value={selectedSource}
+              />
+            </div>
+          </section>
         {/if}
 
-        <div class="field">
-          <span class="field-label">Matchers ({allMatchers.length})</span>
+        <section class="section">
+          <h4 class="section-label" id="se-matchers-label">
+            Matchers
+            {#if allMatchers.length}<span class="section-count">{allMatchers.length}</span>{/if}
+          </h4>
           <MatcherEditor
             bind:matchers={editorMatchers}
             textMatchers={allMatchers}
@@ -454,278 +604,525 @@
           >
             <svelte:fragment slot="actions">
               {#if canExpand}
-                <button type="button" class="matcher-toggle" on:click={expandMatchers}>
-                  ▸ Show {hiddenMatchers.length} more matcher{hiddenMatchers.length === 1 ? '' : 's'}
+                <button type="button" class="matcher-toggle tap-target" on:click={expandMatchers}>
+                  Show {hiddenMatchers.length} more
                 </button>
               {:else if canCollapse}
-                <button type="button" class="matcher-toggle" on:click={collapseMatchers}>
-                  ▾ Hide matchers
+                <button type="button" class="matcher-toggle tap-target" on:click={collapseMatchers}>
+                  Hide matchers
                 </button>
               {/if}
             </svelte:fragment>
           </MatcherEditor>
+          {#if previewValid && activeSource}
+            <p class="section-note preview" class:warn={previewWarn} role="status">
+              Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
+            </p>
+          {/if}
           {#if droppedTerms.length > 0}
-            <p class="dropped-note">
+            <p class="section-note">
               Not included in silence:
               {#each droppedTerms as d, i}
                 <code>{d.label}</code><span class="dropped-reason"> ({d.reason})</span>{i < droppedTerms.length - 1 ? ', ' : ''}
               {/each}
             </p>
           {/if}
-        </div>
+        </section>
 
-        <div class="field">
-          <span class="field-label">Ends in</span>
-          <input
-            class="input"
-            type="text"
-            bind:value={duration}
-            placeholder="e.g. 2h, 1h30m, 45m"
-          />
-          <div class="presets">
-            {#each basePresets as p}
-              <button class="preset-btn" class:active={duration === p} on:click={() => setDurationPreset(p)}>{p}</button>
-            {/each}
+        <section class="section">
+          <h4 class="section-label" id="se-duration-label">Ends in</h4>
+          <div class="group group-fields">
+            <div class="row row-field">
+              <input
+                class="bare-input"
+                type="text"
+                aria-labelledby="se-duration-label"
+                bind:value={duration}
+                placeholder="e.g. 2h, 1h30m, 45m"
+              />
+            </div>
+            <div class="segmented" role="group" aria-label="Duration presets">
+              {#each basePresets as p}
+                <button
+                  type="button"
+                  class="segment tap-target"
+                  class:selected={duration === p}
+                  aria-pressed={duration === p}
+                  on:click={() => setDurationPreset(p)}
+                >{p}</button>
+              {/each}
+            </div>
           </div>
           {#if mode === 'edit'}
-            <div class="presets">
+            <div class="steppers">
               {#each extendPresets as p}
-                <button class="preset-btn" on:click={() => extendDuration(p)}>{p}</button>
+                <button type="button" class="stepper tap-target" on:click={() => extendDuration(p)}>{p}</button>
               {/each}
             </div>
           {/if}
-        </div>
+        </section>
 
-        <label class="field">
-          <span class="field-label">Comment</span>
-          <textarea
-            class="input textarea"
-            bind:value={comment}
-            placeholder="Reason for silencing…"
-            rows="3"
-          />
-        </label>
-
-        <label class="field">
-          <span class="field-label">Created by</span>
-          <input class="input" type="text" bind:value={createdBy} placeholder="Username" />
-        </label>
+        <section class="section">
+          <h4 class="section-label">Details</h4>
+          <div class="group group-fields">
+            <div class="row row-block">
+              <textarea
+                class="bare-input textarea"
+                aria-label="Comment"
+                bind:value={comment}
+                placeholder="Reason for silencing…"
+                rows="3"
+              />
+            </div>
+            <label class="row">
+              <span class="row-label">Created by</span>
+              <input class="bare-input grow" type="text" bind:value={createdBy} placeholder="Username" />
+            </label>
+          </div>
+        </section>
 
         {#if error}
-          <p class="error">{error}</p>
+          <p class="error" role="alert">{error}</p>
         {/if}
       </div>
 
-      <div class="dialog-footer">
+      <div class="dialog-footer" class:divided={scrolledBeforeEnd}>
         <div class="footer-left">
-          {#if previewValid && activeSource}
-            <span class="match-preview" class:warn={previewWarn}>
-              Matches {previewMatchCount} of {previewTotalOnSource} on {activeSource}
-            </span>
-          {/if}
           {#if mode === 'edit' && silence}
             {#if confirmExpire}
-              <span class="expire-confirm-text">Expire now?</span>
-              <button class="btn btn-expire" on:click={doExpire} disabled={loading}>
-                {loading ? 'Expiring…' : 'Confirm'}
+              <span class="expire-confirm-text">Expire this silence now?</span>
+              <button class="btn btn-danger" on:click={doExpire} disabled={loading}>
+                {loading ? 'Expiring…' : 'Expire'}
               </button>
-              <button class="btn btn-cancel" on:click={() => (confirmExpire = false)} disabled={loading}>
-                Cancel
+              <button class="btn btn-quiet" on:click={() => (confirmExpire = false)} disabled={loading}>
+                Keep
               </button>
             {:else}
-              <button class="btn btn-expire" on:click={() => (confirmExpire = true)} disabled={loading}>
+              <button class="btn btn-quiet btn-destructive" on:click={() => (confirmExpire = true)} disabled={loading}>
                 Expire now
               </button>
             {/if}
           {/if}
         </div>
-        <div class="footer-right">
-          <button class="btn btn-cancel" on:click={close} disabled={loading}>Cancel</button>
-          <button class="btn btn-primary" on:click={submit} disabled={!canSubmit}>
-            {loading ? (mode === 'edit' ? 'Saving…' : 'Silencing…') : mode === 'edit' ? 'Save changes' : 'Silence'}
-          </button>
-        </div>
+        <!-- Hidden while the expire confirmation is armed: leaving Save next to
+             a live Expire invites the exact misclick the confirmation exists to
+             prevent. -->
+        {#if !confirmExpire}
+          <div class="footer-right">
+            <button class="btn btn-quiet" on:click={close} disabled={loading}>Cancel</button>
+            <button class="btn btn-primary" on:click={submit} disabled={!canSubmit}>
+              {loading ? (mode === 'edit' ? 'Saving…' : 'Silencing…') : mode === 'edit' ? 'Save changes' : 'Silence'}
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
 {/if}
 
 <style>
+  /* The scrim frosts the list rather than just dimming it, so the panel reads
+     as floating above a live window instead of over a flat grey sheet. */
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--panel-scrim);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
     display: flex;
-    align-items: center;
+    /* Top-anchored, NOT centred. Centring re-positions the panel every time its
+       height changes, so removing a matcher moved the panel down while the rows
+       moved up — the two don't cancel, and the next row's ✕ landed somewhere
+       other than under the pointer. Anchored, a removal shifts the rows below
+       by exactly one row height, putting the next ✕ where the last one was.
+       (It also matches how a macOS sheet hangs from the top of its window.) */
+    align-items: flex-start;
     justify-content: center;
+    /* The overlay covers the whole window, titlebar included, so on macOS the
+       panel would otherwise start under the traffic lights. Reserve the same
+       inset the chrome band uses; --titlebar-min-h is 0 on platforms that draw
+       their own titlebar, where the plain 16px wins. */
+    padding: max(16px, calc(var(--titlebar-min-h) + 10px)) 16px 16px;
     z-index: 1000;
   }
   .dialog {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    width: 520px;
-    max-width: 92vw;
-    max-height: 92vh;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    /* Fluid, not fixed. Matcher rows are the widest thing in here and long
+       label names (app_kubernetes_io_component) truncate at the old 520px, so
+       the panel takes the width the window can spare — capped, because a modal
+       that keeps growing stops reading as a modal. */
+    width: 100%;
+    max-width: 720px;
+    max-height: 100%;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    /* The inset highlight is the top edge catching light; without it a large
+       radius on a dark fill just looks like a hole. */
+    box-shadow: var(--panel-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
+  /* The frame takes programmatic focus on open (see the trap in the script);
+     an outline on it would read as an error flash, not a focus indicator. */
+  .dialog:focus { outline: none; }
+
   .dialog-header {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid #334155;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 10px 40px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
   }
+  .dialog-header.divided { border-bottom-color: var(--chrome-hairline); }
   h3 {
     margin: 0;
-    font-size: calc(15px * var(--font-scale, 1));
+    font-size: calc(13.5px * var(--font-scale, 1));
     font-weight: 600;
+    letter-spacing: -0.01em;
     color: #f1f5f9;
+    text-align: center;
   }
+  /* Same ghost circle as the search field's clear button, so the two dismiss
+     affordances in the app are one control. */
   .btn-close {
-    background: none;
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
     border: none;
-    color: #64748b;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.16);
+    color: #b6c4d6;
     cursor: pointer;
-    font-size: calc(14px * var(--font-scale, 1));
-    padding: 2px 6px;
+    transition: background 0.15s, color 0.15s;
   }
-  .btn-close:hover { color: #e2e8f0; }
-
-  .matcher-toggle {
-    background: none;
-    border: none;
-    color: #94a3b8;
-    font-size: calc(11px * var(--font-scale, 1));
-    cursor: pointer;
-    padding: 2px 0;
-    white-space: nowrap;
-  }
-  .matcher-toggle:hover {
-    color: #e2e8f0;
-  }
+  .btn-close:hover { background: rgba(148, 163, 184, 0.3); color: #f1f5f9; }
+  .btn-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   .dialog-body {
-    padding: 14px 18px;
+    padding: 2px 16px 13px;
     flex: 1;
     overflow-y: auto;
     min-height: 0;
   }
 
-  .context-strip {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: baseline;
-    margin-bottom: 14px;
-    padding: 6px 10px;
-    background: #0f172a;
-    border-radius: 4px;
-    font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
-  }
-  .ctx-item strong { color: #cbd5e1; margin-right: 3px; font-weight: 600; }
-  .alert-name { color: #f1f5f9; font-weight: 600; font-size: calc(13px * var(--font-scale, 1)); }
-  .alert-source { color: #64748b; font-size: calc(11px * var(--font-scale, 1)); }
-
-  .field {
+  /* Grouping, not boxing: a small quiet caption over a hairline card. This is
+     what replaces eight individually-bordered fields stacked on each other. */
+  .section {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 12px;
-    font-size: calc(12px * var(--font-scale, 1));
-    color: #94a3b8;
+    gap: 7px;
+    /* Wider than the 7px inside a section: a caption that carries real weight
+       has to read as attached to the card under it, not floating between two. */
+    margin-top: 18px;
   }
-  .field-label { font-weight: 500; color: #94a3b8; }
+  /* The header's own bottom padding already opens the gap; the first section
+     only needs the optical difference between 10px of chrome and 7px of gap. */
+  .section:first-child { margin-top: 13px; }
+  /* Section labels are headings (h4) so the form has a real document outline —
+     screen readers can jump between sections instead of wading through every
+     control. Visually they read as small eyebrow captions: at 11.5px they sat
+     at nearly the same size/weight as the 12.5px field text, so "Alert" and
+     "Matchers" collapsed into the form and the dialog read as one long column.
+     The drop to 10px + uppercase + tracking opens a clear step: smaller than
+     the value, louder in presence. #93a5bd keeps ~6.5:1 on the panel (WCAG
+     1.4.3 still holds: labels aren't body text). */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding-left: 2px;
+    font-size: calc(10px * var(--font-scale, 1));
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #93a5bd;
+  }
+  /* The count pill matches the section label at 9.5px; the uppercase label
+     shifted the baseline, so the pill aligns to the cap height now. */
+  .section-count {
+    min-width: 15px;
+    padding: 0 4px;
+    border-radius: 7px;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--ctrl-fg-dim);
+    font-size: calc(9.5px * var(--font-scale, 1));
+    font-weight: 600;
+    line-height: 15px;
+    text-align: center;
+  }
 
-  .input {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
-    color: #e2e8f0;
-    font-size: calc(13px * var(--font-scale, 1));
-    padding: 6px 10px;
-    outline: none;
-    width: 100%;
+  .group {
+    background: var(--group-bg);
+    border: 1px solid var(--group-border);
+    border-radius: 9px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  /* Deliberately not `overflow: hidden` — the source picker's menu opens out
+     of this card. Round the end rows instead so row fills still stop at the
+     corners. */
+  .group > :first-child {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+  }
+  .group > :last-child {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+  /* Only for cards holding bare inputs, which have no ring of their own. A card
+     whose control rings itself (the source picker) stays plain — two nested
+     rings read as one heavy blue slab. */
+  .group-fields:focus-within {
+    border-color: rgba(96, 165, 250, 0.6);
+    box-shadow: var(--focus-ring);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 10px;
+    min-height: 26px;
     box-sizing: border-box;
   }
-  .input:focus { border-color: #3b82f6; }
-  .textarea { resize: vertical; font-family: inherit; }
-
-  .presets {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-  }
-  .preset-btn {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 3px;
-    color: #94a3b8;
-    cursor: pointer;
-    font-size: calc(11px * var(--font-scale, 1));
-    padding: 3px 8px;
-  }
-  .preset-btn:hover { border-color: #3b82f6; color: #e2e8f0; }
-  .preset-btn.active { border-color: #3b82f6; background: #1e40af; color: #fff; }
-
-  .error {
-    color: #f87171;
+  .row + .row { border-top: 1px solid var(--group-divider); }
+  .row-block { display: block; padding: 3px 4px; }
+  .row-field { display: block; padding: 2px 4px; }
+  .row-label {
+    flex-shrink: 0;
     font-size: calc(12px * var(--font-scale, 1));
-    margin: 8px 0 0;
+    color: var(--ctrl-fg-dim);
+  }
+  .row-value {
+    min-width: 0;
+    font-size: calc(12px * var(--font-scale, 1));
+    color: var(--ctrl-fg);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .alert-name {
+    min-width: 0;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    font-weight: 600;
+    color: #f1f5f9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .alert-source {
+    flex-shrink: 0;
+    font-size: calc(11px * var(--font-scale, 1));
+    color: #64748b;
   }
 
-  .dropped-note {
-    font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
-    margin: 6px 0 0;
+  /* Bare fields: the group card supplies the border and the focus ring, so the
+     controls inside it carry none of their own. */
+  .bare-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: var(--ctrl-fg);
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
+    padding: 3px 6px;
+    box-sizing: border-box;
   }
-  .dropped-note code {
-    background: #0f172a;
-    border-radius: 3px;
-    padding: 1px 4px;
+  /* Label + field on one line: the input takes the space the label leaves and
+     keeps its text left-aligned — a right-aligned value next to a left label
+     read as a settings sheet, not a form, and broke the tab-order reading. */
+  .grow { flex: 1; min-width: 0; }
+  .textarea {
+    display: block;
+    /* No grip: on a borderless field inside a card it reads as a stray
+       artifact, and the dialog lives in a fixed-height popup anyway. Height
+       comes from the rows attribute so a bigger --font-scale grows the field
+       instead of clipping it. */
+    resize: none;
+    line-height: 1.45;
+  }
+  .bare-input::placeholder { color: var(--group-placeholder); }
+
+  /* Segmented control lives INSIDE the duration card now, under a hairline:
+     the input and the presets set one value, so drawing two bordered boxes
+     made one field read as two. The card supplies the frame; a fainter inset
+     track keeps the pills legible without a second border. */
+  .segmented {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-top: 1px solid var(--group-divider);
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background: rgba(8, 14, 26, 0.28);
+    box-sizing: border-box;
+  }
+  .segment {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 2px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ctrl-fg-dim);
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .segment:hover { background: var(--chrome-ctrl-hover); color: var(--ctrl-fg); }
+  .segment.selected {
+    background: rgba(255, 255, 255, 0.13);
+    color: #f1f5f9;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  }
+  .segment.selected:hover { background: rgba(255, 255, 255, 0.16); }
+  /* The card already draws the soft outer ring on focus-within; a second full
+     ring on the pill would double it. An inset 2px line stays visible at 3:1
+     against both the track and the selected fill without the nesting. */
+  .segment:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.9);
+  }
+  .segment.selected:focus-visible {
+    box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.9), 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Extend shortcuts are actions, not a selection — so they stay discrete
+     buttons and deliberately do NOT look like the segmented control above. */
+  .steppers { display: flex; gap: 5px; }
+  .stepper {
+    height: 22px;
+    padding: 0 9px;
+    border: 1px solid var(--group-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ctrl-fg-dim);
+    font-family: inherit;
+    font-size: calc(11px * var(--font-scale, 1));
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .stepper:hover {
+    background: var(--chrome-ctrl-hover);
+    border-color: var(--chrome-field-border);
+    color: var(--ctrl-fg);
+  }
+  .stepper:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+  .matcher-toggle {
+    background: none;
+    border: none;
+    border-radius: 5px;
+    color: var(--ctrl-fg-dim);
+    font-size: calc(11px * var(--font-scale, 1));
+    cursor: pointer;
+    padding: 2px 4px;
+    white-space: nowrap;
+  }
+  .matcher-toggle:hover { color: var(--ctrl-fg); }
+  .matcher-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+  .section-note {
+    font-size: calc(11px * var(--font-scale, 1));
+    color: var(--ctrl-fg-dim);
+    margin: 0;
+    padding-left: 2px;
+    line-height: 1.5;
+  }
+  .section-note code {
+    background: rgba(148, 163, 184, 0.14);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     color: #cbd5e1;
   }
   .dropped-reason { color: #64748b; }
+  /* Sits under the matcher card because that is what it reports on — in the
+     footer it was just another thing competing with the buttons. */
+  .preview.warn { color: #fbbf24; }
+
+  .error {
+    color: var(--danger);
+    font-size: calc(12px * var(--font-scale, 1));
+    margin: 11px 0 0;
+  }
 
   .dialog-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 12px 18px;
-    border-top: 1px solid #334155;
+    flex-shrink: 0;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid transparent;
+    transition: border-color 0.15s;
   }
-  .footer-left { display: flex; align-items: center; gap: 8px; }
-  .footer-right { display: flex; align-items: center; gap: 8px; }
-  .match-preview {
-    font-size: calc(11px * var(--font-scale, 1));
-    color: #94a3b8;
-  }
-  .match-preview.warn { color: #fbbf24; }
+  .dialog-footer.divided { border-top-color: var(--chrome-hairline); }
+  .footer-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .footer-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .expire-confirm-text {
-    font-size: calc(12px * var(--font-scale, 1));
-    color: #f87171;
+    font-size: calc(11.5px * var(--font-scale, 1));
+    color: var(--danger);
   }
 
   .btn {
-    border-radius: 4px;
-    border: none;
+    height: 26px;
+    padding: 0 13px;
+    border-radius: 7px;
+    border: 1px solid transparent;
     cursor: pointer;
-    font-size: calc(13px * var(--font-scale, 1));
+    font-family: inherit;
+    font-size: calc(12.5px * var(--font-scale, 1));
     font-weight: 500;
-    padding: 7px 16px;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-  .btn-cancel { background: #334155; color: #94a3b8; }
-  .btn-cancel:hover:not(:disabled) { background: #475569; }
+  .btn-quiet {
+    background: var(--group-bg);
+    border-color: var(--group-border);
+    color: var(--ctrl-fg);
+  }
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--chrome-ctrl-hover);
+    border-color: var(--chrome-field-border);
+  }
 
-  .btn-primary { background: #3b82f6; color: #fff; }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 
-  .btn-expire { background: #7f1d1d; color: #fecaca; }
-  .btn-expire:hover:not(:disabled) { background: #991b1b; color: #fff; }
+  /* Destructive weight lands on the step that actually destroys: arming the
+     confirmation is quiet red text, only Confirm goes solid. */
+  .btn-destructive { color: var(--danger); }
+  .btn-destructive:hover:not(:disabled) {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.4);
+    color: #fca5a5;
+  }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #b91c1c; }
 </style>

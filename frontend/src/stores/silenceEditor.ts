@@ -53,5 +53,10 @@ export function openSilenceFromMatchers(matchers: Matcher[], source: string | nu
 }
 
 export function closeSilenceEditor(): void {
-  silenceEditor.set({ ...closed });
+  // Only flips `open`. The payload deliberately stays put: the editor animates
+  // itself out, so it is still on screen for a moment after this runs, and
+  // clearing alert/query/matchers here made it re-render mid-dismissal — the
+  // title changed and the source section disappeared while it was fading.
+  // Every open path sets the whole payload, so nothing stale survives a reopen.
+  silenceEditor.update((state) => ({ ...state, open: false }));
 }

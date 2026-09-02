@@ -594,7 +594,7 @@
         />
         {#if searchOpen}
           <button
-            class="search-help"
+            class="search-help tap-target"
             type="button"
             class:active={searchHelpOpen}
             on:mousedown|stopPropagation={(e) => e.preventDefault()}
@@ -605,7 +605,7 @@
           >?</button>
         {/if}
         {#if hasSearchText}
-          <button class="search-clear" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
+          <button class="search-clear tap-target" title="Clear search" on:click|stopPropagation={clearSearch}>×</button>
         {/if}
       </div>
 
@@ -776,13 +776,13 @@
           <span class="status-error-text" title={$error}>{$error}</span>
         {/if}
         {#if newVisibleCount > 0}
-          <button class="status-chip status-chip-new" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
+          <button class="status-chip status-chip-new tap-target" title="New alerts stay highlighted until you hover them briefly. Click to mark all as seen." on:click={acknowledgeAllAlerts}>
             <span class="status-chip-x" aria-hidden="true">×</span>
             {newVisibleCount} New
           </button>
         {/if}
         {#if resolvedVisibleCount > 0}
-          <button class="status-chip status-chip-resolved" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
+          <button class="status-chip status-chip-resolved tap-target" title="Resolved alerts stay visible for 30 seconds, or until you mark them seen. Click to clear them now." on:click={acknowledgeAllResolvedAlerts}>
             <span class="status-chip-x" aria-hidden="true">×</span>
             {resolvedVisibleCount} Resolved
           </button>
@@ -962,7 +962,9 @@
     width: 200px;
     padding: 0 4px 0 9px;
     justify-content: flex-start;
-    gap: 7px;
+    /* 8, not 7: ? and × are 16px marks whose tap boxes expand to 24px, and two
+       24px targets 23px apart would overlap. At 8px their edges just touch. */
+    gap: 8px;
     border-color: var(--chrome-field-border);
     background: var(--chrome-field-bg);
     cursor: text;

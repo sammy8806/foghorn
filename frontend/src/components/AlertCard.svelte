@@ -481,7 +481,9 @@
     padding: 4px 10px;
     cursor: pointer;
     user-select: none;
-    min-height: 0;
+    /* The whole header is the expand target, not the chevron, so the row itself
+       carries the 24px floor. At 4px padding around a 12px line it measured 23. */
+    min-height: 24px;
   }
   .alert-header:hover { background: rgba(255,255,255,0.05); }
 
@@ -752,8 +754,22 @@
     text-decoration: none;
   }
   .annotation-link:hover, .generator-link:hover { text-decoration: underline; }
+  /* Only the action-row link takes the target floor. .annotation-link stays
+     inline inside a sentence, where laying it out as a box would break the
+     wrap — and where 2.5.8's inline exception applies anyway. */
+  .generator-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+  }
 
   .btn-silence {
+    display: inline-flex;
+    align-items: center;
+    /* A bordered button is read as a button, so this one grows for real rather
+       than hiding a bigger tap box behind a 21px frame. */
+    min-height: 24px;
+    box-sizing: border-box;
     background: none;
     border: 1px solid #334155;
     border-radius: 3px;
