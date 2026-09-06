@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Foghorn demo</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { buildBridgeInit } from '../scripts/pr-screenshots/mock-bridge.mjs';
+      // Synthetic data only. No backend or alert-source credentials are used.
+      new Function(buildBridgeInit({ showSilenced: true }))();
+      await import('./src/main.ts');
+    </script>
+  </body>
+</html>
