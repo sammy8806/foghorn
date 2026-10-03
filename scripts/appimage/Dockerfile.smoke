@@ -1,0 +1,16 @@
+# Intentionally omit GTK, WebKitGTK, AppIndicator and FUSE packages.
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+RUN if command -v apt-get >/dev/null; then \
+      apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates xvfb xauth xdotool dbus-x11 fonts-dejavu-core \
+        libegl1 libgl1 libgles2 imagemagick tesseract-ocr \
+        && rm -rf /var/lib/apt/lists/*; \
+    else \
+      dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth xdotool dbus-daemon \
+        dejavu-sans-fonts mesa-libEGL mesa-libGL mesa-libGLES ImageMagick \
+        tesseract tesseract-langpack-eng findutils which \
+        && dnf clean all; \
+    fi
+RUN ! ldconfig -p | grep -Eq 'lib(gtk-3|webkit2gtk|ayatana-appindicator|fuse)'
+WORKDIR /work
