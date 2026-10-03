@@ -75,28 +75,32 @@ make appimage
 
 The AppImage is written to `build/bin/foghorn-<version>-x86_64.AppImage`.
 
-The Linux AppImage intentionally uses the host system's GTK/WebKitGTK runtime
-instead of bundling WebKitGTK. WebKitGTK includes helper processes plus graphics
-and media stacks that must match the host desktop closely; bundling Ubuntu's
-WebKitGTK stack caused renderer crashes on Fedora. This means the AppImage is
-small and more reliable across desktop environments, but the target system must
-provide the GTK/WebKitGTK runtime packages.
+The AppImage bundles GTK3, WebKitGTK, AppIndicator, their dependencies, and
+WebKit's helper processes. Release builds run on Ubuntu 22.04 to support hosts
+with glibc 2.35 or newer. Local builds on newer distributions may require a newer
+glibc. The host still provides an X11/XWayland desktop and its graphics drivers,
+including the matching Wayland client library used by Mesa.
+WebKit uses software rendering; host GStreamer and GIO modules are excluded from
+plugin discovery to avoid loading modules built against newer bundled-library ABIs.
 
-Runtime packages for Fedora/KDE/GNOME:
+Packaging uses pinned linuxdeploy, its GTK plugin, appimagetool, and a static
+FUSE3 AppImage runtime. FUSE2 is not required. On systems without a usable FUSE
+mount, use `APPIMAGE_EXTRACT_AND_RUN=1 ./foghorn-<version>-x86_64.AppImage`.
+
+The release workflow tests the resulting artifact in clean Ubuntu 22.04,
+Ubuntu 24.04, and Fedora 44 containers without GTK, WebKitGTK, AppIndicator or
+FUSE installed. The
+smoke check verifies the CLI, WebKit helper dependencies, rendered window content,
+and that the app remains running beyond the catalog's early-exit threshold.
+To run the same check locally with Docker (or substitute Podman):
 
 ```bash
-sudo dnf install webkit2gtk4.1 gtk3 libayatana-appindicator-gtk3
+docker build -f scripts/appimage/Dockerfile.smoke -t foghorn-appimage-smoke scripts/appimage
+docker run --rm -v "$PWD:/work" foghorn-appimage-smoke \
+  ./scripts/test-appimage.sh build/bin/foghorn-<version>-x86_64.AppImage
 ```
 
-Runtime packages for Ubuntu 24.04/Kubuntu:
-
-```bash
-sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1
-```
-
-KDE users still need these GTK/WebKitGTK packages because Wails uses WebKitGTK
-for the embedded web view on Linux. KDE itself is supported; it just does not
-replace the GTK/WebKitGTK runtime requirement.
+Logs and a window screenshot are written to `build/appimage-test/smoke/`.
 
 On GNOME, tray visibility still depends on the desktop environment exposing AppIndicator or StatusNotifier items. If Foghorn is built without `linux_tray`, or tray support is unavailable at runtime, it falls back to a normal visible window so it remains usable. Even with `linux_tray` enabled, Linux starts with a visible window by default — the tray is an optional convenience, not the primary entry point.
 
