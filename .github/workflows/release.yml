@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: error
 
   build-linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -97,6 +97,7 @@ jobs:
             libgtk-3-dev \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
+            librsvg2-dev \
             patchelf \
             desktop-file-utils \
             zsync
@@ -110,7 +111,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/.cache
-          key: linuxdeploy-1-alpha-20240109-1
+          key: appimage-linuxdeploy-20240109-tool-1.9.1-runtime-20251108
 
       - name: Resolve FOGHORN_VERSION
         env:
@@ -133,6 +134,33 @@ jobs:
           name: foghorn-linux-appimage
           path: build/bin/foghorn-*-x86_64.AppImage
           if-no-files-found: error
+
+  test-linux:
+    needs: build-linux
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        base-image: ['ubuntu:22.04', 'ubuntu:24.04', 'registry.fedoraproject.org/fedora:44']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: foghorn-linux-appimage
+          path: build/bin
+      - name: Build clean desktop test environment
+        env:
+          BASE_IMAGE: ${{ matrix.base-image }}
+        run: docker build --build-arg "BASE_IMAGE=$BASE_IMAGE" -f scripts/appimage/Dockerfile.smoke -t foghorn-appimage-smoke scripts/appimage
+      - name: Verify packaged runtime and rendered window
+        run: |
+          chmod +x build/bin/*.AppImage
+          docker run --rm -v "$PWD:/work" foghorn-appimage-smoke \
+            bash -c './scripts/test-appimage.sh build/bin/*.AppImage build/appimage-test/smoke'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appimage-smoke-${{ strategy.job-index }}
+          path: build/appimage-test/smoke
 
   build-windows:
     runs-on: windows-latest
@@ -181,7 +209,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [build-macos, build-linux, build-windows]
+    needs: [build-macos, build-linux, test-linux, build-windows]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
