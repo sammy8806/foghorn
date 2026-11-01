@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       APPLE_DEVELOPER_ID_CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
       APPLE_DEVELOPER_ID_CERT_PASSWORD:   ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
