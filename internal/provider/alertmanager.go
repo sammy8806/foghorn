@@ -205,6 +205,9 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 		log.Printf("silence: %s %s response HTTP %d body=%s", a.kind, a.cfg.Name, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
+	if isDeniedStatus(resp.StatusCode) {
+		return "", a.deniedError(resp.StatusCode, respBody)
+	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return "", fmt.Errorf("silence on %s %s returned HTTP %d: %s", a.kind, a.cfg.Name, resp.StatusCode, string(respBody))
 	}
@@ -239,6 +242,9 @@ func (a *alertmanagerAPI) Unsilence(ctx context.Context, silenceID string) error
 	}
 	defer resp.Body.Close()
 
+	if isDeniedStatus(resp.StatusCode) {
+		return a.deniedError(resp.StatusCode, readLimited(resp.Body, maxErrorBodyBytes))
+	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("delete silence on %s %s returned HTTP %d", a.kind, a.cfg.Name, resp.StatusCode)
 	}
