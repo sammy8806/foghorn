@@ -129,4 +129,35 @@ describe('SilenceEditor live permission check', () => {
     await mountEditor({ seedMatchers: [eq('alertname', 'Down')], preferredSource: 'g' });
     expect(submitButton().disabled).toBe(false);
   });
+
+  it('does not move a user-picked source when the silence stops being allowed there', async () => {
+    const labels = { alertname: 'Down', __alert_rule_uid__: 'r1' };
+    alerts.set([
+      { id: '1', source: 'a', labels } as any,
+      { id: '2', source: 'b', labels } as any,
+    ]);
+    sourceCapabilities.set({
+      a: { supportsSilence: true, silenceAccess: access() as any },
+      b: { supportsSilence: true, silenceAccess: access({ canCreateAll: true }) as any },
+    });
+    await mountEditor({ seedMatchers: [eq('alertname', 'Down'), eq('__alert_rule_uid__', 'r1')] });
+    const control = document.querySelector<HTMLElement>('[role="combobox"]')!;
+    control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    const optA = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.startsWith('a ('))
+      ?? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.includes('a ('))!;
+    optA.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(control.textContent).toContain('a (');
+
+    const ruleInput = [...document.querySelectorAll<HTMLInputElement>('input')].find((i) => i.value === '__alert_rule_uid__')!;
+    let row: HTMLElement | null = ruleInput.parentElement;
+    while (row && !row.querySelector('button[aria-label="Remove matcher"]')) row = row.parentElement;
+    row!.querySelector<HTMLButtonElement>('button[aria-label="Remove matcher"]')!.click();
+    await tick();
+    await tick();
+
+    expect(control.textContent).toContain('a (');
+    expect(submitButton().disabled).toBe(true);
+  });
 });

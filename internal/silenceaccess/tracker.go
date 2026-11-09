@@ -131,9 +131,16 @@ func (t *Tracker) ApplyLookup(l Lookup, now time.Time) {
 	s.CanCreateAll, s.CreateFolders = createAll, createFolders
 	s.CanWriteAll, s.WriteFolders = writeAll, writeFolders
 	s.CanRead = canRead
-	s.RuleFolders = copyMap(l.RuleFolders)
-	s.FolderParents = copyMap(l.FolderParents)
-	s.FolderTitles = copyMap(l.FolderTitles)
+	// Rules and folders describe structure, not permissions: when they were
+	// unreadable this time, keep the last known ones so folder refusals keep
+	// applying.
+	if l.RuleFolders != nil || s.RuleFolders == nil {
+		s.RuleFolders = copyMap(l.RuleFolders)
+	}
+	if l.FolderParents != nil || s.FolderParents == nil {
+		s.FolderParents = copyMap(l.FolderParents)
+		s.FolderTitles = copyMap(l.FolderTitles)
+	}
 
 	t.fp = fingerprint(l.Permissions)
 	if t.hasDenial {
@@ -161,7 +168,7 @@ func (t *Tracker) ApplyLookupError(err error, now time.Time) {
 	}
 	s.CanCreateAll, s.CanWriteAll, s.CanRead = false, false, false
 	s.CreateFolders, s.WriteFolders = nil, nil
-	s.RuleFolders, s.FolderParents, s.FolderTitles = map[string]string{}, map[string]string{}, map[string]string{}
+	// Rule and folder structure stays: refusals per folder must keep applying.
 	t.fp = ""
 }
 

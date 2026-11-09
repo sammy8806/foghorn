@@ -309,3 +309,21 @@ func TestDescribeLookup(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestFolderStructureSurvivesFailedLookups(t *testing.T) {
+	tr := defaultGrafana()
+	tr.ApplyLookup(Lookup{RuleFolders: map[string]string{"r1": "f1"}, FolderParents: map[string]string{"f1": ""}}, t0)
+	tr.RecordDenied(OpCreate, []model.Matcher{eq(RuleUIDLabel, "r1")}, 403, "", t0)
+	tr.ApplyLookupError(errors.New("down"), t0)
+	if s := tr.Snapshot(); s.RuleFolders["r1"] != "f1" {
+		t.Fatalf("rule folders lost on error: %+v", s.RuleFolders)
+	}
+	tr.RecordDenied(OpCreate, []model.Matcher{eq(RuleUIDLabel, "r1")}, 403, "", t0)
+	if d := tr.Snapshot().Denied; d.CreateSource {
+		t.Fatal("refusal during a failed lookup widened to the whole source")
+	}
+	tr.ApplyLookup(Lookup{RuleFolders: nil, FolderParents: nil}, t0)
+	if s := tr.Snapshot(); s.RuleFolders["r1"] != "f1" || s.FolderParents == nil {
+		t.Fatalf("unreadable rules/folders must keep the last known structure: %+v", s)
+	}
+}

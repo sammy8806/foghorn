@@ -2,11 +2,11 @@ package provider
 
 import (
 	"context"
-	"log"
-	"os"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"sync"

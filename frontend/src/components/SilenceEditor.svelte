@@ -39,6 +39,9 @@
   let initializedForOpen = false;
   let droppedTerms: DroppedTerm[] = [];
   let selectedSource = '';
+  // Set once the user picks a source. A pick is never moved to another source
+  // because of permissions: the user sees the refusal instead.
+  let userPickedSource = false;
   let dialogEl: HTMLDivElement | null = null;
   let previouslyFocused: HTMLElement | null = null;
   let focusMovedIn = false;
@@ -96,7 +99,7 @@
   }
   $: if (isAlertlessCreate && selectedSource && sourceCandidates.length &&
          (!sourceCandidates.some((c) => c.source === selectedSource) ||
-          (!candidateDecisions[selectedSource]?.allowed && firstAllowedCandidate !== selectedSource &&
+          (!userPickedSource && !candidateDecisions[selectedSource]?.allowed && firstAllowedCandidate !== selectedSource &&
            candidateDecisions[firstAllowedCandidate]?.allowed))) {
     selectedSource = firstAllowedCandidate;
   }
@@ -381,6 +384,7 @@
       comment = '';
       createdBy = '';
       selectedSource = preferredSource || defaultSourceForQuery(all);
+      userPickedSource = false;
       void loadDefaultCreatedBy().then((v) => {
         if (!createdBy) createdBy = v;
       });
@@ -391,6 +395,7 @@
       comment = '';
       createdBy = '';
       selectedSource = preferredSource || defaultSourceForQuery(all);
+      userPickedSource = false;
       void loadDefaultCreatedBy().then((v) => {
         if (!createdBy) createdBy = v;
       });
@@ -624,6 +629,7 @@
                   title: candidateDecisions[c.source]?.reason || undefined,
                 }))}
                 bind:value={selectedSource}
+                on:change={() => (userPickedSource = true)}
               />
             </div>
           </section>

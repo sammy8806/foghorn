@@ -123,16 +123,23 @@ func (e *Engine) pollLoop(ctx context.Context, src config.SourceConfig, trigger 
 func (e *Engine) poll(ctx context.Context, src config.SourceConfig, p Provider, ch chan<- DiffEvent) {
 	source := src.Name
 
+	// The permission lookup gets its own time budget, so a slow rules or
+	// folder endpoint can't make the alert fetch time out.
+	if ap, ok := p.(provider.SilenceAccessProvider); ok {
+		lookupCtx, cancelLookup := ctx, context.CancelFunc(func() {})
+		if src.Timeout > 0 {
+			lookupCtx, cancelLookup = context.WithTimeout(ctx, src.Timeout)
+		}
+		ap.RefreshSilenceAccess(lookupCtx, time.Now())
+		cancelLookup()
+	}
+
 	// Bound the whole poll (alerts + silences + on-call) so a slow or broken
 	// source cannot hang indefinitely.
 	if src.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, src.Timeout)
 		defer cancel()
-	}
-
-	if ap, ok := p.(provider.SilenceAccessProvider); ok {
-		ap.RefreshSilenceAccess(ctx, time.Now())
 	}
 
 	alerts, err := p.Fetch(ctx)

@@ -84,3 +84,31 @@ func TestPollRefreshesSilenceAccessBeforeFetch(t *testing.T) {
 		t.Fatalf("events %v", p.events)
 	}
 }
+
+type slowAccessProvider struct {
+	accessProvider
+}
+
+func (s *slowAccessProvider) RefreshSilenceAccess(ctx context.Context, _ time.Time) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func (s *slowAccessProvider) Fetch(ctx context.Context) ([]model.Alert, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func TestSlowPermissionLookupDoesNotEatFetchBudget(t *testing.T) {
+	store := state.New()
+	p := &slowAccessProvider{accessProvider{silenceProvider: silenceProvider{name: "g"}, canRead: true}}
+	e := New(store, nil, nil)
+	e.poll(context.Background(), config.SourceConfig{Name: "g", Timeout: 200 * time.Millisecond}, p, make(chan DiffEvent, 4))
+	if h := health(t, store); !h.OK {
+		t.Fatalf("slow lookup made the source fail: %+v", h)
+	}
+}
