@@ -58,7 +58,7 @@ describe('AlertCard silence permissions', () => {
     expect(b.disabled).toBe(true);
     const described = document.getElementById(b.getAttribute('aria-describedby') ?? '');
     expect(described?.textContent).toBe("g: token can't create silences (needs alert.silences:create)");
-    expect(b.parentElement?.querySelector('.permission-warn')).not.toBeNull();
+    expect(b.querySelector('.permission-warn')).not.toBeNull();
   });
 
   it('silence button stays enabled when the check failed', async () => {

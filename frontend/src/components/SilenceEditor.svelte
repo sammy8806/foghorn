@@ -12,6 +12,7 @@
   import MatcherEditor from './MatcherEditor.svelte';
   import SelectMenu from './SelectMenu.svelte';
   import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { cubicBezier } from '../utils/easing';
 
   export let alert: Alert | null = null;
@@ -749,7 +750,7 @@
               <button class="btn btn-quiet btn-destructive" on:click={() => (confirmExpire = true)}
                 disabled={loading || !expireDecision.allowed}
                 aria-describedby={expireDecision.allowed ? undefined : 'silence-editor-expire-hint'}>
-                Expire now
+                {#if !expireDecision.allowed}<PermissionIcon />{/if}Expire now
               </button>
               </PermissionHint>
             {/if}

@@ -5,6 +5,7 @@
   import { decideAcrossSources, decideSilence } from '../stores/silenceAccess';
   import AlertCard from './AlertCard.svelte';
   import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { severityColor, severityOrder } from '../utils/severity';
 
   export let groupParts: AlertFieldDisplay[] = [];
@@ -126,7 +127,7 @@
       <PermissionHint reason={groupDecision.reason} id={groupHintId}>
         <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}
           aria-describedby={groupDecision.allowed ? undefined : groupHintId}>
-          Silence group…
+          {#if !groupDecision.allowed}<PermissionIcon />{/if}Silence group…
         </button>
       </PermissionHint>
     </div>

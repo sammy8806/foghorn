@@ -4,6 +4,7 @@
   import type { Matcher } from '../stores/alerts';
   import { decideSilence, silenceReadHint } from '../stores/silenceAccess';
   import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
   import { safeExternalURL } from '../utils/url';
@@ -357,10 +358,10 @@
                     <PermissionHint reason={writeDecisions[s.id]?.reason ?? ''} id={`${hintBase}-w-${s.id}`}>
                       <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}
                         disabled={!writeDecisions[s.id]?.allowed}
-                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Edit</button>
+                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>{#if !writeDecisions[s.id]?.allowed}<PermissionIcon />{/if}Edit</button>
                       <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}
                         disabled={!writeDecisions[s.id]?.allowed}
-                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Expire now</button>
+                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>{#if !writeDecisions[s.id]?.allowed}<PermissionIcon />{/if}Expire now</button>
                     </PermissionHint>
                   {/if}
                 </div>
@@ -439,7 +440,7 @@
           <PermissionHint reason={createDecision.reason} id={`${hintBase}-c`}>
             <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}
               disabled={!createDecision.allowed}
-              aria-describedby={createDecision.allowed ? undefined : `${hintBase}-c`}>Silence…</button>
+              aria-describedby={createDecision.allowed ? undefined : `${hintBase}-c`}>{#if !createDecision.allowed}<PermissionIcon />{/if}Silence…</button>
           </PermissionHint>
         {/if}
       </div>
