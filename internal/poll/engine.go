@@ -131,6 +131,10 @@ func (e *Engine) poll(ctx context.Context, src config.SourceConfig, p Provider, 
 		defer cancel()
 	}
 
+	if ap, ok := p.(provider.SilenceAccessProvider); ok {
+		ap.RefreshSilenceAccess(ctx, time.Now())
+	}
+
 	alerts, err := p.Fetch(ctx)
 	if err != nil {
 		log.Printf("error polling %s: %v", source, err)
@@ -144,8 +148,16 @@ func (e *Engine) poll(ctx context.Context, src config.SourceConfig, p Provider, 
 	}
 
 	// Enrich alerts with silence details if the provider supports it.
+	// A source whose credentials can't read silences is not asked; the UI
+	// explains the missing details from the permission state instead.
 	if sp, ok := p.(provider.SilenceProvider); ok {
-		if silences, err := sp.FetchSilences(ctx); err == nil {
+		ap, hasAccess := p.(provider.SilenceAccessProvider)
+		switch silences, err := fetchSilencesIfReadable(ctx, sp, ap, hasAccess); {
+		case err != nil:
+			log.Printf("error fetching silences from %s: %v", source, err)
+			e.store.RecordSilenceReadError(source, err)
+		default:
+			e.store.ClearSilenceReadError(source)
 			enrichSilences(alerts, silences)
 		}
 	}
@@ -199,4 +211,11 @@ func enrichSilences(alerts []model.Alert, silences []model.SilenceInfo) {
 			alerts[i].Silences = matched
 		}
 	}
+}
+
+func fetchSilencesIfReadable(ctx context.Context, sp provider.SilenceProvider, ap provider.SilenceAccessProvider, hasAccess bool) ([]model.SilenceInfo, error) {
+	if hasAccess && !ap.CanReadSilences() {
+		return nil, nil
+	}
+	return sp.FetchSilences(ctx)
 }
