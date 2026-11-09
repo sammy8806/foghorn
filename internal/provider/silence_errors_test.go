@@ -141,3 +141,17 @@ func TestSilenceDeniedAfterOIDCRetryOnly(t *testing.T) {
 		})
 	}
 }
+
+func TestSilenceDeniedExtractsGrafanaMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"statusCode":403,"messageId":"alerting.unauthorized","message":"user is not authorized to create silence for rule r1"}`))
+	}))
+	defer server.Close()
+
+	_, err := NewGrafana(grafanaTestSource(server.URL)).Silence(context.Background(), testSilenceRequest())
+	var denied *SilenceDeniedError
+	if !errors.As(err, &denied) || denied.Body != "user is not authorized to create silence for rule r1" {
+		t.Fatalf("got %+v", denied)
+	}
+}

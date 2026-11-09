@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,6 +30,13 @@ func isDeniedStatus(status int) bool {
 
 func (a *alertmanagerAPI) deniedError(status int, body []byte) *SilenceDeniedError {
 	trimmed := strings.TrimSpace(string(body))
+	// Grafana wraps the reason in JSON; keep only its message.
+	var grafana struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &grafana) == nil && strings.TrimSpace(grafana.Message) != "" {
+		trimmed = strings.TrimSpace(grafana.Message)
+	}
 	if len(trimmed) > 300 {
 		trimmed = trimmed[:300]
 	}
