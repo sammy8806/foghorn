@@ -1,0 +1,99 @@
+// Silence permission decisions. One place for the rules that grey out silence
+// controls: alert cards, groups, silence-from-search and the live editor check.
+// The backend ships the raw permission state (SilenceAccess); this decides per
+// silence. Unknown means enabled: only a successful lookup or a recorded
+// refusal disables anything.
+import type { Matcher, SilenceAccess } from './alerts';
+
+export const RULE_UID_LABEL = '__alert_rule_uid__';
+export type SilenceOp = 'create' | 'write';
+export interface SilenceDecision {
+  allowed: boolean;
+  reason: string; // '' when allowed
+}
+
+const ALLOWED: SilenceDecision = { allowed: true, reason: '' };
+const MAX_ANCESTOR_STEPS = 64;
+
+function refuse(reason: string): SilenceDecision {
+  return { allowed: false, reason };
+}
+
+// ruleUID returns the value of an equality (non-regex) rule-UID matcher.
+export function ruleUID(matchers: Matcher[]): string | null {
+  const m = matchers.find(m => m.name === RULE_UID_LABEL && m.isEqual && !m.isRegex);
+  return m ? m.value : null;
+}
+
+function folderPermitted(folder: string, granted: string[], parents: Record<string, string>): boolean {
+  const seen = new Set<string>();
+  let current: string | undefined = folder;
+  for (let step = 0; current && step < MAX_ANCESTOR_STEPS && !seen.has(current); step++) {
+    if (granted.includes(current)) return true;
+    seen.add(current);
+    current = parents[current];
+  }
+  return false;
+}
+
+export function decideSilence(
+  source: string,
+  access: SilenceAccess | undefined,
+  matchers: Matcher[],
+  op: SilenceOp,
+): SilenceDecision {
+  if (!access) return ALLOWED;
+  const create = op === 'create';
+  const ruleFolders = access.ruleFolders ?? {};
+  const uid = ruleUID(matchers);
+  const folder = uid !== null ? ruleFolders[uid] : undefined;
+
+  // 1. Denials always apply.
+  const d = access.denied;
+  if (d) {
+    const deniedFolders = (create ? d.createFolders : d.writeFolders) ?? [];
+    const deniedHere =
+      (create ? d.createSource : d.writeSource) ||
+      (uid === null && (create ? d.createGeneral : d.writeGeneral)) ||
+      (folder !== undefined && deniedFolders.includes(folder));
+    if (deniedHere) {
+      return refuse(`${source}: a silence was refused (HTTP ${d.status}); fix the credentials or reload the config`);
+    }
+  }
+
+  // 2. Unknown means enabled.
+  if (access.check !== 'ok' || access.granularity === 'off' || access.granularity === '') return ALLOWED;
+
+  const all = create ? access.canCreateAll : access.canWriteAll;
+  const granted = (create ? access.createFolders : access.writeFolders) ?? [];
+  const sourceLevel = (): SilenceDecision =>
+    all || granted.length > 0
+      ? ALLOWED
+      : refuse(create
+        ? `${source}: token can't create silences (needs alert.silences:create)`
+        : `${source}: token can't edit or expire silences (needs alert.silences:write)`);
+
+  // 3. Granularity.
+  if (access.granularity === 'source') return sourceLevel();
+  if (uid === null) {
+    if (all) return ALLOWED;
+    return refuse(create
+      ? `${source}: token can only silence single alert rules; keep the ${RULE_UID_LABEL} matcher (needs alert.silences:create on all folders)`
+      : `${source}: token can only edit silences of single alert rules; keep the ${RULE_UID_LABEL} matcher (needs alert.silences:write on all folders)`);
+  }
+  if (folder === undefined) return sourceLevel();
+  if (all || folderPermitted(folder, granted, access.folderParents ?? {})) return ALLOWED;
+  const title = access.folderTitles?.[folder] || folder;
+  return refuse(create
+    ? `${source}: token can't silence alerts in folder "${title}" (needs alert.silences:create on that folder)`
+    : `${source}: token can't edit or expire silences in folder "${title}" (needs alert.silences:write on that folder)`);
+}
+
+// silenceReadHint explains missing silence details on a "silenced" badge when
+// a lookup showed the token can't read silences.
+export function silenceReadHint(_source: string, access: SilenceAccess | undefined): string | null {
+  if (access?.check === 'ok' && !access.canRead) {
+    return "silence details hidden: token can't read silences (needs alert.silences:read)";
+  }
+  return null;
+}
