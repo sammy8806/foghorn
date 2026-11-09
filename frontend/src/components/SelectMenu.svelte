@@ -7,7 +7,7 @@
   import { shouldDropUp } from '../utils/popover';
 
   export let value: string = '';
-  export let options: { value: string; label: string }[] = [];
+  export let options: { value: string; label: string; disabled?: boolean; title?: string }[] = [];
   export let ariaLabel: string = '';
   export let placeholder: string = '';
   /** Narrow, centred, monospace trigger — the matcher operator. */
@@ -52,15 +52,28 @@
   onDestroy(() => document.removeEventListener('mousedown', onDocMouseDown, true));
 
   function pick(v: string, restoreFocus = true) {
+    if (options.find((o) => o.value === v)?.disabled) return;
     value = v;
     dispatch('change', v);
     closeMenu();
     if (restoreFocus) triggerEl?.focus();
   }
 
+  // moveHighlight steps to the nearest enabled option in the direction of
+  // travel; it stays put when there is none.
   async function moveHighlight(next: number) {
     if (options.length === 0) return;
-    highlighted = Math.max(0, Math.min(next, options.length - 1));
+    const step = next >= highlighted ? 1 : -1;
+    const start = Math.max(0, Math.min(next, options.length - 1));
+    let i = start;
+    while (i >= 0 && i < options.length && options[i].disabled) i += step;
+    // Home/End onto a disabled edge: take the nearest enabled one inwards.
+    if ((i < 0 || i >= options.length) && (next <= 0 || next >= options.length - 1)) {
+      i = start;
+      while (i >= 0 && i < options.length && options[i].disabled) i -= step;
+    }
+    if (i < 0 || i >= options.length || i === highlighted && options[i].disabled) return;
+    highlighted = i;
     await tick();
     document.getElementById(optionId(highlighted))?.scrollIntoView?.({ block: 'nearest' });
   }
@@ -143,9 +156,12 @@
           id={optionId(i)}
           role="option"
           aria-selected={i === highlighted}
+          aria-disabled={o.disabled ? 'true' : undefined}
+          title={o.title}
           class:highlighted={i === highlighted}
+          class:disabled={o.disabled}
           on:mousedown|preventDefault={() => pick(o.value)}
-          on:mouseenter={() => (highlighted = i)}
+          on:mouseenter={() => { if (!o.disabled) highlighted = i; }}
         >
           <span class="check" aria-hidden="true">{o.value === value ? '✓' : ''}</span>
           <span class="option-label">{o.label}</span>
@@ -247,6 +263,7 @@
     white-space: nowrap;
   }
   .menu li.highlighted { background: var(--accent); color: #fff; }
+  .menu li.disabled { opacity: 0.45; cursor: default; }
   .check {
     width: 11px;
     flex-shrink: 0;

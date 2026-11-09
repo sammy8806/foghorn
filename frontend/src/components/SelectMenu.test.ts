@@ -130,4 +130,55 @@ describe('SelectMenu', () => {
 
     expect(control.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('disabled options cannot be picked', async () => {
+    const component = new SelectMenu({
+      target: document.body,
+      props: { ariaLabel: 'Target source', value: 'alpha', options: [
+        { value: 'alpha', label: 'Alpha' },
+        { value: 'beta', label: 'Beta', disabled: true, title: 'no permission' },
+      ] },
+    });
+    mounted.push(component);
+    const control = document.querySelector<HTMLElement>('[role="combobox"]')!;
+    const changes: string[] = [];
+    component.$on('change', (event) => changes.push(event.detail));
+
+    press(control, 'Enter');
+    await tick();
+    const beta = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.includes('Beta'))!;
+    expect(beta.getAttribute('aria-disabled')).toBe('true');
+    expect(beta.title).toBe('no permission');
+    beta.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(changes).toEqual([]);
+
+    beta.dispatchEvent(new MouseEvent('mouseenter'));
+    await tick();
+    press(control, 'Enter');
+    await tick();
+    expect(changes).not.toContain('beta');
+    expect(control.textContent).toContain('Alpha');
+  });
+
+  it('arrow keys skip disabled options', async () => {
+    const component = new SelectMenu({
+      target: document.body,
+      props: { ariaLabel: 'Target source', value: 'alpha', options: [
+        { value: 'alpha', label: 'Alpha' },
+        { value: 'beta', label: 'Beta', disabled: true },
+        { value: 'gamma', label: 'Gamma' },
+      ] },
+    });
+    mounted.push(component);
+    const control = document.querySelector<HTMLElement>('[role="combobox"]')!;
+    press(control, 'Enter');
+    await tick();
+    press(control, 'ArrowDown');
+    await tick();
+    expect(document.getElementById(control.getAttribute('aria-activedescendant') ?? '')?.textContent).toContain('Gamma');
+    press(control, 'ArrowUp');
+    await tick();
+    expect(document.getElementById(control.getAttribute('aria-activedescendant') ?? '')?.textContent).toContain('Alpha');
+  });
 });
