@@ -3,6 +3,7 @@
   import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, loadSourceCapabilities, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
   import type { Matcher } from '../stores/alerts';
   import { decideSilence, silenceReadHint } from '../stores/silenceAccess';
+  import PermissionHint from './PermissionHint.svelte';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
   import { safeExternalURL } from '../utils/url';
@@ -353,13 +354,14 @@
                     </button>
                     <button class="btn-link-edit" on:click|stopPropagation={cancelExpire} disabled={!!expiring[s.id]}>Cancel</button>
                   {:else}
-                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}
-                      disabled={!writeDecisions[s.id]?.allowed} title={writeDecisions[s.id]?.reason || undefined}
-                      aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Edit</button>
-                    <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}
-                      disabled={!writeDecisions[s.id]?.allowed} title={writeDecisions[s.id]?.reason || undefined}
-                      aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Expire now</button>
-                    {#if !writeDecisions[s.id]?.allowed}<span class="sr-only" id={`${hintBase}-w-${s.id}`}>{writeDecisions[s.id]?.reason}</span>{/if}
+                    <PermissionHint reason={writeDecisions[s.id]?.reason ?? ''} id={`${hintBase}-w-${s.id}`}>
+                      <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}
+                        disabled={!writeDecisions[s.id]?.allowed}
+                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Edit</button>
+                      <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}
+                        disabled={!writeDecisions[s.id]?.allowed}
+                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Expire now</button>
+                    </PermissionHint>
                   {/if}
                 </div>
               </div>
@@ -434,10 +436,11 @@
           {/if}
         {/if}
         {#if supportsSilence && !alert.silencedBy?.length && !isResolved}
-          <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}
-            disabled={!createDecision.allowed} title={createDecision.reason || undefined}
-            aria-describedby={createDecision.allowed ? undefined : `${hintBase}-c`}>Silence…</button>
-          {#if !createDecision.allowed}<span class="sr-only" id={`${hintBase}-c`}>{createDecision.reason}</span>{/if}
+          <PermissionHint reason={createDecision.reason} id={`${hintBase}-c`}>
+            <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}
+              disabled={!createDecision.allowed}
+              aria-describedby={createDecision.allowed ? undefined : `${hintBase}-c`}>Silence…</button>
+          </PermissionHint>
         {/if}
       </div>
     </div>
@@ -808,14 +811,7 @@
   }
   .btn-silence:hover:not(:disabled) { border-color: #f59e0b; color: #f59e0b; }
   .btn-silence:disabled { opacity: 0.6; }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
+
 
   .action-status {
     font-size: calc(11px * var(--font-scale, 1));

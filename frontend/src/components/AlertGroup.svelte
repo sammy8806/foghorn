@@ -4,6 +4,7 @@
   import { openSilenceFromMatchers } from '../stores/silenceEditor';
   import { decideAcrossSources, decideSilence } from '../stores/silenceAccess';
   import AlertCard from './AlertCard.svelte';
+  import PermissionHint from './PermissionHint.svelte';
   import { severityColor, severityOrder } from '../utils/severity';
 
   export let groupParts: AlertFieldDisplay[] = [];
@@ -122,12 +123,12 @@
       role="menu"
       tabindex="-1"
     >
-      <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}
-        title={groupDecision.reason || undefined}
-        aria-describedby={groupDecision.allowed ? undefined : groupHintId}>
-        Silence group…
-      </button>
-      {#if !groupDecision.allowed}<span class="sr-only" id={groupHintId}>{groupDecision.reason}</span>{/if}
+      <PermissionHint reason={groupDecision.reason} id={groupHintId}>
+        <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}
+          aria-describedby={groupDecision.allowed ? undefined : groupHintId}>
+          Silence group…
+        </button>
+      </PermissionHint>
     </div>
   {/if}
 
@@ -239,13 +240,5 @@
   .group-menu-item:disabled {
     color: #64748b;
     cursor: not-allowed;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
   }
 </style>

@@ -40,6 +40,7 @@
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
   import { decideAcrossSources } from '../stores/silenceAccess';
+  import PermissionHint from './PermissionHint.svelte';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission, RevealConfigFile } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
@@ -620,15 +621,18 @@
       </div>
 
       <!-- Create a silence from the current search, or start one from scratch. -->
+      <PermissionHint reason={hasSilenceableSources ? searchSilenceDecision.reason : ''} id="silence-from-search-hint">
       <button
         class="icon-toggle"
         disabled={!canOpenSilenceEditor}
         on:click={silenceFromSearch}
-        title={silenceFromSearchTitle}
+        title={searchSilenceDecision.allowed || !hasSilenceableSources ? silenceFromSearchTitle : undefined}
         aria-label="Silence from search"
+        aria-describedby={hasSilenceableSources && !searchSilenceDecision.allowed ? 'silence-from-search-hint' : undefined}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
       </button>
+      </PermissionHint>
 
       <!-- Icon-button toggles -->
       <button

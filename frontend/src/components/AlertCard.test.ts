@@ -56,15 +56,16 @@ describe('AlertCard silence permissions', () => {
     await mount(alert());
     const b = button('Silence…');
     expect(b.disabled).toBe(true);
-    expect(b.title).toBe("g: token can't create silences (needs alert.silences:create)");
     const described = document.getElementById(b.getAttribute('aria-describedby') ?? '');
-    expect(described?.textContent).toBe(b.title);
+    expect(described?.textContent).toBe("g: token can't create silences (needs alert.silences:create)");
+    expect(b.parentElement?.querySelector('.permission-warn')).not.toBeNull();
   });
 
   it('silence button stays enabled when the check failed', async () => {
     sourceCapabilities.set({ g: { supportsSilence: true, silenceAccess: access({ check: 'error' }) } });
     await mount(alert());
     expect(button('Silence…').disabled).toBe(false);
+    expect(document.querySelector('.permission-warn')).toBeNull();
   });
 
   it("edit and expire follow the silence's own matchers", async () => {
@@ -76,7 +77,7 @@ describe('AlertCard silence permissions', () => {
     }));
     expect(button('Edit').disabled).toBe(true);
     expect(button('Expire now').disabled).toBe(true);
-    expect(button('Edit').title).toContain('single alert rules');
+    expect(document.getElementById(button('Edit').getAttribute('aria-describedby') ?? '')?.textContent).toContain('single alert rules');
   });
 
   it('silenced badge explains hidden details', async () => {
