@@ -105,7 +105,7 @@ describe('decideSilence', () => {
     const a = access({ check: 'unchecked', denied: { createSource: true, status: 403 } as any });
     expect(decideSilence('g', a, r1, 'create')).toEqual({
       allowed: false,
-      reason: 'g: a silence was refused (HTTP 403); fix the credentials or reload the config',
+      reason: 'g: a silence was refused (HTTP 403); fix the credentials, then refresh',
     });
     expect(decideSilence('g', a, r1, 'write').allowed).toBe(true);
   });

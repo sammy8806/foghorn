@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AlertCard from './AlertCard.svelte';
 import { sourceCapabilities } from '../stores/alerts';
 import type { Alert, DisplayConfig, SilenceAccess } from '../stores/alerts';
+import { Unsilence } from '../../wailsjs/go/main/App';
+
+vi.mock('../../wailsjs/go/main/App', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Unsilence: vi.fn(),
+}));
 
 const mounted: AlertCard[] = [];
 
@@ -86,5 +92,54 @@ describe('AlertCard silence permissions', () => {
     expect(document.querySelector<HTMLElement>('.badge-silenced')?.title).toContain(
       "silence details hidden: token can't read silences (needs alert.silences:read)",
     );
+  });
+
+  describe('refused expire', () => {
+    const ruleSilence = () => alert({
+      silencedBy: ['s1'],
+      silences: [{ id: 's1', createdBy: 'x', comment: '', startsAt: '', endsAt: '2026-11-09T12:00:00Z',
+        matchers: [{ name: '__alert_rule_uid__', value: 'r1', isRegex: false, isEqual: true }] } as any],
+    });
+    const settle = () => new Promise(r => setTimeout(r, 0));
+
+    async function expireAndFail(message: string): Promise<void> {
+      vi.mocked(Unsilence).mockRejectedValueOnce(message);
+      button('Expire now').click();
+      await tick();
+      button('Expire').click();
+      await settle();
+      await tick();
+    }
+
+    it('closes the confirm row so Expire is not offered again', async () => {
+      sourceCapabilities.set({ g: { supportsSilence: true, silenceAccess: access({ writeFolders: ['f1'] }) } });
+      await mount(ruleSilence());
+      await expireAndFail('silence on grafana g refused: HTTP 403: nope');
+      expect(document.querySelector('.expire-confirm-label')).toBeNull();
+      expect(button('Expire now')).toBeTruthy();
+    });
+
+    it('drops the inline error once the greyed control explains the refusal', async () => {
+      sourceCapabilities.set({ g: { supportsSilence: true, silenceAccess: access({ writeFolders: ['f1'] }) } });
+      await mount(ruleSilence());
+      await expireAndFail('silence on grafana g refused: HTTP 403: nope');
+      // What loadSourceCapabilities brings back after the refusal.
+      sourceCapabilities.set({ g: { supportsSilence: true, silenceAccess: access({
+        writeFolders: ['f1'],
+        denied: { createSource: false, writeSource: false, createGeneral: false, writeGeneral: false,
+          createFolders: [], writeFolders: ['f1'], status: 403, message: 'nope', at: '' },
+      }) } });
+      await tick();
+      expect(button('Expire now').disabled).toBe(true);
+      expect(document.querySelector('.silence-error')).toBeNull();
+    });
+
+    it('keeps the inline error when the control stays usable', async () => {
+      sourceCapabilities.set({ g: { supportsSilence: true, silenceAccess: access({ writeFolders: ['f1'] }) } });
+      await mount(ruleSilence());
+      await expireAndFail('connection refused');
+      expect(button('Expire now').disabled).toBe(false);
+      expect(document.querySelector('.silence-error')?.textContent).toBe('connection refused');
+    });
   });
 });

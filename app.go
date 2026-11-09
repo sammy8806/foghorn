@@ -265,12 +265,34 @@ func (a *App) GetOnCallStatus() []model.OnCallStatus {
 func (a *App) RefreshAlerts() error {
 	a.mu.RLock()
 	trigger := a.refreshTrigger
+	// An explicit refresh also re-reads what the credentials may do with
+	// silences, so a changed token shows up without waiting for the interval.
+	for _, p := range a.providers {
+		if r, ok := p.(provider.SilenceAccessRechecker); ok {
+			r.RequestSilenceAccessCheck()
+		}
+	}
 	a.mu.RUnlock()
 
 	if trigger != nil {
 		trigger()
 	}
 	return nil
+}
+
+// ManualRefresh is the user's refresh: besides polling every source and
+// re-reading silence permissions, it forgets refused silence writes, since
+// the user may just have fixed the credentials. A write that is still refused
+// greys the controls out again.
+func (a *App) ManualRefresh() error {
+	a.mu.RLock()
+	for _, p := range a.providers {
+		if r, ok := p.(provider.SilenceAccessRechecker); ok {
+			r.ClearSilenceDenials()
+		}
+	}
+	a.mu.RUnlock()
+	return a.RefreshAlerts()
 }
 
 // GetDisplayConfig returns the normalized display configuration.

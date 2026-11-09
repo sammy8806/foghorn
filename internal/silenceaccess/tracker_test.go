@@ -327,3 +327,55 @@ func TestFolderStructureSurvivesFailedLookups(t *testing.T) {
 		t.Fatalf("unreadable rules/folders must keep the last known structure: %+v", s)
 	}
 }
+
+func TestRequestCheckMakesCheckDue(t *testing.T) {
+	tr := defaultGrafana()
+	tr.CheckDue(t0)
+	tr.ApplyLookup(Lookup{}, t0)
+	if tr.CheckDue(t0.Add(time.Minute)) {
+		t.Fatal("due before interval")
+	}
+	tr.RequestCheck()
+	if !tr.CheckDue(t0.Add(time.Minute)) {
+		t.Fatal("a requested check must be due at once")
+	}
+	tr.ApplyLookup(Lookup{}, t0.Add(time.Minute))
+	if tr.CheckDue(t0.Add(2 * time.Minute)) {
+		t.Fatal("a lookup must satisfy the request")
+	}
+
+	for name, off := range map[string]*Tracker{
+		"granularity off":     NewTracker("grafana", cfg("off", true, time.Minute, true)),
+		"no lookups":          NewTracker("grafana", cfg("folder", false, 0, true)),
+		"alertmanager source": NewTracker("alertmanager", config.SilenceCheckConfig{}),
+	} {
+		off.RequestCheck()
+		if off.CheckDue(t0) {
+			t.Fatalf("%s: a request must not enable lookups", name)
+		}
+	}
+}
+
+func TestClearDenials(t *testing.T) {
+	tr := defaultGrafana()
+	tr.CheckDue(t0)
+	tr.ApplyLookup(Lookup{RuleFolders: map[string]string{"r1": "f1"}}, t0)
+	tr.RecordDenied(OpWrite, []model.Matcher{eq("__alert_rule_uid__", "r1")}, 403, "nope", t0)
+	tr.ApplyLookup(Lookup{RuleFolders: map[string]string{"r1": "f1"}}, t0.Add(time.Second))
+	if got := tr.Snapshot().Denied.WriteFolders; !slices.Equal(got, []string{"f1"}) {
+		t.Fatalf("setup: denial not held, got %v", got)
+	}
+
+	tr.ClearDenials()
+	if d := tr.Snapshot().Denied; d.Status != 0 || len(d.WriteFolders) != 0 {
+		t.Fatalf("denial survived ClearDenials: %+v", d)
+	}
+	if !tr.CheckDue(t0.Add(2 * time.Second)) {
+		t.Fatal("clearing denials must re-check permissions")
+	}
+	// Same permissions as before: the cleared denial must not come back.
+	tr.ApplyLookup(Lookup{RuleFolders: map[string]string{"r1": "f1"}}, t0.Add(3*time.Second))
+	if d := tr.Snapshot().Denied; d.Status != 0 {
+		t.Fatalf("denial came back after the next lookup: %+v", d)
+	}
+}

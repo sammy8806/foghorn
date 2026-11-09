@@ -103,10 +103,11 @@ sources:
   `off` never greys anything out from the lookup.
 - `on_start` and `interval` say when Foghorn reads
   `/api/access-control/user/permissions` (plus the rules and folder lists for
-  `folder`). The token needs no extra permission for this.
+  `folder`). A manual refresh reads it again at once and forgets refused writes. The token needs no extra
+  permission for this.
 - `on_denied` greys out what Grafana refused with 401/403 on a silence write,
-  as narrowly as the silence allows, until the token's permissions change or
-  the config is reloaded. Alertmanager sources always do this.
+  as narrowly as the silence allows, until the token's permissions change, you
+  press refresh, or the config is reloaded. Alertmanager sources always do this.
 - When the token can't read silences (`alert.silences:read`), Foghorn stops
   fetching them; silenced alerts show a hint instead of the silence details.
 

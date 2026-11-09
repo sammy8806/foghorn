@@ -52,7 +52,7 @@ describe('silence problems', () => {
     expect(problems[0].key).toBe('silence-denied:g');
     expect(problems[0].headline).toBe('g refused a silence write');
     expect(problems[0].detail).toBe('HTTP 403: forbidden');
-    expect(problems[0].meta).toEqual(['silencing stays disabled until permissions change or the config is reloaded']);
+    expect(problems[0].meta).toEqual(['silencing stays disabled until permissions change or you refresh']);
   });
 
   it('no problem when nothing failed', () => {

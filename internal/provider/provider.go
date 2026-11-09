@@ -39,6 +39,14 @@ type SilenceAccessProvider interface {
 	CanReadSilences() bool
 }
 
+// SilenceAccessRechecker is implemented by sources whose permission lookup an
+// explicit refresh can bring forward and whose refused writes a manual
+// refresh can forget.
+type SilenceAccessRechecker interface {
+	RequestSilenceAccessCheck()
+	ClearSilenceDenials()
+}
+
 // OnCallProvider is implemented by sources that can expose current on-call users.
 type OnCallProvider interface {
 	FetchOnCall(ctx context.Context) (*model.OnCallStatus, error)

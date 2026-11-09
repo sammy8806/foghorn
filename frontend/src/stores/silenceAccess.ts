@@ -57,7 +57,7 @@ export function decideSilence(
       (uid === null && (create ? d.createGeneral : d.writeGeneral)) ||
       (folder !== undefined && deniedFolders.includes(folder));
     if (deniedHere) {
-      return refuse(`${source}: a silence was refused (HTTP ${d.status}); fix the credentials or reload the config`);
+      return refuse(`${source}: a silence was refused (HTTP ${d.status}); fix the credentials, then refresh`);
     }
   }
 

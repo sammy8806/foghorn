@@ -184,7 +184,7 @@ export function silenceAccessProblems(source: string, access: SilenceAccess | un
       detail,
       short: `${source} refused a silence write`,
       frame: [],
-      meta: ['silencing stays disabled until permissions change or the config is reloaded'],
+      meta: ['silencing stays disabled until permissions change or you refresh'],
       copy: detail,
       action: null,
     });

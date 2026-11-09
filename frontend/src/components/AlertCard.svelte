@@ -208,7 +208,6 @@
     expireError = { ...expireError, [s.id]: '' };
     try {
       await Unsilence(alert.source, s.id);
-      expireConfirmId = null;
       void refreshAlerts();
     } catch (e) {
       expireError = { ...expireError, [s.id]: String(e) };
@@ -216,6 +215,9 @@
       void loadSourceCapabilities();
     } finally {
       expiring = { ...expiring, [s.id]: false };
+      // Back to Edit / Expire now either way, so a refused expire isn't
+      // offered again from a confirm row that ignores the permission check.
+      expireConfirmId = null;
     }
   }
 
@@ -369,7 +371,9 @@
               {#if s.comment}
                 <div class="silence-comment">{s.comment}</div>
               {/if}
-              {#if expireError[s.id]}
+              <!-- Once a refusal greys out Edit / Expire now, their hint (and the
+                   problem strip) carry it; the raw error would only repeat it. -->
+              {#if expireError[s.id] && writeDecisions[s.id]?.allowed !== false}
                 <div class="silence-error">{expireError[s.id]}</div>
               {/if}
             </div>

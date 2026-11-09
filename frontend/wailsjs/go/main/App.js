@@ -66,6 +66,10 @@ export function LayoutPopup(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['LayoutPopup'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function ManualRefresh() {
+  return window['go']['main']['App']['ManualRefresh']();
+}
+
 export function OpenNotificationSettings() {
   return window['go']['main']['App']['OpenNotificationSettings']();
 }

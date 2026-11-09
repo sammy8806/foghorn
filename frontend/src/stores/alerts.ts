@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth, RefreshAlerts } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth, ManualRefresh, RefreshAlerts } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
@@ -400,8 +400,10 @@ export async function reloadFromStore(): Promise<void> {
 // current store. The poll runs in parallel per source on the backend; results
 // stream in via alerts:updated as each finishes, so a slow or broken source no
 // longer blocks the others. Use for explicit refreshes (mount, manual refresh,
-// after a silence/ack action).
-export async function refreshAlerts(): Promise<void> {
+// after a silence/ack action). `manual` is the user's own refresh: it also
+// makes the backend forget refused silence writes, since the user may just
+// have fixed the credentials.
+export async function refreshAlerts(opts: { manual?: boolean } = {}): Promise<void> {
   if (!isWails()) {
     // No backend — show empty state instead of hanging/crashing.
     alerts.set([]);
@@ -412,7 +414,7 @@ export async function refreshAlerts(): Promise<void> {
     return;
   }
   try {
-    await RefreshAlerts();
+    await (opts.manual ? ManualRefresh() : RefreshAlerts());
   } catch (e) {
     error.set(String(e));
   }

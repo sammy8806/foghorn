@@ -55,7 +55,7 @@ type Tracker struct {
 	state     model.SilenceAccess
 	started   time.Time // first CheckDue call; baseline when on_start is off
 	attempted time.Time // last lookup attempt (success or error)
-	forceDue  bool      // a denial asks for a lookup right away
+	forceDue  bool      // a denial or an explicit refresh asks for a lookup right away
 	fp        string    // fingerprint of the last successful lookup
 	hasDenial bool
 	denialFP  string // fingerprint the denial is held against; "" = next lookup is the baseline
@@ -116,6 +116,25 @@ func (t *Tracker) CheckDue(now time.Time) bool {
 		return iv > 0 && now.Sub(t.started) >= iv
 	}
 	return iv > 0 && now.Sub(t.attempted) >= iv
+}
+
+// RequestCheck makes a lookup due on the next poll, for an explicit refresh.
+// It never enables lookups the config turned off.
+func (t *Tracker) RequestCheck() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.forceDue = true
+}
+
+// ClearDenials forgets every refused write, for a manual refresh: the user
+// says the credentials may have been fixed. A write that is still refused
+// records a new denial. Also asks for a lookup.
+func (t *Tracker) ClearDenials() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.hasDenial, t.denialFP = false, ""
+	t.state.Denied = model.SilenceDenials{}
+	t.forceDue = true
 }
 
 // ApplyLookup records a successful lookup.

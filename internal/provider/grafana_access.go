@@ -25,6 +25,17 @@ func (a *alertmanagerAPI) CanReadSilences() bool {
 	return a.access.CanReadSilences()
 }
 
+// RequestSilenceAccessCheck makes the next poll run a permission lookup.
+func (a *alertmanagerAPI) RequestSilenceAccessCheck() {
+	a.access.RequestCheck()
+}
+
+// ClearSilenceDenials forgets refused writes and asks for a lookup.
+func (a *alertmanagerAPI) ClearSilenceDenials() {
+	a.access.ClearDenials()
+	log.Printf("silence check: %s %s: refused writes cleared by manual refresh", a.kind, a.cfg.Name)
+}
+
 // RefreshSilenceAccess runs a Grafana permission lookup when one is due.
 // Failures land in the snapshot.
 func (a *alertmanagerAPI) RefreshSilenceAccess(ctx context.Context, now time.Time) {

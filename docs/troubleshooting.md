@@ -66,8 +66,13 @@ credentials can't do it, and says why in the button's tooltip:
 | `token can't silence alerts in folder "…"` | The token has silence permissions on other folders only. Grant **Edit** on that folder or a parent folder. |
 | `token can only silence single alert rules; keep the __alert_rule_uid__ matcher` | Folder-scoped permissions only cover silences tied to one rule. Keep the rule-UID matcher in the editor, or grant permissions on all folders. |
 | `token can't edit or expire silences …` | Same as above, for `alert.silences:write`. Grafana checks the silence's own matchers, not the alert it's shown on. |
-| `a silence was refused (HTTP 403); fix the credentials or reload the config` | Grafana or Alertmanager refused a silence write. Foghorn keeps this until the token's permissions change or the config is reloaded. |
+| `a silence was refused (HTTP 403); fix the credentials, then refresh` | Grafana or Alertmanager refused a silence write. Foghorn keeps this until the token's permissions change, you press refresh, or the config is reloaded. |
 | `silence details hidden: token can't read silences` (on the **silenced** badge) | Grant `alert.silences:read`; until then Foghorn doesn't fetch silences. |
+
+After changing the token's permissions in Grafana, press refresh: a manual
+refresh forgets refused writes and checks the permissions again instead of
+waiting for `silence_check.interval`. A write that is still refused greys the
+controls out again.
 
 Grafana OSS supports folder-scoped silence permissions; they come from folder
 permissions (Edit on a folder includes creating silences for its rules,

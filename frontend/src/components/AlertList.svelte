@@ -338,7 +338,7 @@
 
   async function handleRefresh() {
     refreshing = true;
-    await refreshAlerts();
+    await refreshAlerts({ manual: true });
     refreshing = false;
   }
 

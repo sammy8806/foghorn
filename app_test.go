@@ -123,6 +123,58 @@ func TestRefreshAlertsTriggersEngine(t *testing.T) {
 	}
 }
 
+type recheckStubProvider struct {
+	stubProvider
+	requests *int
+}
+
+func (p recheckStubProvider) RequestSilenceAccessCheck() { *p.requests++ }
+func (p recheckStubProvider) ClearSilenceDenials()       { *p.requests += 100 }
+
+func TestRefreshAlertsRequestsPermissionCheck(t *testing.T) {
+	app := NewApp(&config.Config{}, state.New())
+	requests, triggers := 0, 0
+	app.setProviders(map[string]provider.Provider{
+		"g":    recheckStubProvider{stubProvider: stubProvider{name: "g"}, requests: &requests},
+		"prom": stubProvider{name: "prom"},
+	})
+	app.setRefreshTrigger(func() {
+		if requests != 1 {
+			t.Errorf("permission check must be requested before the poll starts, requests=%d", requests)
+		}
+		triggers++
+	})
+	if err := app.RefreshAlerts(); err != nil {
+		t.Fatalf("RefreshAlerts returned error: %v", err)
+	}
+	if requests != 1 || triggers != 1 {
+		t.Fatalf("requests=%d triggers=%d, want 1 and 1", requests, triggers)
+	}
+}
+
+func TestManualRefreshClearsDenials(t *testing.T) {
+	app := NewApp(&config.Config{}, state.New())
+	calls, triggers := 0, 0
+	app.setProviders(map[string]provider.Provider{
+		"g": recheckStubProvider{stubProvider: stubProvider{name: "g"}, requests: &calls},
+	})
+	app.setRefreshTrigger(func() { triggers++ })
+	if err := app.ManualRefresh(); err != nil {
+		t.Fatalf("ManualRefresh returned error: %v", err)
+	}
+	// 100 for the cleared denials, 1 for the requested check.
+	if calls != 101 || triggers != 1 {
+		t.Fatalf("calls=%d triggers=%d, want 101 and 1", calls, triggers)
+	}
+
+	// The automatic refresh after a refused write must keep the denial.
+	calls = 0
+	app.afterSilenceWrite(&provider.SilenceDeniedError{Status: 403})
+	if calls >= 100 {
+		t.Fatalf("afterSilenceWrite cleared denials (calls=%d)", calls)
+	}
+}
+
 func TestRefreshAlertsWithoutTriggerIsNoOp(t *testing.T) {
 	app := NewApp(&config.Config{}, state.New())
 
