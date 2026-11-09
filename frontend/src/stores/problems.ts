@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { SourceHealth } from './alerts';
+import type { SilenceAccess, SourceHealth } from './alerts';
 import type { ConfigDiagnosticsPayload } from './diagnostics';
 
 // Everything that can be wrong with the workspace, reduced to one shape. A
@@ -113,6 +113,83 @@ export function sourceProblem(health: SourceHealth): Problem {
     copy: raw,
     action: { kind: 'retry', label: 'Retry', glyph: '' },
   };
+}
+
+// errorFrame splits a Go error into cause and evidence lines, the way the
+// source row does.
+function errorFrame(raw: string): { cause: string; frame: ProblemFrameLine[] } {
+  const parsed = urlErrorPattern.exec(raw);
+  if (parsed) {
+    return {
+      cause: parsed[3],
+      frame: [
+        { gutter: '', lead: parsed[1].toUpperCase(), text: parsed[2], marked: false },
+        { gutter: '', lead: '', text: parsed[3], marked: true },
+      ],
+    };
+  }
+  return { cause: raw, frame: raw ? [{ gutter: '', lead: '', text: raw, marked: true }] : [] };
+}
+
+const deniedStatusPattern = /\bHTTP (401|403)\b/;
+
+/** A source whose alerts load but whose silence list failed. */
+export function silenceReadProblem(health: SourceHealth): Problem | null {
+  const raw = health.silenceReadError ?? '';
+  if (!raw) return null;
+  const { cause, frame } = errorFrame(raw);
+  const detail = deniedStatusPattern.test(raw) ? `${cause} (needs alert.silences:read)` : cause;
+  return {
+    key: `silence-read:${health.source}`,
+    keyword: 'silences',
+    severity: 'caution',
+    headline: `${health.source} silence details unavailable`,
+    detail,
+    short: `${health.source} silence details unavailable`,
+    frame,
+    meta: ['alerts still load; Edit and Expire are hidden'],
+    copy: raw,
+    action: null,
+  };
+}
+
+/** A failed permission check and/or a refused silence write. An unsupported
+ *  permission endpoint is not a problem: silencing simply stays enabled. */
+export function silenceAccessProblems(source: string, access: SilenceAccess | undefined): Problem[] {
+  if (!access) return [];
+  const out: Problem[] = [];
+  if (access.check === 'error' && access.checkError) {
+    const { cause, frame } = errorFrame(access.checkError);
+    out.push({
+      key: `silence-check:${source}`,
+      keyword: 'silences',
+      severity: 'caution',
+      headline: `${source} permission check failed`,
+      detail: cause,
+      short: `${source} permission check failed`,
+      frame,
+      meta: ['silence buttons stay enabled until the check succeeds'],
+      copy: access.checkError,
+      action: null,
+    });
+  }
+  const d = access.denied;
+  if (d && d.status > 0) {
+    const detail = d.message ? `HTTP ${d.status}: ${d.message}` : `HTTP ${d.status}`;
+    out.push({
+      key: `silence-denied:${source}`,
+      keyword: 'silences',
+      severity: 'caution',
+      headline: `${source} refused a silence write`,
+      detail,
+      short: `${source} refused a silence write`,
+      frame: [],
+      meta: ['silencing stays disabled until permissions change or the config is reloaded'],
+      copy: detail,
+      action: null,
+    });
+  }
+  return out;
 }
 
 function sourceMeta(health: SourceHealth): string[] {

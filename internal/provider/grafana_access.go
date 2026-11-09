@@ -112,7 +112,7 @@ func (a *alertmanagerAPI) isClosed() bool {
 
 // recordSilenceDenied feeds a refused write into the tracker.
 func (a *alertmanagerAPI) recordSilenceDenied(op silenceaccess.Op, matchers []model.Matcher, denied *SilenceDeniedError) {
-	a.access.RecordDenied(op, matchers, denied.Status, denied.Error(), time.Now())
+	a.access.RecordDenied(op, matchers, denied.Status, denied.Body, time.Now())
 }
 
 // cachedSilenceMatchers returns the matchers of an active silence from the

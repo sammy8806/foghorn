@@ -52,6 +52,8 @@
     notificationProblem,
     problemsFingerprint,
     sourceProblem,
+    silenceAccessProblems,
+    silenceReadProblem,
     type Problem,
     type ProblemActionKind,
   } from '../stores/problems';
@@ -393,6 +395,8 @@
   // since it signs as a different bundle than the one the permission is on.
   $: problems = [
     ...(!$loading ? failingSources.map(sourceProblem) : []),
+    ...$sourcesHealth.map(silenceReadProblem).filter((p): p is Problem => p !== null),
+    ...Object.keys($sourceCapabilities).sort().flatMap((source) => silenceAccessProblems(source, $sourceCapabilities[source]?.silenceAccess)),
     ...configProblems($configDiagnostics, $platform),
     ...(!isMacOSDevMode ? [notificationProblem(notificationPermissionStatus)].filter((p): p is Problem => p !== null) : []),
   ];
