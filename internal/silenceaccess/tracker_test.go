@@ -255,3 +255,17 @@ func TestSnapshotIsDeepCopy(t *testing.T) {
 		t.Fatal("snapshot shares memory")
 	}
 }
+
+func TestDenialDuringErrorRebaselines(t *testing.T) {
+	p1 := Lookup{Permissions: map[string][]string{actionCreate: {"folders:uid:a"}}}
+	p2 := Lookup{Permissions: map[string][]string{actionCreate: {"folders:uid:b"}}}
+	tr := defaultGrafana()
+	tr.ApplyLookup(p1, t0)
+	tr.RecordDenied(OpCreate, []model.Matcher{eq("a", "b")}, 403, "", t0)
+	tr.ApplyLookupError(errors.New("down"), t0)
+	tr.RecordDenied(OpWrite, []model.Matcher{eq("a", "b")}, 403, "", t0)
+	tr.ApplyLookup(p2, t0)
+	if !tr.Snapshot().Denied.WriteGeneral {
+		t.Fatal("a denial recorded while the check was failing must use the next lookup as its baseline")
+	}
+}

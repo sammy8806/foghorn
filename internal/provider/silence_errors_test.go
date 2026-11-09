@@ -155,3 +155,18 @@ func TestSilenceDeniedExtractsGrafanaMessage(t *testing.T) {
 		t.Fatalf("got %+v", denied)
 	}
 }
+
+func TestSilenceDeniedWithTruncatedBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message":"for`))
+	}))
+	defer server.Close()
+
+	_, err := NewGrafana(grafanaTestSource(server.URL)).Silence(context.Background(), testSilenceRequest())
+	var denied *SilenceDeniedError
+	if !errors.As(err, &denied) || denied.Status != 403 {
+		t.Fatalf("expected SilenceDeniedError, got %v", err)
+	}
+}

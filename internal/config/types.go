@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 var fieldRefModes = map[string]struct{}{
@@ -70,6 +73,29 @@ type SilenceCheckConfig struct {
 	Interval *time.Duration `yaml:"interval"`
 	// OnDenied learns from writes the source refused.
 	OnDenied *bool `yaml:"on_denied"`
+}
+
+// UnmarshalYAML accepts interval as a duration string ("15m") or a bare 0,
+// which yaml would otherwise reject as an integer for time.Duration.
+func (c *SilenceCheckConfig) UnmarshalYAML(node *yaml.Node) error {
+	var raw struct {
+		Granularity string  `yaml:"granularity"`
+		OnStart     *bool   `yaml:"on_start"`
+		Interval    *string `yaml:"interval"`
+		OnDenied    *bool   `yaml:"on_denied"`
+	}
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	*c = SilenceCheckConfig{Granularity: raw.Granularity, OnStart: raw.OnStart, OnDenied: raw.OnDenied}
+	if raw.Interval != nil {
+		d, err := time.ParseDuration(strings.TrimSpace(*raw.Interval))
+		if err != nil {
+			return fmt.Errorf("silence_check.interval: %w", err)
+		}
+		c.Interval = &d
+	}
+	return nil
 }
 
 // DefaultSilenceCheckInterval is how often a Grafana source repeats its

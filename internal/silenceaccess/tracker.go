@@ -197,14 +197,15 @@ func (t *Tracker) RecordDenied(op Op, matchers []model.Matcher, status int, mess
 		d.WriteFolders = addSorted(d.WriteFolders, folder)
 	}
 	d.Status, d.Message, d.At = status, message, now
-	if !t.hasDenial {
-		t.hasDenial = true
-		if t.state.Check == "ok" {
-			t.denialFP = t.fp
-		} else {
-			t.denialFP = ""
-		}
+	// The baseline is the permission set the refusal contradicts. Without a
+	// current successful lookup the next one becomes the baseline, also for
+	// denials already held (conservative: they may live one lookup longer).
+	if t.state.Check != "ok" {
+		t.denialFP = ""
+	} else if !t.hasDenial {
+		t.denialFP = t.fp
 	}
+	t.hasDenial = true
 	t.forceDue = true
 }
 

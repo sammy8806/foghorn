@@ -85,3 +85,16 @@ func TestSilenceCheckYAML(t *testing.T) {
 }
 
 func yamlUnmarshalForTest(s string, out any) error { return yaml.Unmarshal([]byte(s), out) }
+
+func TestSilenceCheckYAMLIntervalZero(t *testing.T) {
+	var sc SilenceCheckConfig
+	if err := yamlUnmarshalForTest("interval: 0\n", &sc); err != nil {
+		t.Fatal(err)
+	}
+	if sc.Interval == nil || *sc.Interval != 0 {
+		t.Fatalf("parsed %+v", sc)
+	}
+	if err := yamlUnmarshalForTest("interval: nonsense\n", &sc); err == nil {
+		t.Fatal("expected error for bad duration")
+	}
+}

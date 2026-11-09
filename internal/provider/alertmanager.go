@@ -208,6 +208,18 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 	}
 	defer resp.Body.Close()
 
+	// Classify a refusal before reading the body: a truncated 401/403 body
+	// must not hide the refusal behind a read error.
+	if isDeniedStatus(resp.StatusCode) {
+		denied := a.deniedError(resp.StatusCode, readLimited(resp.Body, maxErrorBodyBytes))
+		op := silenceaccess.OpCreate
+		if req.ID != "" {
+			op = silenceaccess.OpWrite
+		}
+		a.recordSilenceDenied(op, req.Matchers, denied)
+		return "", denied
+	}
+
 	respBody, readErr := readBodyLimited(resp)
 	if readErr != nil {
 		return "", fmt.Errorf("reading silence response from %s: %w", a.cfg.Name, readErr)
@@ -216,15 +228,6 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 		log.Printf("silence: %s %s response HTTP %d body=%s", a.kind, a.cfg.Name, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
-	if isDeniedStatus(resp.StatusCode) {
-		denied := a.deniedError(resp.StatusCode, respBody)
-		op := silenceaccess.OpCreate
-		if req.ID != "" {
-			op = silenceaccess.OpWrite
-		}
-		a.recordSilenceDenied(op, req.Matchers, denied)
-		return "", denied
-	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 		return "", fmt.Errorf("silence on %s %s returned HTTP %d: %s", a.kind, a.cfg.Name, resp.StatusCode, string(respBody))
 	}
