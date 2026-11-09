@@ -545,6 +545,7 @@ export namespace model {
 	    lastPoll: any;
 	    lastError?: string;
 	    consecFails: number;
+	    silenceReadError?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SourceHealth(source);
@@ -558,6 +559,7 @@ export namespace model {
 	        this.lastPoll = this.convertValues(source["lastPoll"], null);
 	        this.lastError = source["lastError"];
 	        this.consecFails = source["consecFails"];
+	        this.silenceReadError = source["silenceReadError"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

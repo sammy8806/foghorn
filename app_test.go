@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"foghorn/internal/config"
 	"foghorn/internal/model"
@@ -200,5 +202,43 @@ func TestGetConfigDiagnosticsReturnsPayloadCopy(t *testing.T) {
 	payload.Items[0].Message = "mutated"
 	if got := app.GetConfigDiagnostics().Items[0].Message; got != "name is required" {
 		t.Fatalf("stored diagnostic was mutated through payload: %q", got)
+	}
+}
+
+type accessStubProvider struct {
+	stubProvider
+	access model.SilenceAccess
+}
+
+func (p accessStubProvider) SilenceAccess() model.SilenceAccess              { return p.access }
+func (p accessStubProvider) RefreshSilenceAccess(context.Context, time.Time) {}
+func (p accessStubProvider) CanReadSilences() bool                           { return true }
+
+func TestGetSourceCapabilitiesIncludesSilenceAccess(t *testing.T) {
+	app := NewApp(&config.Config{}, state.New())
+	app.setProviders(map[string]provider.Provider{
+		"g":    accessStubProvider{stubProvider: stubProvider{name: "g", supportsSilence: true}, access: model.SilenceAccess{Check: "ok", Granularity: "folder"}},
+		"prom": stubProvider{name: "prom"},
+	})
+	got := app.GetSourceCapabilities()
+	if got["g"].SilenceAccess == nil || got["g"].SilenceAccess.Check != "ok" {
+		t.Fatalf("g: %#v", got["g"])
+	}
+	if got["prom"].SilenceAccess != nil {
+		t.Fatalf("prom: %#v", got["prom"])
+	}
+}
+
+func TestDeniedSilenceTriggersRefresh(t *testing.T) {
+	app := NewApp(&config.Config{}, state.New())
+	calls := 0
+	app.setRefreshTrigger(func() { calls++ })
+	app.afterSilenceWrite(errors.New("network"))
+	if calls != 0 {
+		t.Fatal("plain error must not refresh")
+	}
+	app.afterSilenceWrite(fmt.Errorf("wrapped: %w", &provider.SilenceDeniedError{Status: 403}))
+	if calls != 1 {
+		t.Fatalf("denied write must refresh, calls=%d", calls)
 	}
 }

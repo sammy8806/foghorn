@@ -237,6 +237,8 @@ export interface SourceHealth {
   lastPoll: string;
   lastError?: string;
   consecFails: number;
+  // silenceReadError is the last failed silence list; alerts still poll.
+  silenceReadError?: string;
 }
 
 export interface OnCallUser {
@@ -253,8 +255,39 @@ export interface OnCallStatus {
   lastUpdated: string;
 }
 
+export interface SilenceDenials {
+  createSource: boolean;
+  writeSource: boolean;
+  createGeneral: boolean;
+  writeGeneral: boolean;
+  createFolders: string[] | null;
+  writeFolders: string[] | null;
+  status: number;
+  message: string;
+  at: string;
+}
+
+// SilenceAccess mirrors model.SilenceAccess: what a source's credentials may
+// do with silences. decideSilence (stores/silenceAccess.ts) reads it.
+export interface SilenceAccess {
+  granularity: '' | 'folder' | 'source' | 'off';
+  check: 'unchecked' | 'ok' | 'error' | 'unsupported';
+  checkError?: string;
+  checkedAt: string;
+  canCreateAll: boolean;
+  canWriteAll: boolean;
+  canRead: boolean;
+  createFolders: string[] | null;
+  writeFolders: string[] | null;
+  ruleFolders: Record<string, string> | null;
+  folderParents: Record<string, string> | null;
+  folderTitles: Record<string, string> | null;
+  denied: SilenceDenials;
+}
+
 export interface SourceCapabilities {
   supportsSilence: boolean;
+  silenceAccess?: SilenceAccess;
 }
 
 export const verbose = writable(false);
@@ -301,12 +334,16 @@ function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceH
 export async function reloadFromStore(): Promise<void> {
   if (!isWails()) return;
   try {
-    const [alertList, counts, health, onCall] = await Promise.all([
+    const [alertList, counts, health, onCall, capabilities] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
       GetSourcesHealth(),
       GetOnCallStatus(),
+      // Permission state changes with lookups and refused writes, so it is
+      // re-read with every store snapshot rather than only at startup.
+      GetSourceCapabilities().catch(() => null),
     ]);
+    if (capabilities) sourceCapabilities.set(capabilities as Record<string, SourceCapabilities>);
     const incoming = alertList || [];
     const currentHealth = health || [];
 
