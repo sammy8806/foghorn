@@ -137,6 +137,19 @@ describe('decideSilence', () => {
     expect(decideSilence('g', a, r1, 'create').allowed).toBe(false);
   });
 
+  it('folder with unknown ancestry is allowed (folder list failed or is stale)', () => {
+    // Grant on the parent; the rule's folder is missing from the folder map.
+    for (const folderParents of [{}, null, { parent: '' }]) {
+      const a = access({ folderParents, createFolders: ['parent'] });
+      expect(decideSilence('g', a, r1, 'create')).toEqual({ allowed: true, reason: '' });
+    }
+  });
+
+  it('folder with known ancestry outside every grant is still refused', () => {
+    const a = access({ createFolders: ['other'] });
+    expect(decideSilence('g', a, r1, 'create').allowed).toBe(false);
+  });
+
   it('null maps from the backend are tolerated', () => {
     const a = access({ ruleFolders: null, folderParents: null, folderTitles: null, createFolders: null });
     expect(decideSilence('g', a, r1, 'create')).toEqual({ allowed: false, reason: SRC_NO_CREATE });

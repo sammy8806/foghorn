@@ -25,11 +25,16 @@ export function ruleUID(matchers: Matcher[]): string | null {
   return m ? m.value : null;
 }
 
-function folderPermitted(folder: string, granted: string[], parents: Record<string, string>): boolean {
+// folderPermitted walks from the rule's folder up to the root. It returns null
+// when the walk reaches a folder missing from the folder list (the list failed
+// to load, was truncated, or predates the folder): an ancestor grant can't be
+// ruled out, and unknown means enabled.
+function folderPermitted(folder: string, granted: string[], parents: Record<string, string>): boolean | null {
   const seen = new Set<string>();
   let current: string | undefined = folder;
   for (let step = 0; current && step < MAX_ANCESTOR_STEPS && !seen.has(current); step++) {
     if (granted.includes(current)) return true;
+    if (!(current in parents)) return null;
     seen.add(current);
     current = parents[current];
   }
@@ -83,7 +88,7 @@ export function decideSilence(
       : `${source}: token can only edit silences of single alert rules; keep the ${RULE_UID_LABEL} matcher (needs alert.silences:write on all folders)`);
   }
   if (folder === undefined) return sourceLevel();
-  if (all || folderPermitted(folder, granted, access.folderParents ?? {})) return ALLOWED;
+  if (all || folderPermitted(folder, granted, access.folderParents ?? {}) !== false) return ALLOWED;
   const title = access.folderTitles?.[folder] || folder;
   return refuse(create
     ? `${source}: token can't silence alerts in folder "${title}" (needs alert.silences:create on that folder)`
