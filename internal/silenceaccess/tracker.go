@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -167,11 +168,14 @@ func (t *Tracker) ApplyLookupError(err error, now time.Time) {
 // RecordDenied marks a refused silence write as narrowly as its matchers allow.
 // nil matchers mean the silence is unknown (e.g. an expire of a silence not in
 // the last list), which marks the whole source.
-func (t *Tracker) RecordDenied(op Op, matchers []model.Matcher, status int, message string, now time.Time) {
+//
+// It returns what was marked, for logging ("create in folder \"f1\""), or ""
+// when learning from refusals is switched off.
+func (t *Tracker) RecordDenied(op Op, matchers []model.Matcher, status int, message string, now time.Time) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.grafana && !t.onDenied() {
-		return
+		return ""
 	}
 	d := &t.state.Denied
 	scope, folder := "source", ""
@@ -207,6 +211,52 @@ func (t *Tracker) RecordDenied(op Op, matchers []model.Matcher, status int, mess
 	}
 	t.hasDenial = true
 	t.forceDue = true
+
+	verb := "create"
+	if op == OpWrite {
+		verb = "write"
+	}
+	switch scope {
+	case "folder":
+		return fmt.Sprintf("%s in folder %q", verb, folder)
+	case "general":
+		return verb + " of general silences"
+	default:
+		return verb + " on the whole source"
+	}
+}
+
+// Describe summarises the state in one log line: what was checked and what
+// came out.
+func (t *Tracker) Describe() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	s := t.state
+	out := fmt.Sprintf("granularity=%s check=%s", s.Granularity, s.Check)
+	if s.Check == "error" {
+		return out + fmt.Sprintf(" error=%q", s.CheckError)
+	}
+	if s.Check != "ok" {
+		return out
+	}
+	read := "no"
+	if s.CanRead {
+		read = "yes"
+	}
+	return out + fmt.Sprintf(" create=%s write=%s read=%s rules=%d folders=%d",
+		scopeText(s.CanCreateAll, s.CreateFolders), scopeText(s.CanWriteAll, s.WriteFolders), read,
+		len(s.RuleFolders), len(s.FolderParents))
+}
+
+func scopeText(all bool, folders []string) string {
+	switch {
+	case all:
+		return "all"
+	case len(folders) == 0:
+		return "none"
+	default:
+		return "folders[" + strings.Join(folders, ",") + "]"
+	}
 }
 
 // CanReadSilences is false only when a successful lookup showed no

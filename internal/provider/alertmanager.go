@@ -66,6 +66,9 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 			return http.ErrUseLastResponse
 		}
 	}
+	if kind == "grafana" {
+		logSilenceCheckConfig(cfg)
+	}
 	return &alertmanagerAPI{
 		cfg:    cfg,
 		client: client,

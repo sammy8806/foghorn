@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"foghorn/internal/config"
 	"foghorn/internal/model"
 	"foghorn/internal/silenceaccess"
 )
@@ -38,6 +39,7 @@ func (a *alertmanagerAPI) RefreshSilenceAccess(ctx context.Context, now time.Tim
 		}
 		if !a.isClosed() {
 			a.access.ApplyLookupError(err, now)
+			a.logSilenceAccess()
 		}
 		return
 	}
@@ -62,6 +64,17 @@ func (a *alertmanagerAPI) RefreshSilenceAccess(ctx context.Context, now time.Tim
 		return
 	}
 	a.access.ApplyLookup(lookup, now)
+	a.logSilenceAccess()
+}
+
+// logSilenceAccess writes one line per lookup: what was checked and what came
+// out, so a log reader can tell why controls are greyed out or enabled.
+func (a *alertmanagerAPI) logSilenceAccess() {
+	line := fmt.Sprintf("silence check: %s %s: %s", a.kind, a.cfg.Name, a.access.Describe())
+	if !a.access.CanReadSilences() {
+		line += "; silence reads skipped (needs alert.silences:read)"
+	}
+	log.Print(line)
 }
 
 type statusError struct {
@@ -112,7 +125,11 @@ func (a *alertmanagerAPI) isClosed() bool {
 
 // recordSilenceDenied feeds a refused write into the tracker.
 func (a *alertmanagerAPI) recordSilenceDenied(op silenceaccess.Op, matchers []model.Matcher, denied *SilenceDeniedError) {
-	a.access.RecordDenied(op, matchers, denied.Status, denied.Body, time.Now())
+	marked := a.access.RecordDenied(op, matchers, denied.Status, denied.Body, time.Now())
+	if marked == "" {
+		marked = "nothing (on_denied is off)"
+	}
+	log.Printf("silence write refused: %s %s HTTP %d; marked %s; response: %s", a.kind, a.cfg.Name, denied.Status, marked, denied.Body)
 }
 
 // cachedSilenceMatchers returns the matchers of an active silence from the
@@ -121,4 +138,25 @@ func (a *alertmanagerAPI) cachedSilenceMatchers(id string) []model.Matcher {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.silenceMatchers[id]
+}
+
+// logSilenceCheckConfig records once per provider which permission checks
+// will run, so "nothing was checked" is visible in the log too.
+func logSilenceCheckConfig(src config.SourceConfig) {
+	sc := src.SilenceCheck
+	onStart, onDenied, interval := true, true, config.DefaultSilenceCheckInterval
+	if sc.OnStart != nil {
+		onStart = *sc.OnStart
+	}
+	if sc.OnDenied != nil {
+		onDenied = *sc.OnDenied
+	}
+	if sc.Interval != nil {
+		interval = *sc.Interval
+	}
+	gran := sc.Granularity
+	if gran == "" {
+		gran = "folder"
+	}
+	log.Printf("silence check: grafana %s: configured granularity=%s on_start=%v interval=%s on_denied=%v", src.Name, gran, onStart, interval, onDenied)
 }

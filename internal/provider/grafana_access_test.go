@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"log"
+	"os"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -222,5 +224,38 @@ func TestClosedProviderSkipsLookup(t *testing.T) {
 	g.RefreshSilenceAccess(context.Background(), time.Now())
 	if f.totalLookupCalls() != 0 {
 		t.Fatal("closed provider ran a lookup")
+	}
+}
+
+func captureLog(t *testing.T) *strings.Builder {
+	t.Helper()
+	var buf strings.Builder
+	var mu sync.Mutex
+	log.SetOutput(writerFunc(func(p []byte) (int, error) { mu.Lock(); defer mu.Unlock(); return buf.Write(p) }))
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	return &buf
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+func TestSilenceAccessIsLogged(t *testing.T) {
+	buf := captureLog(t)
+	f := newGrafanaFake(t)
+	g := checkedGrafana(f, config.SilenceCheckConfig{})
+	g.RefreshSilenceAccess(context.Background(), time.Now())
+	g.Silence(context.Background(), model.SilenceRequest{
+		Matchers: []model.Matcher{{Name: silenceaccess.RuleUIDLabel, Value: "r1", IsEqual: true}},
+		StartsAt: time.Now(), EndsAt: time.Now().Add(time.Hour),
+	})
+	out := buf.String()
+	for _, want := range []string{
+		"silence check: grafana g: granularity=folder check=ok create=folders[f1] write=folders[f1] read=yes rules=1 folders=2",
+		`silence write refused: grafana g HTTP 403; marked create in folder "f1"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q\n%s", want, out)
+		}
 	}
 }

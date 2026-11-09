@@ -269,3 +269,43 @@ func TestDenialDuringErrorRebaselines(t *testing.T) {
 		t.Fatal("a denial recorded while the check was failing must use the next lookup as its baseline")
 	}
 }
+
+func TestRecordDeniedDescribesScope(t *testing.T) {
+	tr := defaultGrafana()
+	tr.ApplyLookup(Lookup{RuleFolders: map[string]string{"r1": "f1"}}, t0)
+	cases := []struct {
+		op       Op
+		matchers []model.Matcher
+		want     string
+	}{
+		{OpCreate, []model.Matcher{eq(RuleUIDLabel, "r1")}, `create in folder "f1"`},
+		{OpWrite, []model.Matcher{eq("a", "b")}, "write of general silences"},
+		{OpCreate, nil, "create on the whole source"},
+	}
+	for _, c := range cases {
+		if got := tr.RecordDenied(c.op, c.matchers, 403, "", t0); got != c.want {
+			t.Errorf("got %q want %q", got, c.want)
+		}
+	}
+	off := NewTracker("grafana", cfg("folder", true, time.Minute, false))
+	if got := off.RecordDenied(OpCreate, nil, 403, "", t0); got != "" {
+		t.Errorf("on_denied off: got %q", got)
+	}
+}
+
+func TestDescribeLookup(t *testing.T) {
+	tr := defaultGrafana()
+	tr.ApplyLookup(Lookup{
+		Permissions:   map[string][]string{actionCreate: {"folders:uid:a"}, actionRead: {"folders:*"}},
+		RuleFolders:   map[string]string{"r": "a"},
+		FolderParents: map[string]string{"a": ""},
+	}, t0)
+	want := "granularity=folder check=ok create=folders[a] write=none read=yes rules=1 folders=1"
+	if got := tr.Describe(); got != want {
+		t.Fatalf("got %q\nwant %q", got, want)
+	}
+	tr.ApplyLookupError(errors.New("HTTP 500"), t0)
+	if got := tr.Describe(); got != `granularity=folder check=error error="HTTP 500"` {
+		t.Fatalf("got %q", got)
+	}
+}
