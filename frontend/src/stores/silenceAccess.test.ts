@@ -88,7 +88,7 @@ describe('decideSilence', () => {
   });
 
   it('write uses write permissions', () => {
-    expect(decideSilence('g', access({ createFolders: ['child'] }), r1, 'write')).toEqual({
+    expect(decideSilence('g', access({ createFolders: ['child'], writeFolders: ['other'] }), r1, 'write')).toEqual({
       allowed: false,
       reason: `g: token can't edit or expire silences in folder "Child" (needs alert.silences:write on that folder)`,
     });
@@ -125,6 +125,11 @@ describe('decideSilence', () => {
   it('alertmanager access is allowed unless denied', () => {
     const a = access({ granularity: '', check: 'unchecked' });
     expect(decideSilence('am', a, general, 'create').allowed).toBe(true);
+  });
+
+  it('folder: a token with no create scope at all gets the source text', () => {
+    expect(decideSilence('g', access(), r1, 'create')).toEqual({ allowed: false, reason: SRC_NO_CREATE });
+    expect(decideSilence('g', access(), general, 'create')).toEqual({ allowed: false, reason: SRC_NO_CREATE });
   });
 
   it('ancestor walk terminates on a cycle', () => {

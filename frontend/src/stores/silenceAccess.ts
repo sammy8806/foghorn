@@ -73,8 +73,9 @@ export function decideSilence(
         ? `${source}: token can't create silences (needs alert.silences:create)`
         : `${source}: token can't edit or expire silences (needs alert.silences:write)`);
 
-  // 3. Granularity.
-  if (access.granularity === 'source') return sourceLevel();
+  // 3. Granularity. A token without the permission anywhere gets the source
+  // text even in folder mode: naming one folder would suggest the others work.
+  if (access.granularity === 'source' || (!all && granted.length === 0)) return sourceLevel();
   if (uid === null) {
     if (all) return ALLOWED;
     return refuse(create
