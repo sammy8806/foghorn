@@ -1178,6 +1178,14 @@
     border-color: rgba(248, 113, 113, 0.4);
     color: #fca5a5;
   }
+  /* Expire can carry the permission triangle, so it dims by colour instead of
+     the shared .btn opacity, which would fade the triangle with it. */
+  .btn-destructive:disabled {
+    opacity: 1;
+    color: #64748b;
+    background: rgba(255, 255, 255, 0.045);
+    border-color: rgba(148, 163, 184, 0.28);
+  }
   .btn-danger { background: #dc2626; color: #fff; }
   .btn-danger:hover:not(:disabled) { background: #b91c1c; }
   .permission-hint {

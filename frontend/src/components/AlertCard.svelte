@@ -721,7 +721,9 @@
   .btn-link-edit:hover:not(:disabled) { background: rgba(96, 165, 250, 0.15); }
   .btn-link-expire { color: #f87171; }
   .btn-link-expire:hover:not(:disabled) { background: rgba(248, 113, 113, 0.15); }
-  .btn-link-edit:disabled, .btn-link-expire:disabled { opacity: 0.5; cursor: default; }
+  /* Disabled buttons dim by colour, never opacity: opacity would also fade the
+     permission triangle inside, which has to read the same on every control. */
+  .btn-link-edit:disabled, .btn-link-expire:disabled { color: #64748b; cursor: default; }
   .expire-confirm-label {
     color: #f87171;
     font-size: calc(10px * var(--font-scale, 1));
@@ -808,10 +810,10 @@
   }
   .btn-silence:disabled {
     color: #64748b;
+    border-color: rgba(51, 65, 85, 0.6);
     cursor: default;
   }
   .btn-silence:hover:not(:disabled) { border-color: #f59e0b; color: #f59e0b; }
-  .btn-silence:disabled { opacity: 0.6; }
 
 
   .action-status {

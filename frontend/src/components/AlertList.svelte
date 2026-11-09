@@ -1095,8 +1095,12 @@
     background: var(--chrome-ctrl-on);
   }
   .icon-toggle:disabled {
-    opacity: 0.4;
     cursor: not-allowed;
+  }
+  /* Only the glyph fades, so a permission triangle on the corner keeps the
+     same strength it has inside the text buttons. */
+  .icon-toggle:disabled > svg {
+    opacity: 0.4;
   }
   .icon-toggle-badge {
     position: absolute;
@@ -1483,17 +1487,25 @@
     -webkit-user-drag: none;
   }
 
-  /* Icon-only button: the permission triangle sits on its corner. */
+  /* Icon-only button: the permission triangle overlaps the glyph's
+     bottom-right corner (count badges take the top-right). A ring in the
+     chrome colour cuts it out of the glyph's stroke underneath. */
   .corner-warn {
     position: absolute;
-    right: 0;
-    bottom: 0;
+    right: 3px;
+    bottom: 3px;
     line-height: 0;
   }
   .corner-warn :global(.permission-warn) {
     margin: 0;
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 10px;
+    overflow: visible;
+  }
+  .corner-warn :global(.permission-warn path:first-child) {
+    stroke: var(--chrome-tint);
+    stroke-width: 5;
+    paint-order: stroke;
   }
   .icon-toggle.has-corner-warn {
     position: relative;
