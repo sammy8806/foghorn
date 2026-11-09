@@ -194,6 +194,17 @@ const shots = {
       },
     },
   ],
+  'silence-permission-check': [
+    {
+      file: 'silence-permission-hint',
+      scenario: { silenceAccess: 'read-only' },
+      action: async (page) => {
+        await page.locator('.alert-header').first().click();
+        await page.waitForTimeout(200);
+        await page.locator('button.btn-silence').first().scrollIntoViewIfNeeded();
+      },
+    },
+  ],
   'accessibility-improvements': [
     {
       file: '15-verbose-toggle-focused',

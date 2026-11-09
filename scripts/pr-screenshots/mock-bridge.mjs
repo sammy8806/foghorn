@@ -103,6 +103,17 @@ export function buildBridgeInit(scenario) {
   };
 
   const health = scenario.health === 'failing' ? failingSources() : healthySources();
+  // silenceAccess: 'read-only' gives prod-am a token whose permission lookup
+  // succeeded but holds no alert.silences:create, so Silence controls grey out.
+  const capabilities = { 'prod-am': { supportsSilence: true }, grafana: { supportsSilence: false } };
+  if (scenario.silenceAccess === 'read-only') {
+    capabilities['prod-am'].silenceAccess = {
+      granularity: 'source', check: 'ok', checkedAt: new Date().toISOString(),
+      canCreateAll: false, canWriteAll: false, canRead: true,
+      createFolders: [], writeFolders: [], ruleFolders: {}, folderParents: {}, folderTitles: {},
+      denied: { createSource: false, writeSource: false, createGeneral: false, writeGeneral: false, createFolders: [], writeFolders: [], status: 0, message: '', at: '' },
+    };
+  }
 
   return `
     window.go = {
@@ -133,7 +144,7 @@ export function buildBridgeInit(scenario) {
               { name: 'unknown', color: '#6b7280', aliases: ['unknown'] },
             ],
           }),
-          GetSourceCapabilities: async () => ({ 'prod-am': { supportsSilence: true }, grafana: { supportsSilence: false } }),
+          GetSourceCapabilities: async () => (${JSON.stringify(capabilities)}),
           GetUIConfig: async () => (${JSON.stringify(uiConfig)}),
           GetUIScale: async () => ({ factor: 1, mode: 'fonts', apply_to_popup: true }),
           GetNotificationPermissionStatus: async () => 'authorized',

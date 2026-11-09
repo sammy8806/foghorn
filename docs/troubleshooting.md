@@ -55,6 +55,49 @@ providers (Alertmanager, Grafana, Prometheus, Better Stack); the
 `app: CreateSilence`/`UpdateSilence` boundary lines are always logged regardless
 of the flag.
 
+### Silence buttons are greyed out
+
+Foghorn greys out **Silence**, **Edit** and **Expire** when the source's
+credentials can't do it, and says why in the button's tooltip:
+
+| Hint | Fix |
+|---|---|
+| `token can't create silences (needs alert.silences:create)` | Give the Grafana service account or user a role with silence permissions (Editor, or a folder **Edit** permission). |
+| `token can't silence alerts in folder "…"` | The token has silence permissions on other folders only. Grant **Edit** on that folder or a parent folder. |
+| `token can only silence single alert rules; keep the __alert_rule_uid__ matcher` | Folder-scoped permissions only cover silences tied to one rule. Keep the rule-UID matcher in the editor, or grant permissions on all folders. |
+| `token can't edit or expire silences …` | Same as above, for `alert.silences:write`. Grafana checks the silence's own matchers, not the alert it's shown on. |
+| `a silence was refused (HTTP 403); fix the credentials or reload the config` | Grafana or Alertmanager refused a silence write. Foghorn keeps this until the token's permissions change or the config is reloaded. |
+| `silence details hidden: token can't read silences` (on the **silenced** badge) | Grant `alert.silences:read`; until then Foghorn doesn't fetch silences. |
+
+Grafana OSS supports folder-scoped silence permissions; they come from folder
+permissions (Edit on a folder includes creating silences for its rules,
+inherited by subfolders).
+
+The log says what was checked and what came out (see the HTTP debug section
+above for where logs go):
+
+```
+silence check: grafana grafana-main: configured granularity=folder on_start=true interval=15m0s on_denied=true
+silence check: grafana grafana-main: granularity=folder check=ok create=folders[abc123] write=folders[abc123] read=yes rules=122 folders=17
+silence write refused: grafana grafana-main HTTP 403; marked create in folder "def456"; response: user is not authorized to create silence for rule r1
+error fetching silences from grafana-main: …
+```
+
+A failed lookup logs `check=error error="…"`, an old Grafana without the
+permissions endpoint logs `check=unsupported`, and a token without
+`alert.silences:read` adds `silence reads skipped`.
+
+Nothing is greyed out until a permission lookup succeeds. If the lookup or
+the silence list fails, the problem strip says so. To switch the check off or
+make it coarser, set `silence_check` on the Grafana source (see
+[Silence permission check](configuration.md#silence-permission-check)):
+
+```yaml
+silence_check:
+  granularity: off   # or: source
+  on_denied: false   # also stop learning from refused writes
+```
+
 ### Local alert actions
 
 Foghorn has removed shell actions and does not expose action execution to the
