@@ -3,7 +3,7 @@
 // The backend ships the raw permission state (SilenceAccess); this decides per
 // silence. Unknown means enabled: only a successful lookup or a recorded
 // refusal disables anything.
-import type { Matcher, SilenceAccess } from './alerts';
+import type { Matcher, SilenceAccess, SourceCapabilities } from './alerts';
 
 export const RULE_UID_LABEL = '__alert_rule_uid__';
 export type SilenceOp = 'create' | 'write';
@@ -96,4 +96,25 @@ export function silenceReadHint(_source: string, access: SilenceAccess | undefin
     return "silence details hidden: token can't read silences (needs alert.silences:read)";
   }
   return null;
+}
+
+// decideAcrossSources is the decision for a silence that may go to any of the
+// given sources (group without a fixed source, silence from search): allowed
+// when one silence-capable source allows it, else refused with the reason of
+// the first silence-capable source by name.
+export function decideAcrossSources(
+  capabilities: Record<string, SourceCapabilities>,
+  sources: string[],
+  matchers: Matcher[],
+  op: SilenceOp,
+): SilenceDecision {
+  const capable = [...new Set(sources)].filter(s => capabilities[s]?.supportsSilence).sort();
+  if (capable.length === 0) return ALLOWED;
+  let first: SilenceDecision | null = null;
+  for (const source of capable) {
+    const decision = decideSilence(source, capabilities[source].silenceAccess, matchers, op);
+    if (decision.allowed) return decision;
+    first ??= decision;
+  }
+  return first ?? ALLOWED;
 }

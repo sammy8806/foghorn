@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Alert, DisplayConfig, SilenceInfo, VisibleEntry } from '../stores/alerts';
-  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, loadSourceCapabilities, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
+  import type { Matcher } from '../stores/alerts';
+  import { decideSilence, silenceReadHint } from '../stores/silenceAccess';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
   import { safeExternalURL } from '../utils/url';
@@ -103,11 +105,23 @@
     }).join('\n');
   }
 
-  $: silenceBadgeTitle = (alert.silences?.length)
+  $: silenceAccess = $sourceCapabilities[alert.source]?.silenceAccess;
+  $: readHint = silenceReadHint(alert.source, silenceAccess);
+  $: baseSilenceBadgeTitle = (alert.silences?.length)
     ? silenceTooltip(alert.silences)
     : alert.silencedBy?.length > 0
       ? `Silence IDs: ${alert.silencedBy.join(', ')}`
       : '';
+  $: silenceBadgeTitle = readHint ? [baseSilenceBadgeTitle, readHint].filter(Boolean).join('\n') : baseSilenceBadgeTitle;
+
+  // The silence "Silence…" would seed: every alert label as an equality matcher.
+  function alertMatchers(labels: Record<string, string>): Matcher[] {
+    return Object.entries(labels || {}).map(([name, value]) => ({ name, value, isRegex: false, isEqual: true }));
+  }
+  $: createDecision = decideSilence(alert.source, silenceAccess, alertMatchers(alert.labels), 'create');
+  $: writeDecisions = Object.fromEntries((alert.silences ?? []).map(s =>
+    [s.id, decideSilence(alert.source, silenceAccess, s.matchers ?? [], 'write')]));
+  $: hintBase = `hint-${alert.source}-${alert.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
 
   let expanded = false;
   let expireConfirmId: string | null = null;
@@ -196,6 +210,8 @@
       void refreshAlerts();
     } catch (e) {
       expireError = { ...expireError, [s.id]: String(e) };
+      // A refused expire changes what this source may do; re-read it.
+      void loadSourceCapabilities();
     } finally {
       expiring = { ...expiring, [s.id]: false };
     }
@@ -337,8 +353,13 @@
                     </button>
                     <button class="btn-link-edit" on:click|stopPropagation={cancelExpire} disabled={!!expiring[s.id]}>Cancel</button>
                   {:else}
-                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}>Edit</button>
-                    <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}>Expire now</button>
+                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}
+                      disabled={!writeDecisions[s.id]?.allowed} title={writeDecisions[s.id]?.reason || undefined}
+                      aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Edit</button>
+                    <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}
+                      disabled={!writeDecisions[s.id]?.allowed} title={writeDecisions[s.id]?.reason || undefined}
+                      aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>Expire now</button>
+                    {#if !writeDecisions[s.id]?.allowed}<span class="sr-only" id={`${hintBase}-w-${s.id}`}>{writeDecisions[s.id]?.reason}</span>{/if}
                   {/if}
                 </div>
               </div>
@@ -413,7 +434,10 @@
           {/if}
         {/if}
         {#if supportsSilence && !alert.silencedBy?.length && !isResolved}
-          <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}>Silence…</button>
+          <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}
+            disabled={!createDecision.allowed} title={createDecision.reason || undefined}
+            aria-describedby={createDecision.allowed ? undefined : `${hintBase}-c`}>Silence…</button>
+          {#if !createDecision.allowed}<span class="sr-only" id={`${hintBase}-c`}>{createDecision.reason}</span>{/if}
         {/if}
       </div>
     </div>
@@ -782,7 +806,16 @@
     color: #64748b;
     cursor: default;
   }
-  .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
+  .btn-silence:hover:not(:disabled) { border-color: #f59e0b; color: #f59e0b; }
+  .btn-silence:disabled { opacity: 0.6; }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 
   .action-status {
     font-size: calc(11px * var(--font-scale, 1));

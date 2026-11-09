@@ -2,6 +2,7 @@
   import type { Alert, AlertFieldDisplay, DisplayConfig, Matcher } from '../stores/alerts';
   import { sourceCapabilities } from '../stores/alerts';
   import { openSilenceFromMatchers } from '../stores/silenceEditor';
+  import { decideAcrossSources, decideSilence } from '../stores/silenceAccess';
   import AlertCard from './AlertCard.svelte';
   import { severityColor, severityOrder } from '../utils/severity';
 
@@ -22,7 +23,12 @@
 
   $: groupMatchers = matchersFromGroupParts(groupParts);
   $: preferredSource = sourceForGroup(groupParts, alerts);
-  $: canSilenceGroup = alerts.some((alert) => !!$sourceCapabilities[alert.source]?.supportsSilence);
+  $: hasSilenceSource = alerts.some((alert) => !!$sourceCapabilities[alert.source]?.supportsSilence);
+  $: groupDecision = preferredSource
+    ? decideSilence(preferredSource, $sourceCapabilities[preferredSource]?.silenceAccess, groupMatchers, 'create')
+    : decideAcrossSources($sourceCapabilities, alerts.map((alert) => alert.source), groupMatchers, 'create');
+  $: canSilenceGroup = hasSilenceSource && groupDecision.allowed;
+  $: groupHintId = `group-hint-${Math.random().toString(36).slice(2)}`;
 
   function matchersFromGroupParts(parts: AlertFieldDisplay[]): Matcher[] {
     const seen = new Set<string>();
@@ -116,9 +122,12 @@
       role="menu"
       tabindex="-1"
     >
-      <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}>
+      <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}
+        title={groupDecision.reason || undefined}
+        aria-describedby={groupDecision.allowed ? undefined : groupHintId}>
         Silence group…
       </button>
+      {#if !groupDecision.allowed}<span class="sr-only" id={groupHintId}>{groupDecision.reason}</span>{/if}
     </div>
   {/if}
 
@@ -230,5 +239,13 @@
   .group-menu-item:disabled {
     color: #64748b;
     cursor: not-allowed;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 </style>

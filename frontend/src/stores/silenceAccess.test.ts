@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Matcher, SilenceAccess } from './alerts';
-import { decideSilence, RULE_UID_LABEL, silenceReadHint } from './silenceAccess';
+import { decideAcrossSources, decideSilence, RULE_UID_LABEL, silenceReadHint } from './silenceAccess';
 
 const eq = (name: string, value: string): Matcher => ({ name, value, isRegex: false, isEqual: true });
 const r1 = [eq('alertname', 'Down'), eq(RULE_UID_LABEL, 'r1')];
@@ -147,5 +147,22 @@ describe('silenceReadHint', () => {
   it('is null while unchecked', () => {
     expect(silenceReadHint('g', access({ check: 'unchecked', canRead: false }))).toBeNull();
     expect(silenceReadHint('g', undefined)).toBeNull();
+  });
+});
+
+describe('decideAcrossSources', () => {
+  const caps = {
+    b: { supportsSilence: true, silenceAccess: access({ granularity: 'source' }) },
+    a: { supportsSilence: true, silenceAccess: access({ granularity: 'source' }) },
+    prom: { supportsSilence: false },
+  };
+  it('refuses with the first capable source by name', () => {
+    expect(decideAcrossSources(caps, ['prom', 'b', 'a'], general, 'create').reason).toBe(
+      "a: token can't create silences (needs alert.silences:create)",
+    );
+  });
+  it('allows when any capable source allows', () => {
+    const more = { ...caps, c: { supportsSilence: true, silenceAccess: access({ check: 'error' }) } };
+    expect(decideAcrossSources(more, ['a', 'b', 'c'], general, 'create').allowed).toBe(true);
   });
 });

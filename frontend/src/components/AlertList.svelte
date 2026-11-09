@@ -39,6 +39,7 @@
     type FilterState,
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
+  import { decideAcrossSources } from '../stores/silenceAccess';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission, RevealConfigFile } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
@@ -186,12 +187,17 @@
   $: searchOpen = searchExpanded || hasSearchText;
   $: silenceableMatchers = queryToMatchers($parsedQuery).matchers;
   $: hasSilenceableSources = Object.values($sourceCapabilities).some(c => c.supportsSilence);
-  $: canOpenSilenceEditor = hasSilenceableSources;
-  $: silenceFromSearchTitle = canOpenSilenceEditor
-    ? silenceableMatchers.length > 0
-      ? 'Create a silence from this search'
-      : 'Create a new silence'
-    : 'No configured source supports silences';
+  // A search without a rule-UID matcher is a general silence; grey out when no
+  // silence-capable source's credentials could take it.
+  $: searchSilenceDecision = decideAcrossSources($sourceCapabilities, Object.keys($sourceCapabilities), silenceableMatchers, 'create');
+  $: canOpenSilenceEditor = hasSilenceableSources && searchSilenceDecision.allowed;
+  $: silenceFromSearchTitle = !hasSilenceableSources
+    ? 'No configured source supports silences'
+    : !searchSilenceDecision.allowed
+      ? searchSilenceDecision.reason
+      : silenceableMatchers.length > 0
+        ? 'Create a silence from this search'
+        : 'Create a new silence';
 
   function silenceFromSearch() {
     if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
