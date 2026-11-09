@@ -17,9 +17,13 @@ func cfg(gran string, onStart bool, interval time.Duration, onDenied bool) confi
 	return config.SilenceCheckConfig{Granularity: gran, OnStart: &onStart, Interval: &interval, OnDenied: &onDenied}
 }
 
-func defaultGrafana() *Tracker { return NewTracker("grafana", cfg("folder", true, 15*time.Minute, true)) }
+func defaultGrafana() *Tracker {
+	return NewTracker("grafana", cfg("folder", true, 15*time.Minute, true))
+}
 
-func eq(name, value string) model.Matcher { return model.Matcher{Name: name, Value: value, IsEqual: true} }
+func eq(name, value string) model.Matcher {
+	return model.Matcher{Name: name, Value: value, IsEqual: true}
+}
 
 func TestApplyLookupFolderScopes(t *testing.T) {
 	tr := defaultGrafana()
@@ -145,6 +149,12 @@ func TestRecordDeniedNarrowing(t *testing.T) {
 	}
 
 	tr = newTr()
+	tr.RecordDenied(OpWrite, nil, 403, "", t0)
+	if d := tr.Snapshot().Denied; !d.WriteSource || d.WriteGeneral {
+		t.Fatalf("unknown silence denial %+v", d)
+	}
+
+	tr = newTr()
 	tr.RecordDenied(OpCreate, []model.Matcher{{Name: RuleUIDLabel, Value: "r1", IsEqual: true, IsRegex: true}}, 403, "", t0)
 	if d := tr.Snapshot().Denied; !d.CreateGeneral || len(d.CreateFolders) != 0 {
 		t.Fatalf("regex rule matcher denial %+v", d)
@@ -169,7 +179,7 @@ func TestRecordDeniedAlertmanager(t *testing.T) {
 
 func TestRecordDeniedDisabled(t *testing.T) {
 	tr := NewTracker("grafana", cfg("folder", true, time.Minute, false))
-	tr.RecordDenied(OpCreate, nil, 403, "", t0)
+	tr.RecordDenied(OpCreate, []model.Matcher{eq("a", "b")}, 403, "", t0)
 	if d := tr.Snapshot().Denied; d.CreateGeneral || d.CreateSource || d.Status != 0 {
 		t.Fatalf("denial %+v", d)
 	}
@@ -179,7 +189,7 @@ func TestDeniedMakesCheckDue(t *testing.T) {
 	tr := defaultGrafana()
 	tr.CheckDue(t0)
 	tr.ApplyLookup(Lookup{}, t0)
-	tr.RecordDenied(OpCreate, nil, 403, "", t0)
+	tr.RecordDenied(OpCreate, []model.Matcher{eq("a", "b")}, 403, "", t0)
 	if !tr.CheckDue(t0.Add(time.Second)) {
 		t.Fatal("denial must make a lookup due")
 	}
@@ -198,7 +208,7 @@ func TestDenialPrecedence(t *testing.T) {
 
 	tr := defaultGrafana()
 	tr.ApplyLookup(p1, t0)
-	tr.RecordDenied(OpCreate, nil, 403, "", t0)
+	tr.RecordDenied(OpCreate, []model.Matcher{eq("a", "b")}, 403, "", t0)
 	tr.ApplyLookup(p1, t0)
 	if !denied(tr) {
 		t.Fatal("same permissions must keep the denial")
@@ -213,7 +223,7 @@ func TestDenialPrecedence(t *testing.T) {
 	}
 
 	tr = defaultGrafana()
-	tr.RecordDenied(OpCreate, nil, 403, "", t0)
+	tr.RecordDenied(OpCreate, []model.Matcher{eq("a", "b")}, 403, "", t0)
 	tr.ApplyLookup(p1, t0)
 	if !denied(tr) {
 		t.Fatal("first lookup after an unchecked denial is the baseline")

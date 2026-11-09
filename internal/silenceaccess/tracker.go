@@ -165,6 +165,8 @@ func (t *Tracker) ApplyLookupError(err error, now time.Time) {
 }
 
 // RecordDenied marks a refused silence write as narrowly as its matchers allow.
+// nil matchers mean the silence is unknown (e.g. an expire of a silence not in
+// the last list), which marks the whole source.
 func (t *Tracker) RecordDenied(op Op, matchers []model.Matcher, status int, message string, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -173,7 +175,7 @@ func (t *Tracker) RecordDenied(op Op, matchers []model.Matcher, status int, mess
 	}
 	d := &t.state.Denied
 	scope, folder := "source", ""
-	if t.grafana {
+	if t.grafana && matchers != nil {
 		if uid, ok := RuleUID(matchers); !ok {
 			scope = "general"
 		} else if f, known := t.state.RuleFolders[uid]; known {
