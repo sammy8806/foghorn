@@ -54,7 +54,27 @@ type SourceConfig struct {
 	Filters       []string          `yaml:"filters"`
 	SeverityLabel string            `yaml:"severity_label"`
 	BetterStack   BetterStackConfig `yaml:"betterstack"`
+	// SilenceCheck controls the Grafana silence permission check. Only
+	// meaningful for grafana sources; validate fills every field.
+	SilenceCheck SilenceCheckConfig `yaml:"silence_check"`
 }
+
+// SilenceCheckConfig configures how a Grafana source checks whether its
+// credentials may create and edit silences.
+type SilenceCheckConfig struct {
+	// Granularity is folder, source or off.
+	Granularity string `yaml:"granularity"`
+	// OnStart runs a permission lookup when the source starts.
+	OnStart *bool `yaml:"on_start"`
+	// Interval repeats the lookup; 0 disables repeats.
+	Interval *time.Duration `yaml:"interval"`
+	// OnDenied learns from writes the source refused.
+	OnDenied *bool `yaml:"on_denied"`
+}
+
+// DefaultSilenceCheckInterval is how often a Grafana source repeats its
+// permission lookup unless configured otherwise.
+const DefaultSilenceCheckInterval = 15 * time.Minute
 
 type BetterStackConfig struct {
 	OnCallSchedule string `yaml:"on_call_schedule"`
