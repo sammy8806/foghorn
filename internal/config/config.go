@@ -245,6 +245,7 @@ func validate(cfg *Config, diags *Diagnostics) error {
 			continue
 		}
 		seenSourceNames[src.Name] = struct{}{}
+		src.SilenceCheck = validateSilenceCheck(i, src, diags)
 		warnInsecureSourceURL(src.Name, src.URL)
 		warnInsecureAuthURLs(src)
 		enabledSources = append(enabledSources, src)
@@ -501,4 +502,45 @@ func ResolveCreatedByDefault(configured string) string {
 		return value
 	}
 	return CurrentUsername()
+}
+
+// validateSilenceCheck fills the silence_check defaults for grafana sources and
+// reports blocks that cannot take effect.
+func validateSilenceCheck(index int, src SourceConfig, diags *Diagnostics) SilenceCheckConfig {
+	sc := src.SilenceCheck
+	field := fmt.Sprintf("sources[%d] %q silence_check", index, src.Name)
+	if src.Type != "grafana" {
+		if sc.Granularity != "" || sc.OnStart != nil || sc.Interval != nil || sc.OnDenied != nil {
+			diags.Substitute(field, "only applies to grafana sources; ignored")
+		}
+		return SilenceCheckConfig{}
+	}
+	switch g := strings.ToLower(strings.TrimSpace(sc.Granularity)); g {
+	case "":
+		sc.Granularity = "folder"
+	case "folder", "source", "off":
+		sc.Granularity = g
+	default:
+		diags.Substitute(field+".granularity", "%q must be one of folder, source, off; using folder", sc.Granularity)
+		sc.Granularity = "folder"
+	}
+	if sc.OnStart == nil {
+		v := true
+		sc.OnStart = &v
+	}
+	if sc.OnDenied == nil {
+		v := true
+		sc.OnDenied = &v
+	}
+	if sc.Interval == nil || *sc.Interval < 0 {
+		if sc.Interval != nil {
+			diags.Substitute(field+".interval", "%s must not be negative; using %s", *sc.Interval, DefaultSilenceCheckInterval)
+		}
+		v := DefaultSilenceCheckInterval
+		sc.Interval = &v
+	}
+	if sc.Granularity != "off" && !*sc.OnStart && *sc.Interval == 0 {
+		diags.Substitute(field, "on_start is false and interval is 0, so no permission lookup runs; only refused writes will grey out controls")
+	}
+	return sc
 }

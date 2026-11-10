@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -202,9 +203,12 @@ func (a *App) GetSourceCapabilities() map[string]model.SourceCapabilities {
 
 	out := make(map[string]model.SourceCapabilities, len(a.providers))
 	for source, p := range a.providers {
-		out[source] = model.SourceCapabilities{
-			SupportsSilence: p.SupportsSilence(),
+		caps := model.SourceCapabilities{SupportsSilence: p.SupportsSilence()}
+		if ap, ok := p.(provider.SilenceAccessProvider); ok {
+			access := ap.SilenceAccess()
+			caps.SilenceAccess = &access
 		}
+		out[source] = caps
 	}
 	return out
 }
@@ -261,12 +265,34 @@ func (a *App) GetOnCallStatus() []model.OnCallStatus {
 func (a *App) RefreshAlerts() error {
 	a.mu.RLock()
 	trigger := a.refreshTrigger
+	// An explicit refresh also re-reads what the credentials may do with
+	// silences, so a changed token shows up without waiting for the interval.
+	for _, p := range a.providers {
+		if r, ok := p.(provider.SilenceAccessRechecker); ok {
+			r.RequestSilenceAccessCheck()
+		}
+	}
 	a.mu.RUnlock()
 
 	if trigger != nil {
 		trigger()
 	}
 	return nil
+}
+
+// ManualRefresh is the user's refresh: besides polling every source and
+// re-reading silence permissions, it forgets refused silence writes, since
+// the user may just have fixed the credentials. A write that is still refused
+// greys the controls out again.
+func (a *App) ManualRefresh() error {
+	a.mu.RLock()
+	for _, p := range a.providers {
+		if r, ok := p.(provider.SilenceAccessRechecker); ok {
+			r.ClearSilenceDenials()
+		}
+	}
+	a.mu.RUnlock()
+	return a.RefreshAlerts()
 }
 
 // GetDisplayConfig returns the normalized display configuration.
@@ -375,6 +401,7 @@ func (a *App) CreateSilence(
 	}
 	id, err := silenceMgr.CreateSilence(ctx, source, matchers, duration, createdBy, comment, defaultCreatedBy)
 	log.Printf("app: CreateSilence source=%q matchers=%d duration=%q -> id=%q err=%v", source, len(matchers), duration, id, err)
+	a.afterSilenceWrite(err)
 	return id, err
 }
 
@@ -398,6 +425,7 @@ func (a *App) UpdateSilence(
 	}
 	err := silenceMgr.UpdateSilence(ctx, source, silenceID, matchers, duration, createdBy, comment, defaultCreatedBy)
 	log.Printf("app: UpdateSilence source=%q id=%q matchers=%d duration=%q -> err=%v", source, silenceID, len(matchers), duration, err)
+	a.afterSilenceWrite(err)
 	return err
 }
 
@@ -411,5 +439,19 @@ func (a *App) Unsilence(source, silenceID string) error {
 	if silenceMgr == nil {
 		return fmt.Errorf("silence manager not initialized")
 	}
-	return silenceMgr.Unsilence(ctx, source, silenceID)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	err := silenceMgr.Unsilence(ctx, source, silenceID)
+	a.afterSilenceWrite(err)
+	return err
+}
+
+// afterSilenceWrite asks for an immediate poll after a refused silence write,
+// so a due permission lookup runs and the UI receives the new state.
+func (a *App) afterSilenceWrite(err error) {
+	var denied *provider.SilenceDeniedError
+	if errors.As(err, &denied) {
+		_ = a.RefreshAlerts()
+	}
 }

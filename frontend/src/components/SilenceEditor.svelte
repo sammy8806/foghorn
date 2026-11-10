@@ -3,12 +3,16 @@
   import { afterUpdate, createEventDispatcher, tick } from 'svelte';
   import { GetUIConfig, CreateSilence, UpdateSilence, Unsilence } from '../../wailsjs/go/main/App';
   import type { Alert, Matcher, SilenceInfo } from '../stores/alerts';
-  import { alerts, sourceCapabilities } from '../stores/alerts';
+  import { alerts, loadSourceCapabilities, sourceCapabilities } from '../stores/alerts';
+  import type { SourceCapabilities } from '../stores/alerts';
+  import { decideSilence, type SilenceDecision } from '../stores/silenceAccess';
   import { filter } from '../stores/filter';
   import { queryToMatchers, type ParsedQuery, type DroppedTerm } from '../stores/query';
   import { matchesAllMatchers } from '../stores/matchers';
   import MatcherEditor from './MatcherEditor.svelte';
   import SelectMenu from './SelectMenu.svelte';
+  import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { cubicBezier } from '../utils/easing';
 
   export let alert: Alert | null = null;
@@ -37,6 +41,9 @@
   let initializedForOpen = false;
   let droppedTerms: DroppedTerm[] = [];
   let selectedSource = '';
+  // Set once the user picks a source. A pick is never moved to another source
+  // because of permissions: the user sees the refusal instead.
+  let userPickedSource = false;
   let dialogEl: HTMLDivElement | null = null;
   let previouslyFocused: HTMLElement | null = null;
   let focusMovedIn = false;
@@ -76,14 +83,27 @@
   // leaving a stale selection that no longer appears in the picker. Guarded to
   // non-empty candidates so a transient zero-match edit doesn't clobber the
   // pick to ''. Alert/edit modes never hit this since query is null there.
+  // Live permission check: which candidate sources could take the silence as
+  // it stands now. Unknown access never blocks (decideSilence rule 1).
+  function createDecisionFor(source: string, caps: Record<string, SourceCapabilities>, matchers: Matcher[]): SilenceDecision {
+    return decideSilence(source, caps[source]?.silenceAccess, matchers, 'create');
+  }
+  $: candidateDecisions = Object.fromEntries(
+    sourceCandidates.map((c) => [c.source, createDecisionFor(c.source, $sourceCapabilities, allMatchers)]),
+  );
+  // Auto-selection prefers a source that allows the silence, and falls back to
+  // the top candidate only when none does.
+  $: firstAllowedCandidate = (sourceCandidates.find((c) => candidateDecisions[c.source]?.allowed) ?? sourceCandidates[0])?.source ?? '';
   $: if (isAlertlessCreate && !selectedSource && sourceCandidates.length) {
-    selectedSource = preferredSource && sourceCandidates.some((c) => c.source === preferredSource)
+    selectedSource = preferredSource && sourceCandidates.some((c) => c.source === preferredSource && candidateDecisions[c.source]?.allowed)
       ? preferredSource
-      : sourceCandidates[0].source;
+      : firstAllowedCandidate;
   }
   $: if (isAlertlessCreate && selectedSource && sourceCandidates.length &&
-         !sourceCandidates.some((c) => c.source === selectedSource)) {
-    selectedSource = sourceCandidates[0].source;
+         (!sourceCandidates.some((c) => c.source === selectedSource) ||
+          (!userPickedSource && !candidateDecisions[selectedSource]?.allowed && firstAllowedCandidate !== selectedSource &&
+           candidateDecisions[firstAllowedCandidate]?.allowed))) {
+    selectedSource = firstAllowedCandidate;
   }
   // "Show N more" only when matchers are actually hidden (N > 0). "Hide matchers"
   // only while expanded and some visible matcher would collapse back out of the
@@ -135,8 +155,25 @@
   const basePresets = ['30m', '1h', '2h', '4h', '8h', '24h', '3d', '1w'];
   const extendPresets = ['+30m', '+1h', '+4h', '+1d'];
 
+  $: activeAccess = activeSource ? $sourceCapabilities[activeSource]?.silenceAccess : undefined;
+  // Edit: Grafana authorises an update by the silence's own matchers and by
+  // the new ones, so both must pass; the first refusal is shown.
+  $: decision = ((): SilenceDecision => {
+    if (!activeSource) return { allowed: true, reason: '' };
+    if (mode === 'edit' && silence) {
+      const before = decideSilence(activeSource, activeAccess, silence.matchers ?? [], 'write');
+      if (!before.allowed) return before;
+      return decideSilence(activeSource, activeAccess, allMatchers, 'write');
+    }
+    return decideSilence(activeSource, activeAccess, allMatchers, 'create');
+  })();
+  $: expireDecision = mode === 'edit' && silence && activeSource
+    ? decideSilence(activeSource, activeAccess, silence.matchers ?? [], 'write')
+    : { allowed: true, reason: '' };
+
   $: canSubmit =
     !loading &&
+    decision.allowed &&
     !!duration &&
     !!createdBy.trim() &&
     !!activeSource &&
@@ -349,6 +386,7 @@
       comment = '';
       createdBy = '';
       selectedSource = preferredSource || defaultSourceForQuery(all);
+      userPickedSource = false;
       void loadDefaultCreatedBy().then((v) => {
         if (!createdBy) createdBy = v;
       });
@@ -359,6 +397,7 @@
       comment = '';
       createdBy = '';
       selectedSource = preferredSource || defaultSourceForQuery(all);
+      userPickedSource = false;
       void loadDefaultCreatedBy().then((v) => {
         if (!createdBy) createdBy = v;
       });
@@ -428,6 +467,8 @@
       dispatch('close');
     } catch (e) {
       error = String(e);
+      // A refused write changes what this source may do; re-read it.
+      void loadSourceCapabilities();
     } finally {
       loading = false;
     }
@@ -444,6 +485,7 @@
       dispatch('close');
     } catch (e) {
       error = String(e);
+      void loadSourceCapabilities();
     } finally {
       loading = false;
       confirmExpire = false;
@@ -582,8 +624,14 @@
               <SelectMenu
                 ariaLabel="Target source"
                 placeholder="No silence-capable sources"
-                options={sourceCandidates.map((c) => ({ value: c.source, label: `${c.source} (${c.count})` }))}
+                options={sourceCandidates.map((c) => ({
+                  value: c.source,
+                  label: `${c.source} (${c.count})`,
+                  disabled: !candidateDecisions[c.source]?.allowed,
+                  title: candidateDecisions[c.source]?.reason || undefined,
+                }))}
                 bind:value={selectedSource}
+                on:change={() => (userPickedSource = true)}
               />
             </div>
           </section>
@@ -698,9 +746,13 @@
                 Keep
               </button>
             {:else}
-              <button class="btn btn-quiet btn-destructive" on:click={() => (confirmExpire = true)} disabled={loading}>
-                Expire now
+              <PermissionHint reason={expireDecision.reason} id="silence-editor-expire-hint">
+              <button class="btn btn-quiet btn-destructive" on:click={() => (confirmExpire = true)}
+                disabled={loading || !expireDecision.allowed}
+                aria-describedby={expireDecision.allowed ? undefined : 'silence-editor-expire-hint'}>
+                {#if !expireDecision.allowed}<PermissionIcon />{/if}Expire now
               </button>
+              </PermissionHint>
             {/if}
           {/if}
         </div>
@@ -709,6 +761,9 @@
              prevent. -->
         {#if !confirmExpire}
           <div class="footer-right">
+            {#if !decision.allowed}
+              <span class="permission-hint" role="status">{decision.reason}</span>
+            {/if}
             <button class="btn btn-quiet" on:click={close} disabled={loading}>Cancel</button>
             <button class="btn btn-primary" on:click={submit} disabled={!canSubmit}>
               {loading ? (mode === 'edit' ? 'Saving…' : 'Silencing…') : mode === 'edit' ? 'Save changes' : 'Silence'}
@@ -1123,6 +1178,20 @@
     border-color: rgba(248, 113, 113, 0.4);
     color: #fca5a5;
   }
+  /* Expire can carry the permission triangle, so it dims by colour instead of
+     the shared .btn opacity, which would fade the triangle with it. */
+  .btn-destructive:disabled {
+    opacity: 1;
+    color: #64748b;
+    background: rgba(255, 255, 255, 0.045);
+    border-color: rgba(148, 163, 184, 0.28);
+  }
   .btn-danger { background: #dc2626; color: #fff; }
   .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+  .permission-hint {
+    color: #fbbf24;
+    font-size: calc(11px * var(--font-scale, 1));
+    max-width: 28em;
+    text-align: right;
+  }
 </style>

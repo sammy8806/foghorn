@@ -140,10 +140,34 @@ func (s *Store) RecordPollSuccess(source string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.health[source] = model.SourceHealth{
-		Source:   source,
-		OK:       true,
-		LastPoll: time.Now(),
+		Source:           source,
+		OK:               true,
+		LastPoll:         time.Now(),
+		SilenceReadError: s.health[source].SilenceReadError,
 	}
+}
+
+// RecordSilenceReadError records a failed silence list for a source. It
+// survives later poll records until cleared.
+func (s *Store) RecordSilenceReadError(source string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h := s.health[source]
+	h.Source = source
+	h.SilenceReadError = err.Error()
+	s.health[source] = h
+}
+
+// ClearSilenceReadError clears the silence read error of a source.
+func (s *Store) ClearSilenceReadError(source string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h, ok := s.health[source]
+	if !ok || h.SilenceReadError == "" {
+		return
+	}
+	h.SilenceReadError = ""
+	s.health[source] = h
 }
 
 // RecordPollError marks a failed poll for a source.
@@ -157,6 +181,8 @@ func (s *Store) RecordPollError(source string, err error) {
 		LastPoll:    time.Now(),
 		LastError:   err.Error(),
 		ConsecFails: prev.ConsecFails + 1,
+		// A failed poll says nothing new about silence reads.
+		SilenceReadError: prev.SilenceReadError,
 	}
 }
 

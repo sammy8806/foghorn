@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { Alert, DisplayConfig, SilenceInfo, VisibleEntry } from '../stores/alerts';
-  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
+  import { acknowledgeAlert, acknowledgeResolvedAlert, alertMatchesBadgeRule, fieldNameFromRef, loadSourceCapabilities, refreshAlerts, resolveAlertFieldDisplay, sourceCapabilities, verbose } from '../stores/alerts';
+  import type { Matcher } from '../stores/alerts';
+  import { decideSilence, silenceReadHint } from '../stores/silenceAccess';
+  import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { TestNotificationForAlert, Unsilence } from '../../wailsjs/go/main/App';
   import { severityColor, formatDuration } from '../utils/severity';
   import { safeExternalURL } from '../utils/url';
@@ -103,11 +107,23 @@
     }).join('\n');
   }
 
-  $: silenceBadgeTitle = (alert.silences?.length)
+  $: silenceAccess = $sourceCapabilities[alert.source]?.silenceAccess;
+  $: readHint = silenceReadHint(alert.source, silenceAccess);
+  $: baseSilenceBadgeTitle = (alert.silences?.length)
     ? silenceTooltip(alert.silences)
     : alert.silencedBy?.length > 0
       ? `Silence IDs: ${alert.silencedBy.join(', ')}`
       : '';
+  $: silenceBadgeTitle = readHint ? [baseSilenceBadgeTitle, readHint].filter(Boolean).join('\n') : baseSilenceBadgeTitle;
+
+  // The silence "Silence…" would seed: every alert label as an equality matcher.
+  function alertMatchers(labels: Record<string, string>): Matcher[] {
+    return Object.entries(labels || {}).map(([name, value]) => ({ name, value, isRegex: false, isEqual: true }));
+  }
+  $: createDecision = decideSilence(alert.source, silenceAccess, alertMatchers(alert.labels), 'create');
+  $: writeDecisions = Object.fromEntries((alert.silences ?? []).map(s =>
+    [s.id, decideSilence(alert.source, silenceAccess, s.matchers ?? [], 'write')]));
+  $: hintBase = `hint-${alert.source}-${alert.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
 
   let expanded = false;
   let expireConfirmId: string | null = null;
@@ -192,12 +208,16 @@
     expireError = { ...expireError, [s.id]: '' };
     try {
       await Unsilence(alert.source, s.id);
-      expireConfirmId = null;
       void refreshAlerts();
     } catch (e) {
       expireError = { ...expireError, [s.id]: String(e) };
+      // A refused expire changes what this source may do; re-read it.
+      void loadSourceCapabilities();
     } finally {
       expiring = { ...expiring, [s.id]: false };
+      // Back to Edit / Expire now either way, so a refused expire isn't
+      // offered again from a confirm row that ignores the permission check.
+      expireConfirmId = null;
     }
   }
 
@@ -337,15 +357,23 @@
                     </button>
                     <button class="btn-link-edit" on:click|stopPropagation={cancelExpire} disabled={!!expiring[s.id]}>Cancel</button>
                   {:else}
-                    <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}>Edit</button>
-                    <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}>Expire now</button>
+                    <PermissionHint reason={writeDecisions[s.id]?.reason ?? ''} id={`${hintBase}-w-${s.id}`}>
+                      <button class="btn-link-edit" on:click|stopPropagation={() => openSilenceEdit(alert, s)}
+                        disabled={!writeDecisions[s.id]?.allowed}
+                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>{#if !writeDecisions[s.id]?.allowed}<PermissionIcon />{/if}Edit</button>
+                      <button class="btn-link-expire" on:click|stopPropagation={() => askExpire(s)}
+                        disabled={!writeDecisions[s.id]?.allowed}
+                        aria-describedby={writeDecisions[s.id]?.allowed ? undefined : `${hintBase}-w-${s.id}`}>{#if !writeDecisions[s.id]?.allowed}<PermissionIcon />{/if}Expire now</button>
+                    </PermissionHint>
                   {/if}
                 </div>
               </div>
               {#if s.comment}
                 <div class="silence-comment">{s.comment}</div>
               {/if}
-              {#if expireError[s.id]}
+              <!-- Once a refusal greys out Edit / Expire now, their hint (and the
+                   problem strip) carry it; the raw error would only repeat it. -->
+              {#if expireError[s.id] && writeDecisions[s.id]?.allowed !== false}
                 <div class="silence-error">{expireError[s.id]}</div>
               {/if}
             </div>
@@ -413,7 +441,11 @@
           {/if}
         {/if}
         {#if supportsSilence && !alert.silencedBy?.length && !isResolved}
-          <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}>Silence…</button>
+          <PermissionHint reason={createDecision.reason} id={`${hintBase}-c`}>
+            <button class="btn-silence" on:click|stopPropagation={() => openSilenceCreate(alert)}
+              disabled={!createDecision.allowed}
+              aria-describedby={createDecision.allowed ? undefined : `${hintBase}-c`}>{#if !createDecision.allowed}<PermissionIcon />{/if}Silence…</button>
+          </PermissionHint>
         {/if}
       </div>
     </div>
@@ -693,7 +725,9 @@
   .btn-link-edit:hover:not(:disabled) { background: rgba(96, 165, 250, 0.15); }
   .btn-link-expire { color: #f87171; }
   .btn-link-expire:hover:not(:disabled) { background: rgba(248, 113, 113, 0.15); }
-  .btn-link-edit:disabled, .btn-link-expire:disabled { opacity: 0.5; cursor: default; }
+  /* Disabled buttons dim by colour, never opacity: opacity would also fade the
+     permission triangle inside, which has to read the same on every control. */
+  .btn-link-edit:disabled, .btn-link-expire:disabled { color: #64748b; cursor: default; }
   .expire-confirm-label {
     color: #f87171;
     font-size: calc(10px * var(--font-scale, 1));
@@ -780,9 +814,11 @@
   }
   .btn-silence:disabled {
     color: #64748b;
+    border-color: rgba(51, 65, 85, 0.6);
     cursor: default;
   }
-  .btn-silence:hover { border-color: #f59e0b; color: #f59e0b; }
+  .btn-silence:hover:not(:disabled) { border-color: #f59e0b; color: #f59e0b; }
+
 
   .action-status {
     font-size: calc(11px * var(--font-scale, 1));

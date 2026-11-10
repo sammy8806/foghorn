@@ -2,7 +2,10 @@
   import type { Alert, AlertFieldDisplay, DisplayConfig, Matcher } from '../stores/alerts';
   import { sourceCapabilities } from '../stores/alerts';
   import { openSilenceFromMatchers } from '../stores/silenceEditor';
+  import { decideAcrossSources, decideSilence } from '../stores/silenceAccess';
   import AlertCard from './AlertCard.svelte';
+  import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { severityColor, severityOrder } from '../utils/severity';
 
   export let groupParts: AlertFieldDisplay[] = [];
@@ -22,7 +25,12 @@
 
   $: groupMatchers = matchersFromGroupParts(groupParts);
   $: preferredSource = sourceForGroup(groupParts, alerts);
-  $: canSilenceGroup = alerts.some((alert) => !!$sourceCapabilities[alert.source]?.supportsSilence);
+  $: hasSilenceSource = alerts.some((alert) => !!$sourceCapabilities[alert.source]?.supportsSilence);
+  $: groupDecision = preferredSource
+    ? decideSilence(preferredSource, $sourceCapabilities[preferredSource]?.silenceAccess, groupMatchers, 'create')
+    : decideAcrossSources($sourceCapabilities, alerts.map((alert) => alert.source), groupMatchers, 'create');
+  $: canSilenceGroup = hasSilenceSource && groupDecision.allowed;
+  $: groupHintId = `group-hint-${Math.random().toString(36).slice(2)}`;
 
   function matchersFromGroupParts(parts: AlertFieldDisplay[]): Matcher[] {
     const seen = new Set<string>();
@@ -116,9 +124,12 @@
       role="menu"
       tabindex="-1"
     >
-      <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}>
-        Silence group…
-      </button>
+      <PermissionHint reason={groupDecision.reason} id={groupHintId}>
+        <button class="group-menu-item" role="menuitem" disabled={!canSilenceGroup} on:click={silenceGroup}
+          aria-describedby={groupDecision.allowed ? undefined : groupHintId}>
+          {#if !groupDecision.allowed}<PermissionIcon />{/if}Silence group…
+        </button>
+      </PermissionHint>
     </div>
   {/if}
 

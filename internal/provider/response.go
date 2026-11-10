@@ -49,3 +49,5 @@ func readBodyLimited(resp *http.Response) ([]byte, error) {
 	}
 	return body, nil
 }
+
+func jsonUnmarshal(body []byte, out any) error { return json.Unmarshal(body, out) }

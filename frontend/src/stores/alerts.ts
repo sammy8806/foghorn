@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth, RefreshAlerts } from '../../wailsjs/go/main/App';
+import { GetAlerts, GetDisplayConfig, GetOnCallStatus, GetSeverityConfig, GetSeverityCounts, GetSourceCapabilities, GetSourcesHealth, ManualRefresh, RefreshAlerts } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { emptySeverityCounts, setSeverityConfig, severityConfig, severityOrder } from './severity';
 
@@ -237,6 +237,8 @@ export interface SourceHealth {
   lastPoll: string;
   lastError?: string;
   consecFails: number;
+  // silenceReadError is the last failed silence list; alerts still poll.
+  silenceReadError?: string;
 }
 
 export interface OnCallUser {
@@ -253,8 +255,39 @@ export interface OnCallStatus {
   lastUpdated: string;
 }
 
+export interface SilenceDenials {
+  createSource: boolean;
+  writeSource: boolean;
+  createGeneral: boolean;
+  writeGeneral: boolean;
+  createFolders: string[] | null;
+  writeFolders: string[] | null;
+  status: number;
+  message: string;
+  at: string;
+}
+
+// SilenceAccess mirrors model.SilenceAccess: what a source's credentials may
+// do with silences. decideSilence (stores/silenceAccess.ts) reads it.
+export interface SilenceAccess {
+  granularity: '' | 'folder' | 'source' | 'off';
+  check: 'unchecked' | 'ok' | 'error' | 'unsupported';
+  checkError?: string;
+  checkedAt: string;
+  canCreateAll: boolean;
+  canWriteAll: boolean;
+  canRead: boolean;
+  createFolders: string[] | null;
+  writeFolders: string[] | null;
+  ruleFolders: Record<string, string> | null;
+  folderParents: Record<string, string> | null;
+  folderTitles: Record<string, string> | null;
+  denied: SilenceDenials;
+}
+
 export interface SourceCapabilities {
   supportsSilence: boolean;
+  silenceAccess?: SilenceAccess;
 }
 
 export const verbose = writable(false);
@@ -301,12 +334,16 @@ function logHealthFailures(previousEntries: SourceHealth[], nextEntries: SourceH
 export async function reloadFromStore(): Promise<void> {
   if (!isWails()) return;
   try {
-    const [alertList, counts, health, onCall] = await Promise.all([
+    const [alertList, counts, health, onCall, capabilities] = await Promise.all([
       GetAlerts(),
       GetSeverityCounts(),
       GetSourcesHealth(),
       GetOnCallStatus(),
+      // Permission state changes with lookups and refused writes, so it is
+      // re-read with every store snapshot rather than only at startup.
+      GetSourceCapabilities().catch(() => null),
     ]);
+    if (capabilities) sourceCapabilities.set(capabilities as Record<string, SourceCapabilities>);
     const incoming = alertList || [];
     const currentHealth = health || [];
 
@@ -363,8 +400,10 @@ export async function reloadFromStore(): Promise<void> {
 // current store. The poll runs in parallel per source on the backend; results
 // stream in via alerts:updated as each finishes, so a slow or broken source no
 // longer blocks the others. Use for explicit refreshes (mount, manual refresh,
-// after a silence/ack action).
-export async function refreshAlerts(): Promise<void> {
+// after a silence/ack action). `manual` is the user's own refresh: it also
+// makes the backend forget refused silence writes, since the user may just
+// have fixed the credentials.
+export async function refreshAlerts(opts: { manual?: boolean } = {}): Promise<void> {
   if (!isWails()) {
     // No backend — show empty state instead of hanging/crashing.
     alerts.set([]);
@@ -375,7 +414,7 @@ export async function refreshAlerts(): Promise<void> {
     return;
   }
   try {
-    await RefreshAlerts();
+    await (opts.manual ? ManualRefresh() : RefreshAlerts());
   } catch (e) {
     error.set(String(e));
   }

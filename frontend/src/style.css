@@ -192,3 +192,19 @@ html[data-platform="darwin"], html[data-platform="darwin"] body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Fast hover hint for disabled controls (utils/hint.ts). Appended to body. */
+.foghorn-hint {
+  position: fixed;
+  z-index: 10000;
+  max-width: 320px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: var(--panel-bg, rgba(24, 34, 54, 0.97));
+  color: #fde68a;
+  font-size: calc(11.5px * var(--font-scale, 1));
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}

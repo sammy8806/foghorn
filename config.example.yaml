@@ -76,6 +76,13 @@ sources:
   #   # Optional: treat another alert label as the severity source.
   #   # Falls back to the standard `severity` label when absent.
   #   severity_label: priority
+  #   # Optional: check whether the token may create and edit silences, and
+  #   # grey out silence controls (with a hint) where it can't.
+  #   silence_check:
+  #     granularity: folder  # folder (per alert's rule folder) | source | off
+  #     on_start: true       # look up permissions at start and config reload
+  #     interval: 15m        # repeat the lookup; 0 = never
+  #     on_denied: true      # learn from silence writes Grafana refused (401/403)
   # - name: betterstack-production
   #   type: betterstack
   #   # Optional for Better Stack; defaults to https://uptime.betterstack.com.

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -314,5 +315,23 @@ func TestRecordPollClearsPending(t *testing.T) {
 	h, _ := healthFor(s.SourcesHealth(), "src1")
 	if h.Pending {
 		t.Fatalf("expected pending to clear after a successful poll, got %#v", h)
+	}
+}
+
+func TestSilenceReadErrorSurvivesPollRecords(t *testing.T) {
+	s := New()
+	s.RecordSilenceReadError("g", errors.New("boom"))
+	s.RecordPollSuccess("g")
+	h := s.SourcesHealth()[0]
+	if !h.OK || h.SilenceReadError != "boom" {
+		t.Fatalf("after success %+v", h)
+	}
+	s.RecordPollError("g", errors.New("down"))
+	if h := s.SourcesHealth()[0]; h.SilenceReadError != "boom" {
+		t.Fatalf("after error %+v", h)
+	}
+	s.ClearSilenceReadError("g")
+	if h := s.SourcesHealth()[0]; h.SilenceReadError != "" {
+		t.Fatalf("after clear %+v", h)
 	}
 }

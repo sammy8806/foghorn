@@ -15,6 +15,7 @@ import (
 
 	"foghorn/internal/config"
 	"foghorn/internal/model"
+	"foghorn/internal/silenceaccess"
 )
 
 type alertmanagerAPI struct {
@@ -26,6 +27,12 @@ type alertmanagerAPI struct {
 	kind   string
 	oidc   *oidcDeviceAuthenticator
 	cookie *cookieAuthenticator
+	access *silenceaccess.Tracker
+	// closed is set by Close; a replaced provider must not run lookups.
+	closed bool
+	// silenceMatchers maps active silence IDs from the last FetchSilences to
+	// their matchers, so a refused expire can be narrowed.
+	silenceMatchers map[string][]model.Matcher
 }
 
 func NewAlertmanager(cfg config.SourceConfig) *alertmanagerAPI {
@@ -59,6 +66,9 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 			return http.ErrUseLastResponse
 		}
 	}
+	if kind == "grafana" {
+		logSilenceCheckConfig(cfg)
+	}
 	return &alertmanagerAPI{
 		cfg:    cfg,
 		client: client,
@@ -66,6 +76,7 @@ func newAlertmanagerAPI(cfg config.SourceConfig, kind, apiV2 string) *alertmanag
 		kind:   kind,
 		oidc:   newOIDCDeviceAuthenticator(cfg.Name, cfg.Auth, client),
 		cookie: cookieAuth,
+		access: silenceaccess.NewTracker(kind, cfg.SilenceCheck),
 	}
 }
 
@@ -77,6 +88,9 @@ func (a *alertmanagerAPI) SupportsSilence() bool { return true }
 // login from a provider replaced during config reload must not later overwrite
 // the replacement provider's credential-store slot.
 func (a *alertmanagerAPI) Close() {
+	a.mu.Lock()
+	a.closed = true
+	a.mu.Unlock()
 	if a.oidc != nil {
 		a.oidc.Close()
 	}
@@ -197,6 +211,18 @@ func (a *alertmanagerAPI) Silence(ctx context.Context, req model.SilenceRequest)
 	}
 	defer resp.Body.Close()
 
+	// Classify a refusal before reading the body: a truncated 401/403 body
+	// must not hide the refusal behind a read error.
+	if isDeniedStatus(resp.StatusCode) {
+		denied := a.deniedError(resp.StatusCode, readLimited(resp.Body, maxErrorBodyBytes))
+		op := silenceaccess.OpCreate
+		if req.ID != "" {
+			op = silenceaccess.OpWrite
+		}
+		a.recordSilenceDenied(op, req.Matchers, denied)
+		return "", denied
+	}
+
 	respBody, readErr := readBodyLimited(resp)
 	if readErr != nil {
 		return "", fmt.Errorf("reading silence response from %s: %w", a.cfg.Name, readErr)
@@ -239,6 +265,11 @@ func (a *alertmanagerAPI) Unsilence(ctx context.Context, silenceID string) error
 	}
 	defer resp.Body.Close()
 
+	if isDeniedStatus(resp.StatusCode) {
+		denied := a.deniedError(resp.StatusCode, readLimited(resp.Body, maxErrorBodyBytes))
+		a.recordSilenceDenied(silenceaccess.OpWrite, a.cachedSilenceMatchers(silenceID), denied)
+		return denied
+	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("delete silence on %s %s returned HTTP %d", a.kind, a.cfg.Name, resp.StatusCode)
 	}
@@ -270,6 +301,12 @@ func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInf
 	}
 
 	var silences []model.SilenceInfo
+	byID := make(map[string][]model.Matcher)
+	defer func() {
+		a.mu.Lock()
+		a.silenceMatchers = byID
+		a.mu.Unlock()
+	}()
 	for _, s := range raw {
 		if s.Status.State != "active" {
 			continue
@@ -285,6 +322,7 @@ func (a *alertmanagerAPI) FetchSilences(ctx context.Context) ([]model.SilenceInf
 				IsEqual: m.IsEqual,
 			})
 		}
+		byID[s.ID] = matchers
 		silences = append(silences, model.SilenceInfo{
 			ID:        s.ID,
 			CreatedBy: s.CreatedBy,

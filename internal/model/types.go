@@ -78,10 +78,46 @@ type SourceHealth struct {
 	LastPoll    time.Time `json:"lastPoll"`
 	LastError   string    `json:"lastError,omitempty"`
 	ConsecFails int       `json:"consecFails"`
+	// SilenceReadError is the last silence-list failure; empty when the last
+	// silence read worked or was skipped.
+	SilenceReadError string `json:"silenceReadError,omitempty"`
 }
 
 type SourceCapabilities struct {
-	SupportsSilence bool `json:"supportsSilence"`
+	SupportsSilence bool           `json:"supportsSilence"`
+	SilenceAccess   *SilenceAccess `json:"silenceAccess,omitempty"`
+}
+
+// SilenceAccess is a source's knowledge of what its credentials may do with
+// silences. The frontend decides per silence from it (decideSilence).
+type SilenceAccess struct {
+	Granularity   string            `json:"granularity"` // "folder"|"source"|"off"; "" for Alertmanager
+	Check         string            `json:"check"`       // "unchecked"|"ok"|"error"|"unsupported"
+	CheckError    string            `json:"checkError,omitempty"`
+	CheckedAt     time.Time         `json:"checkedAt"`
+	CanCreateAll  bool              `json:"canCreateAll"`
+	CanWriteAll   bool              `json:"canWriteAll"`
+	CanRead       bool              `json:"canRead"` // meaningful only when Check == "ok"
+	CreateFolders []string          `json:"createFolders"`
+	WriteFolders  []string          `json:"writeFolders"`
+	RuleFolders   map[string]string `json:"ruleFolders"`   // rule UID -> folder UID
+	FolderParents map[string]string `json:"folderParents"` // folder UID -> parent UID ("" = top level)
+	FolderTitles  map[string]string `json:"folderTitles"`  // folder UID -> title (display only)
+	Denied        SilenceDenials    `json:"denied"`
+}
+
+// SilenceDenials records silence writes the source refused, as narrowly as
+// the refused silence allows.
+type SilenceDenials struct {
+	CreateSource  bool      `json:"createSource"`
+	WriteSource   bool      `json:"writeSource"`
+	CreateGeneral bool      `json:"createGeneral"`
+	WriteGeneral  bool      `json:"writeGeneral"`
+	CreateFolders []string  `json:"createFolders"`
+	WriteFolders  []string  `json:"writeFolders"`
+	Status        int       `json:"status"`
+	Message       string    `json:"message"`
+	At            time.Time `json:"at"`
 }
 
 type OnCallUser struct {

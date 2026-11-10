@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"time"
+
 	"foghorn/internal/model"
 )
 
@@ -25,6 +27,24 @@ type ProviderCloser interface {
 // SilenceProvider is implemented by sources that can fetch silence details.
 type SilenceProvider interface {
 	FetchSilences(ctx context.Context) ([]model.SilenceInfo, error)
+}
+
+// SilenceAccessProvider is implemented by sources that track whether their
+// credentials may read and write silences.
+type SilenceAccessProvider interface {
+	SilenceAccess() model.SilenceAccess
+	// RefreshSilenceAccess runs a permission lookup when one is due. Never
+	// returns an error: failures land in the snapshot.
+	RefreshSilenceAccess(ctx context.Context, now time.Time)
+	CanReadSilences() bool
+}
+
+// SilenceAccessRechecker is implemented by sources whose permission lookup an
+// explicit refresh can bring forward and whose refused writes a manual
+// refresh can forget.
+type SilenceAccessRechecker interface {
+	RequestSilenceAccessCheck()
+	ClearSilenceDenials()
 }
 
 // OnCallProvider is implemented by sources that can expose current on-call users.

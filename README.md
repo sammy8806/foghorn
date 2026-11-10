@@ -46,6 +46,7 @@ KDE also needs these GTK libraries. GNOME needs AppIndicator support to show a t
 
 - Connect multiple instances of Alertmanager, Grafana Alerting, Prometheus, and Better Stack. Sources poll independently, so a slow source does not block the others.
 - View, create, edit, and expire silences on sources that support them. Build silence matchers from an alert or a search query.
+- See which silences your token may write: controls it can't use are greyed out with the missing Grafana permission, and failed silence reads or writes show up in the problem strip.
 - Search with free text, negation, exact label matches, and regular expressions. Filter by severity or source, and choose grouping and sorting presets.
 - Show the current Better Stack on-call engineer and follow links to incidents.
 - Receive native desktop notifications and monitor alert state from the system tray.

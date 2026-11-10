@@ -39,6 +39,9 @@
     type FilterState,
   } from '../stores/filter';
   import { queryToMatchers } from '../stores/query';
+  import { decideAcrossSources } from '../stores/silenceAccess';
+  import PermissionHint from './PermissionHint.svelte';
+  import PermissionIcon from './PermissionIcon.svelte';
   import { severityConfig, severityLabel } from '../stores/severity';
   import { GetNotificationPermissionStatus, GetUIConfig, LayoutPopup, OpenNotificationSettings, RequestNotificationPermission, RevealConfigFile } from '../../wailsjs/go/main/App';
   import { Environment, EventsOn, ScreenGetAll, WindowIsFullscreen, WindowToggleMaximise } from '../../wailsjs/runtime/runtime';
@@ -51,6 +54,8 @@
     notificationProblem,
     problemsFingerprint,
     sourceProblem,
+    silenceAccessProblems,
+    silenceReadProblem,
     type Problem,
     type ProblemActionKind,
   } from '../stores/problems';
@@ -186,12 +191,17 @@
   $: searchOpen = searchExpanded || hasSearchText;
   $: silenceableMatchers = queryToMatchers($parsedQuery).matchers;
   $: hasSilenceableSources = Object.values($sourceCapabilities).some(c => c.supportsSilence);
-  $: canOpenSilenceEditor = hasSilenceableSources;
-  $: silenceFromSearchTitle = canOpenSilenceEditor
-    ? silenceableMatchers.length > 0
-      ? 'Create a silence from this search'
-      : 'Create a new silence'
-    : 'No configured source supports silences';
+  // A search without a rule-UID matcher is a general silence; grey out when no
+  // silence-capable source's credentials could take it.
+  $: searchSilenceDecision = decideAcrossSources($sourceCapabilities, Object.keys($sourceCapabilities), silenceableMatchers, 'create');
+  $: canOpenSilenceEditor = hasSilenceableSources && searchSilenceDecision.allowed;
+  $: silenceFromSearchTitle = !hasSilenceableSources
+    ? 'No configured source supports silences'
+    : !searchSilenceDecision.allowed
+      ? searchSilenceDecision.reason
+      : silenceableMatchers.length > 0
+        ? 'Create a silence from this search'
+        : 'Create a new silence';
 
   function silenceFromSearch() {
     if (canOpenSilenceEditor) openSilenceFromQuery($parsedQuery);
@@ -328,7 +338,7 @@
 
   async function handleRefresh() {
     refreshing = true;
-    await refreshAlerts();
+    await refreshAlerts({ manual: true });
     refreshing = false;
   }
 
@@ -387,6 +397,8 @@
   // since it signs as a different bundle than the one the permission is on.
   $: problems = [
     ...(!$loading ? failingSources.map(sourceProblem) : []),
+    ...$sourcesHealth.map(silenceReadProblem).filter((p): p is Problem => p !== null),
+    ...Object.keys($sourceCapabilities).sort().flatMap((source) => silenceAccessProblems(source, $sourceCapabilities[source]?.silenceAccess)),
     ...configProblems($configDiagnostics, $platform),
     ...(!isMacOSDevMode ? [notificationProblem(notificationPermissionStatus)].filter((p): p is Problem => p !== null) : []),
   ];
@@ -610,15 +622,20 @@
       </div>
 
       <!-- Create a silence from the current search, or start one from scratch. -->
+      <PermissionHint reason={hasSilenceableSources ? searchSilenceDecision.reason : ''} id="silence-from-search-hint">
       <button
         class="icon-toggle"
         disabled={!canOpenSilenceEditor}
         on:click={silenceFromSearch}
-        title={silenceFromSearchTitle}
+        title={searchSilenceDecision.allowed || !hasSilenceableSources ? silenceFromSearchTitle : undefined}
         aria-label="Silence from search"
+        class:has-corner-warn={hasSilenceableSources && !searchSilenceDecision.allowed}
+        aria-describedby={hasSilenceableSources && !searchSilenceDecision.allowed ? 'silence-from-search-hint' : undefined}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+        {#if hasSilenceableSources && !searchSilenceDecision.allowed}<span class="corner-warn"><PermissionIcon /></span>{/if}
       </button>
+      </PermissionHint>
 
       <!-- Icon-button toggles -->
       <button
@@ -1078,8 +1095,12 @@
     background: var(--chrome-ctrl-on);
   }
   .icon-toggle:disabled {
-    opacity: 0.4;
     cursor: not-allowed;
+  }
+  /* Only the glyph fades, so a permission triangle on the corner keeps the
+     same strength it has inside the text buttons. */
+  .icon-toggle:disabled > svg {
+    opacity: 0.4;
   }
   .icon-toggle-badge {
     position: absolute;
@@ -1466,4 +1487,27 @@
     -webkit-user-drag: none;
   }
 
+  /* Icon-only button: the permission triangle overlaps the glyph's
+     bottom-right corner (count badges take the top-right). A ring in the
+     chrome colour cuts it out of the glyph's stroke underneath. */
+  .corner-warn {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    line-height: 0;
+  }
+  .corner-warn :global(.permission-warn) {
+    margin: 0;
+    width: 10px;
+    height: 10px;
+    overflow: visible;
+  }
+  .corner-warn :global(.permission-warn path:first-child) {
+    stroke: var(--chrome-tint);
+    stroke-width: 5;
+    paint-order: stroke;
+  }
+  .icon-toggle.has-corner-warn {
+    position: relative;
+  }
 </style>

@@ -76,6 +76,45 @@ The variables must be available to the Foghorn process. An app opened from the d
 
 See `config.example.yaml` for the full reference, including severity mapping, display/grouping options, notification rules, and Better Stack-specific fields.
 
+### Silence permission check
+
+A Grafana token may be allowed to read alerts but not to create or edit
+silences, or only for some folders. Foghorn checks this and greys out the
+**Silence**, **Edit** and **Expire** controls, with a hint naming the missing
+permission, where the token can't do it. Grafana sources take an optional
+block (defaults shown):
+
+```yaml
+sources:
+  - name: grafana
+    type: grafana
+    url: https://grafana.example.com
+    silence_check:
+      granularity: folder  # folder | source | off
+      on_start: true
+      interval: 15m        # 0 = never repeat
+      on_denied: true
+```
+
+- `granularity: folder` decides per alert from the folder of the alert's rule
+  (Grafana grants `alert.silences:create`/`write` per folder, inherited by
+  subfolders). A silence without an `__alert_rule_uid__` matcher needs the
+  permission on all folders. `source` decides once for the whole source.
+  `off` never greys anything out from the lookup.
+- `on_start` and `interval` say when Foghorn reads
+  `/api/access-control/user/permissions` (plus the rules and folder lists for
+  `folder`). A manual refresh reads it again at once and forgets refused writes. The token needs no extra
+  permission for this.
+- `on_denied` greys out what Grafana refused with 401/403 on a silence write,
+  as narrowly as the silence allows, until the token's permissions change, you
+  press refresh, or the config is reloaded. Alertmanager sources always do this.
+- When the token can't read silences (`alert.silences:read`), Foghorn stops
+  fetching them; silenced alerts show a hint instead of the silence details.
+
+Unknown means enabled: until a lookup succeeds, or if it fails, nothing is
+greyed out. Lookup failures, refused writes and failed silence reads appear in
+the problem strip.
+
 ### Command line
 
 Foghorn can report its version and manage saved cookie and OIDC logins without
