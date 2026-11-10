@@ -6,31 +6,10 @@
 # AppIndicator3 so the AppImage runs on any host with a glibc >= the build
 # host's glibc version.
 #
-# CAVEATS
-# -------
-# 1. glibc ABI floor: the AppImage's minimum glibc version equals the build
-#    host's glibc version. Build on the oldest supported distro (e.g. Ubuntu
-#    22.04 / glibc 2.35) to maximise portability.  Fedora ships a newer glibc
-#    so AppImages built here won't run on older distros.
-#
-# 2. WebKitGTK API version:
-#    - webkit2gtk-4.0: shipped by Ubuntu ≤ 23.10, Debian 12, RHEL 9.
-#    - webkit2gtk-4.1: shipped by Ubuntu 24.04+, Fedora 37+.
-#    This script auto-detects which variant is present and selects the correct
-#    Wails build tag (webkit2_41).  The resulting AppImage requires the same
-#    ABI on the target host; you cannot mix API versions.
-#
-# 3. WebKit helpers: WebKitGTK spawns helper processes such as
-#    WebKitNetworkProcess at runtime.  They must be bundled alongside the
-#    shared libraries and exposed via WEBKIT_EXEC_PATH.
-#
-# 4. Sandbox / SUID: WebKit's process sandbox may require a SUID helper.
-#    If the app opens but pages are blank, run with --no-sandbox or install
-#    the appropriate webkit helper on the target system.
-#
-# 4. Wayland: the bundle uses the X11/XWayland GTK backend. Native Wayland
-#    support requires additional environment variables (GDK_BACKEND=wayland)
-#    and may have input-method limitations.
+# Build on Ubuntu 22.04 to keep the glibc requirement at 2.35. The bundle
+# includes the selected WebKit ABI, its helper processes, GTK3 and the tray
+# libraries. Hosts need an X11/XWayland desktop and their graphics drivers.
+# WebKit renders in software and does not load host GStreamer/GIO modules.
 #
 # Final artifact: build/bin/foghorn-<version>-x86_64.AppImage
 
@@ -43,6 +22,10 @@ LINUXDEPLOY_VERSION="1-alpha-20240109-1"
 LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_VERSION}/linuxdeploy-x86_64.AppImage"
 LINUXDEPLOY_GTK_COMMIT="3b67a1d1c1b0c8268f57f2bce40fe2d33d409cea"
 LINUXDEPLOY_GTK_URL="https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/${LINUXDEPLOY_GTK_COMMIT}/linuxdeploy-plugin-gtk.sh"
+APPIMAGETOOL_VERSION="1.9.1"
+APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+APPIMAGE_RUNTIME_VERSION="20251108"
+APPIMAGE_RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "This script is for Linux only." >&2
@@ -71,12 +54,15 @@ require_tool node
 require_tool pkg-config
 require_tool curl
 require_tool perl
+require_tool strip
+require_tool sha256sum
 require_tool patchelf \
   "Install with: sudo dnf install patchelf  (Fedora) | sudo apt install patchelf  (Debian/Ubuntu)"
 
 # ── WebKitGTK version detection ───────────────────────────────────────────────
-# Prefer 4.0 for broadest target-host compat; fall back to 4.1 (Fedora 37+,
-# Ubuntu 24.04+).  Wails requires the 'webkit2_41' build tag with the 4.1 API.
+# Prefer 4.0 when available; fall back to 4.1. Both are bundled, so target
+# hosts need neither ABI installed. Wails requires the 'webkit2_41' build tag
+# with the 4.1 API.
 
 WEBKIT_PC=""
 WEBKIT_VER=""
@@ -199,6 +185,7 @@ cp "$ROOT_DIR/build/appicon.png" "$FOGHORN_APPDIR/foghorn.png"
 cat > "$FOGHORN_APPDIR/AppRun" <<'EOF'
 #!/usr/bin/env bash
 HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="$HERE"
 
 # Source apprun-hooks (e.g. GTK theme/icon setup from linuxdeploy-plugin-gtk).
 if [[ -d "$HERE/apprun-hooks" ]]; then
@@ -214,9 +201,7 @@ export GDK_BACKEND=x11
 export GDK_GL=disable
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-if [[ -d "$HERE/usr/libexec/webkit2gtk" ]]; then
-  export WEBKIT_EXEC_PATH="$HERE/usr/libexec/webkit2gtk"
-fi
+export WEBKIT_EXEC_PATH="$HERE/usr/libexec/webkit2gtk"
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
@@ -224,11 +209,17 @@ export WEBKIT_DMABUF_RENDERER_FORCE_SHM=1
 export WEBKIT_GST_DISABLE_GL_SINK=1
 export WEBKIT_HARDWARE_ACCELERATION_POLICY=never
 export WEBKIT_WEBGL_DISABLE_GBM=1
+# Host GStreamer/GIO modules may use an ABI newer than the bundled libraries.
+# Foghorn needs no media codecs; restrict plugin discovery to the bundle.
+export GST_PLUGIN_SYSTEM_PATH_1_0="$HERE/usr/lib/gstreamer-1.0"
+export GST_PLUGIN_PATH_1_0="$HERE/usr/lib/gstreamer-1.0"
+export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 exec "$HERE/usr/bin/foghorn" "$@"
 EOF
 chmod +x "$FOGHORN_APPDIR/AppRun"
 
-# ── Locate runtime libraries for build-time validation ────────────────────────
+# ── Locate runtime libraries to bundle explicitly ─────────────────────────────
+# The gtk plugin auto-detects GTK itself but won't pick these up on its own.
 find_lib() {
   local pattern="$1"
   for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib; do
@@ -270,15 +261,22 @@ LIB_JSCORE="$(find_lib "libjavascriptcoregtk-${WEBKIT_VER}.so.*" | head -n1)"
 LIB_AYATANA="$(find_lib 'libayatana-appindicator3.so.*' | head -n1)"
 WEBKIT_HELPER_SRC_DIR="$(find_webkit_helper_dir || true)"
 
-if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" ]]; then
+if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" || -z "$WEBKIT_HELPER_SRC_DIR" ]]; then
   echo "Could not locate one or more runtime libraries to bundle:" >&2
   echo "  libwebkit2gtk-${WEBKIT_VER}: ${LIB_WEBKIT:-MISSING}" >&2
   echo "  libjavascriptcoregtk-${WEBKIT_VER}: ${LIB_JSCORE:-MISSING}" >&2
   echo "  libayatana-appindicator3: ${LIB_AYATANA:-MISSING}" >&2
+  echo "  WebKit helper dir: ${WEBKIT_HELPER_SRC_DIR:-MISSING}" >&2
   exit 1
 fi
 
-LINUXDEPLOY_EXECUTABLE_ARGS=()
+# Bundle WebKit's runtime helper processes.  libwebkit2gtk spawns these at
+# startup, so copying only the shared objects leaves the AppImage dependent on
+# the host's /usr/lib/.../webkit2gtk-* directory.
+WEBKIT_HELPER_DST_DIR="$FOGHORN_APPDIR/usr/libexec/webkit2gtk"
+mkdir -p "$WEBKIT_HELPER_DST_DIR"
+cp -a "$WEBKIT_HELPER_SRC_DIR"/WebKit*Process "$WEBKIT_HELPER_DST_DIR"/
+
 
 find_compiled_webkit_base_paths() {
   local lib_path="$1"
@@ -289,7 +287,7 @@ find_compiled_webkit_base_paths() {
 patch_webkit_helper_path() {
   local lib_path="$1"
   local from
-  local to="usr/bin"
+  local to="usr/libexec/webkit2gtk"
   mapfile -t compiled_paths < <(find_compiled_webkit_base_paths "$lib_path")
 
   if (( ${#compiled_paths[@]} == 0 )); then
@@ -325,26 +323,44 @@ copy_webkit_injected_bundle() {
 
   while IFS= read -r compiled_base; do
     if [[ -d "$compiled_base/injected-bundle" ]]; then
-      mkdir -p "$FOGHORN_APPDIR/usr/bin/injected-bundle"
-      cp -a "$compiled_base/injected-bundle"/. "$FOGHORN_APPDIR/usr/bin/injected-bundle"/
+      mkdir -p "$FOGHORN_APPDIR/usr/libexec/webkit2gtk/injected-bundle"
+      cp -a "$compiled_base/injected-bundle"/. "$FOGHORN_APPDIR/usr/libexec/webkit2gtk/injected-bundle"/
     fi
   done < <(find_compiled_webkit_base_paths "$lib_path")
 
   return 0
 }
 
-# ── Package AppImage ──────────────────────────────────────────────────────────
-# Do not bundle GTK/WebKitGTK. WebKitGTK spawns helper processes and relies on a
-# matching graphics/media stack; bundling Ubuntu's stack into Fedora caused EGL
-# and GStreamer ABI failures. The AppImage uses the target host's GTK/WebKitGTK.
+# ── Run linuxdeploy ───────────────────────────────────────────────────────────
+# Add CACHE_DIR to PATH so linuxdeploy can find linuxdeploy-plugin-gtk.sh.
+# When running from an extracted AppRun, plugin discovery searches PATH; the
+# original AppImage approach found plugins in its own directory automatically.
 cd "$STAGE_DIR"
+
+PATH="$CACHE_DIR:$PATH" \
+DEPLOY_GTK_VERSION=3 \
+"$LINUXDEPLOY" \
+  --appdir "$FOGHORN_APPDIR" \
+  --plugin gtk \
+  --library "$LIB_WEBKIT" \
+  --library "$LIB_JSCORE" \
+  --library "$LIB_AYATANA" \
+  --deploy-deps-only "$WEBKIT_HELPER_DST_DIR"
+
+# Mesa's EGL driver is supplied by the host and may need Wayland symbols
+# newer than the build distro provides, even with GDK_BACKEND=x11. Keep its
+# client library on the host too; bundling Ubuntu's copy breaks newer Fedora.
+# The GTK plugin can reintroduce it during its own dependency deployment.
+rm -f "$FOGHORN_APPDIR/usr/lib/"libwayland-client.so*
 
 OUT_PATH="$BIN_DIR/foghorn-${VERSION}-x86_64.AppImage"
 rm -f "$OUT_PATH"
 PATCHED_LIB_WEBKIT="$FOGHORN_APPDIR/usr/lib/$(basename "$LIB_WEBKIT")"
-if [[ -f "$PATCHED_LIB_WEBKIT" ]]; then
-  copy_webkit_injected_bundle "$PATCHED_LIB_WEBKIT"
+if [[ ! -f "$PATCHED_LIB_WEBKIT" ]]; then
+  echo "Bundled WebKit library not found after linuxdeploy: $PATCHED_LIB_WEBKIT" >&2
+  exit 1
 fi
+copy_webkit_injected_bundle "$PATCHED_LIB_WEBKIT"
 
 shopt -s nullglob
 for bundled_webkit_lib in "$FOGHORN_APPDIR/usr/lib/libwebkit2gtk-${WEBKIT_VER}.so"*; do
@@ -352,13 +368,33 @@ for bundled_webkit_lib in "$FOGHORN_APPDIR/usr/lib/libwebkit2gtk-${WEBKIT_VER}.s
 done
 shopt -u nullglob
 
-APPIMAGETOOL="$LINUXDEPLOY_EXTRACTED/plugins/linuxdeploy-plugin-appimage/appimagetool-prefix/usr/bin/appimagetool"
-if [[ ! -x "$APPIMAGETOOL" ]]; then
-  echo "appimagetool not found in linuxdeploy cache: $APPIMAGETOOL" >&2
-  exit 1
+# Use a pinned static type-2 runtime rather than linuxdeploy's old FUSE2
+# runtime. Extracting the tool and running the result requires no host FUSE.
+fetch_verified() {
+  local url="$1" path="$2" checksum="$3"
+  if [[ ! -f "$path" ]]; then
+    curl -fsSL -o "$path" "$url"
+  fi
+  if ! printf '%s  %s\n' "$checksum" "$path" | sha256sum --check; then
+    rm -f "$path"
+    exit 1
+  fi
+}
+APPIMAGETOOL_DIR="$CACHE_DIR/appimagetool-$APPIMAGETOOL_VERSION"
+mkdir -p "$APPIMAGETOOL_DIR"
+fetch_verified \
+  "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage" \
+  "$APPIMAGETOOL_DIR/tool.AppImage" "$APPIMAGETOOL_SHA256"
+chmod +x "$APPIMAGETOOL_DIR/tool.AppImage"
+if [[ ! -d "$APPIMAGETOOL_DIR/squashfs-root" ]]; then
+  (cd "$APPIMAGETOOL_DIR" && ./tool.AppImage --appimage-extract >/dev/null)
 fi
-
-ARCH=x86_64 "$APPIMAGETOOL" "$FOGHORN_APPDIR" "$OUT_PATH"
+APPIMAGE_RUNTIME="$CACHE_DIR/runtime-$APPIMAGE_RUNTIME_VERSION-x86_64"
+fetch_verified \
+  "https://github.com/AppImage/type2-runtime/releases/download/$APPIMAGE_RUNTIME_VERSION/runtime-x86_64" \
+  "$APPIMAGE_RUNTIME" "$APPIMAGE_RUNTIME_SHA256"
+ARCH=x86_64 "$APPIMAGETOOL_DIR/squashfs-root/AppRun" \
+  --runtime-file "$APPIMAGE_RUNTIME" "$FOGHORN_APPDIR" "$OUT_PATH"
 chmod +x "$OUT_PATH"
 
 echo "$OUT_PATH"

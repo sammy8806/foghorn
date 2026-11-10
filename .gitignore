@@ -1,4 +1,5 @@
 build/bin
+build/appimage-test
 build/.cache
 build/dist
 build/windows/installer/tmp

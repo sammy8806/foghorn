@@ -21,26 +21,20 @@ Download the package for your platform from the [latest release](https://github.
 | Platform | Package | Installation |
 | --- | --- | --- |
 | macOS, Apple Silicon and Intel | Universal `.dmg` | Open the disk image and drag Foghorn into Applications. |
-| Linux, x86_64 | `.AppImage` | Install the runtime packages below, make the file executable, and run it. |
+| Linux, x86_64 | `.AppImage` | Make the file executable and run it. |
 | Windows, x64 | `-amd64-installer.exe` | Run the installer. It also installs WebView2 if needed. |
 
 Then add your alert sources using the [configuration guide](#configuration-and-first-run). Allow desktop notifications when prompted. On macOS and Windows, closing the window keeps Foghorn in the tray; use its tray menu to quit.
 
-Linux release builds use your system's GTK/WebKitGTK libraries. Install them before opening the AppImage:
+Linux AppImages bundle GTK, WebKitGTK, and AppIndicator. They support x86_64 desktops with glibc 2.35 or newer (Ubuntu 22.04 or newer) and X11/XWayland; no GTK/WebKitGTK packages need to be installed separately.
 
 ```bash
-# Fedora
-sudo dnf install webkit2gtk4.1 gtk3 libayatana-appindicator-gtk3
-
-# Ubuntu 24.04 / Kubuntu
-sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1
-
 # Replace the version with the release you downloaded.
 chmod +x "foghorn-<version>-x86_64.AppImage"
 ./"foghorn-<version>-x86_64.AppImage"
 ```
 
-KDE also needs these GTK libraries. GNOME needs AppIndicator support to show a tray icon; Foghorn remains usable as a regular window when the tray is unavailable.
+The runtime uses FUSE3. If mounting is unavailable, run with `APPIMAGE_EXTRACT_AND_RUN=1` before the command to extract and run without FUSE. GNOME needs AppIndicator support to show a tray icon; Foghorn remains usable as a regular window when the tray is unavailable.
 
 ## Features
 
