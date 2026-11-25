@@ -58,10 +58,9 @@ Fedora 43 ships WebKitGTK 4.1, so Foghorn must be built with the `webkit2_41` bu
 wails build -tags "webkit2_41"
 ```
 
-**Optional tray support** uses AppIndicator via [`getlantern/systray`](https://github.com/getlantern/systray). To enable it:
+**Optional tray support** uses a StatusNotifierItem over D-Bus via [`fyne.io/systray`](https://github.com/fyne-io/systray), with no extra system libraries. To enable it:
 
 ```bash
-sudo dnf install libayatana-appindicator-gtk3-devel
 wails build -tags "webkit2_41 linux_tray"
 ```
 
@@ -85,13 +84,13 @@ provide the GTK/WebKitGTK runtime packages.
 Runtime packages for Fedora/KDE/GNOME:
 
 ```bash
-sudo dnf install webkit2gtk4.1 gtk3 libayatana-appindicator-gtk3
+sudo dnf install webkit2gtk4.1 gtk3
 ```
 
 Runtime packages for Ubuntu 24.04/Kubuntu:
 
 ```bash
-sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1
+sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0
 ```
 
 KDE users still need these GTK/WebKitGTK packages because Wails uses WebKitGTK
@@ -150,7 +149,7 @@ Run in live-development mode with hot reload on macOS or Windows:
 wails dev
 ```
 
-On Linux with WebKitGTK 4.1 and AppIndicator support:
+On Linux with WebKitGTK 4.1 and tray support:
 
 ```bash
 wails dev -tags "webkit2_41 linux_tray"

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/getlantern/systray"
+	"fyne.io/systray"
 )
 
 // The systray calls, replaceable in tests.
@@ -29,10 +29,8 @@ type linuxTray struct {
 	disposed bool
 	icon     []byte
 	tooltip  string
-	// shownIcon is the icon last handed to systray. systray writes every icon to a new temp
-	// file and deletes the previous one, so setting an unchanged icon on each poll makes the
-	// GNOME AppIndicator extension read a file that is being replaced ("Failed to recognize
-	// image format") and show a placeholder instead of the icon.
+	// shownIcon is the icon last handed to systray, so an unchanged icon is not sent over
+	// D-Bus again on every poll.
 	shownIcon []byte
 	stopCh    chan struct{}
 	stopOnce  sync.Once
@@ -43,9 +41,14 @@ func newPlatformTray(m *Manager) platformTray {
 		stopCh: make(chan struct{}),
 	}
 
-	installAyatanaWarningFilter()
-	systray.Register(func() {
-		removeAyatanaWarningFilter()
+	// The title also becomes the StatusNotifierItem id, so it is set before the item is exported.
+	systray.SetTitle("Foghorn")
+	// fyne.io/systray exports the StatusNotifierItem over D-Bus itself (no libappindicator, no
+	// GTK loop). Its onReady callback runs before the item is exported, when an icon set there
+	// can be lost, so the tray is set up only once start has returned.
+	start, _ := systray.RunWithExternalLoop(nil, nil)
+	go func() {
+		start()
 
 		lt.mu.Lock()
 		if lt.disposed {
@@ -53,7 +56,6 @@ func newPlatformTray(m *Manager) platformTray {
 			return
 		}
 		lt.ready = true
-		systray.SetTitle("Foghorn")
 		lt.showIcon(lt.icon)
 		if lt.tooltip != "" {
 			setTrayTooltip(lt.tooltip)
@@ -66,21 +68,19 @@ func newPlatformTray(m *Manager) platformTray {
 		systray.AddSeparator()
 		mQuit := systray.AddMenuItem("Quit Foghorn", "Quit Foghorn")
 
-		go func() {
-			for {
-				select {
-				case <-mShow.ClickedCh:
-					m.handleClick()
-				case <-mAbout.ClickedCh:
-					m.handleAbout()
-				case <-mQuit.ClickedCh:
-					m.handleQuit()
-				case <-lt.stopCh:
-					return
-				}
+		for {
+			select {
+			case <-mShow.ClickedCh:
+				m.handleClick()
+			case <-mAbout.ClickedCh:
+				m.handleAbout()
+			case <-mQuit.ClickedCh:
+				m.handleQuit()
+			case <-lt.stopCh:
+				return
 			}
-		}()
-	}, nil)
+		}
+	}()
 
 	return lt
 }
@@ -111,6 +111,9 @@ func (l *linuxTray) showIcon(icon []byte) {
 	l.shownIcon = icon
 }
 
+// dispose runs at shutdown. It quits with systray.Quit rather than the end func of
+// RunWithExternalLoop, which closes the D-Bus connection without a nil check and would panic
+// if the session bus was unreachable; the connection closes with the process anyway.
 func (l *linuxTray) dispose() {
 	l.mu.Lock()
 	if l.disposed {

@@ -2,8 +2,8 @@
 #
 # Build a self-contained Foghorn AppImage for Linux x86_64.
 #
-# Bundles WebKitGTK (4.0 or 4.1, whichever is present), GTK3, and
-# AppIndicator3 so the AppImage runs on any host with a glibc >= the build
+# Bundles WebKitGTK (4.0 or 4.1, whichever is present) and GTK3 so the
+# AppImage runs on any host with a glibc >= the build
 # host's glibc version.
 #
 # CAVEATS
@@ -102,7 +102,7 @@ echo "WebKitGTK: $WEBKIT_VER (pkg-config: $WEBKIT_PC)"
 
 # Verify remaining required libs.
 MISSING_PKGS=()
-for pc in gtk+-3.0 ayatana-appindicator3-0.1; do
+for pc in gtk+-3.0; do
   if ! pkg-config --exists "$pc" 2>/dev/null; then
     MISSING_PKGS+=("$pc")
   fi
@@ -110,8 +110,8 @@ done
 if (( ${#MISSING_PKGS[@]} > 0 )); then
   echo "Missing pkg-config packages: ${MISSING_PKGS[*]}" >&2
   echo "Install them before building:" >&2
-  echo "  Debian/Ubuntu: sudo apt install libgtk-3-dev libayatana-appindicator3-dev" >&2
-  echo "  Fedora:        sudo dnf install gtk3-devel libayatana-appindicator-gtk3-devel" >&2
+  echo "  Debian/Ubuntu: sudo apt install libgtk-3-dev" >&2
+  echo "  Fedora:        sudo dnf install gtk3-devel" >&2
   exit 1
 fi
 
@@ -267,14 +267,12 @@ find_webkit_helper_dir() {
 
 LIB_WEBKIT="$(find_lib "libwebkit2gtk-${WEBKIT_VER}.so.*" | head -n1)"
 LIB_JSCORE="$(find_lib "libjavascriptcoregtk-${WEBKIT_VER}.so.*" | head -n1)"
-LIB_AYATANA="$(find_lib 'libayatana-appindicator3.so.*' | head -n1)"
 WEBKIT_HELPER_SRC_DIR="$(find_webkit_helper_dir || true)"
 
-if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" || -z "$LIB_AYATANA" ]]; then
+if [[ -z "$LIB_WEBKIT" || -z "$LIB_JSCORE" ]]; then
   echo "Could not locate one or more runtime libraries to bundle:" >&2
   echo "  libwebkit2gtk-${WEBKIT_VER}: ${LIB_WEBKIT:-MISSING}" >&2
   echo "  libjavascriptcoregtk-${WEBKIT_VER}: ${LIB_JSCORE:-MISSING}" >&2
-  echo "  libayatana-appindicator3: ${LIB_AYATANA:-MISSING}" >&2
   exit 1
 fi
 
