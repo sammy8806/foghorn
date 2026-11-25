@@ -3,9 +3,16 @@
 package tray
 
 import (
+	"bytes"
 	"sync"
 
 	"github.com/getlantern/systray"
+)
+
+// The systray calls, replaceable in tests.
+var (
+	setTrayIcon    = systray.SetIcon
+	setTrayTooltip = systray.SetTooltip
 )
 
 func Supported() bool {
@@ -22,8 +29,13 @@ type linuxTray struct {
 	disposed bool
 	icon     []byte
 	tooltip  string
-	stopCh   chan struct{}
-	stopOnce sync.Once
+	// shownIcon is the icon last handed to systray. systray writes every icon to a new temp
+	// file and deletes the previous one, so setting an unchanged icon on each poll makes the
+	// GNOME AppIndicator extension read a file that is being replaced ("Failed to recognize
+	// image format") and show a placeholder instead of the icon.
+	shownIcon []byte
+	stopCh    chan struct{}
+	stopOnce  sync.Once
 }
 
 func newPlatformTray(m *Manager) platformTray {
@@ -41,17 +53,12 @@ func newPlatformTray(m *Manager) platformTray {
 			return
 		}
 		lt.ready = true
-		icon := lt.icon
-		tooltip := lt.tooltip
-		lt.mu.Unlock()
-
 		systray.SetTitle("Foghorn")
-		if len(icon) > 0 {
-			systray.SetIcon(icon)
+		lt.showIcon(lt.icon)
+		if lt.tooltip != "" {
+			setTrayTooltip(lt.tooltip)
 		}
-		if tooltip != "" {
-			systray.SetTooltip(tooltip)
-		}
+		lt.mu.Unlock()
 
 		mShow := systray.AddMenuItem("Show or Hide Window", "Toggle the Foghorn window")
 		systray.AddSeparator()
@@ -89,12 +96,19 @@ func (l *linuxTray) update(icon []byte, tooltip string) error {
 	l.icon = icon
 	l.tooltip = tooltip
 	if l.ready {
-		if len(icon) > 0 {
-			systray.SetIcon(icon)
-		}
-		systray.SetTooltip(tooltip)
+		l.showIcon(icon)
+		setTrayTooltip(tooltip)
 	}
 	return nil
+}
+
+// showIcon hands icon to systray unless it is empty or already shown.
+func (l *linuxTray) showIcon(icon []byte) {
+	if len(icon) == 0 || bytes.Equal(icon, l.shownIcon) {
+		return
+	}
+	setTrayIcon(icon)
+	l.shownIcon = icon
 }
 
 func (l *linuxTray) dispose() {
