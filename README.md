@@ -30,17 +30,17 @@ Linux release builds use your system's GTK/WebKitGTK libraries. Install them bef
 
 ```bash
 # Fedora
-sudo dnf install webkit2gtk4.1 gtk3 libayatana-appindicator-gtk3
+sudo dnf install webkit2gtk4.1 gtk3
 
 # Ubuntu 24.04 / Kubuntu
-sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1
+sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0
 
 # Replace the version with the release you downloaded.
 chmod +x "foghorn-<version>-x86_64.AppImage"
 ./"foghorn-<version>-x86_64.AppImage"
 ```
 
-KDE also needs these GTK libraries. GNOME needs AppIndicator support to show a tray icon; Foghorn remains usable as a regular window when the tray is unavailable.
+KDE also needs these GTK libraries. GNOME needs AppIndicator/StatusNotifierItem support (for example the AppIndicator extension) to show a tray icon; Foghorn remains usable as a regular window when the tray is unavailable.
 
 ## Features
 
