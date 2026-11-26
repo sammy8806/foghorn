@@ -43,6 +43,11 @@ func newPlatformTray(m *Manager) platformTray {
 
 	// The title also becomes the StatusNotifierItem id, so it is set before the item is exported.
 	systray.SetTitle("Foghorn")
+	// A left click shows or hides the window, as on Windows. Without a handler the item reports
+	// ItemIsMenu and rejects Activate, so a host that sends the left click as Activate (such as
+	// Quickshell) does nothing. ItemIsMenu is read when the item is exported, so this is set
+	// before start. The menu stays on right click or hover, depending on the host.
+	systray.SetOnTapped(m.handleClick)
 	// fyne.io/systray exports the StatusNotifierItem over D-Bus itself (no libappindicator, no
 	// GTK loop). Its onReady callback runs before the item is exported, when an icon set there
 	// can be lost, so the tray is set up only once start has returned.

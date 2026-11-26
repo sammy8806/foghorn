@@ -97,7 +97,7 @@ KDE users still need these GTK/WebKitGTK packages because Wails uses WebKitGTK
 for the embedded web view on Linux. KDE itself is supported; it just does not
 replace the GTK/WebKitGTK runtime requirement.
 
-On GNOME, tray visibility still depends on the desktop environment exposing AppIndicator or StatusNotifier items. If Foghorn is built without `linux_tray`, or tray support is unavailable at runtime, it falls back to a normal visible window so it remains usable. Even with `linux_tray` enabled, Linux starts with a visible window by default — the tray is an optional convenience, not the primary entry point.
+On GNOME, tray visibility still depends on the desktop environment exposing AppIndicator or StatusNotifier items. If Foghorn is built without `linux_tray`, or tray support is unavailable at runtime, it falls back to a normal visible window so it remains usable. Even with `linux_tray` enabled, Linux starts with a visible window by default — the tray is an optional convenience, not the primary entry point. Clicking the tray icon shows or hides the window; the tray menu (right click, or hover on some desktops) has the same toggle plus About and Quit.
 
 If `dnf` prompts about an unrelated third-party repository GPG key during prerequisite installation, resolve that repo configuration first or temporarily disable that repo for the install command.
 
